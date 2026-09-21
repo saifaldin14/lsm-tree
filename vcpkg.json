@@ -1,0 +1,13 @@
+{
+  "name": "lsm-lab",
+  "version-string": "0.1.0",
+  "builtin-baseline": "319504a5326aa870edde46438c5455fa76305a56",
+  "dependencies": [
+    {"name": "grpc", "features": ["codegen"]},
+    "gtest",
+    {"name": "hdr-histogram", "features": ["log"]},
+    "lz4",
+    "nlohmann-json",
+    "openssl"
+  ]
+}

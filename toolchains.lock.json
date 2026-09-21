@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "rocksdb": {
+    "version": "11.8.1",
+    "commit": "abeebd9630f11bd08c28b7bd43c7bdfc62050654",
+    "archive_sha256": "25dee0decb85ea9a3c8a706b8b627fd67f218e35efae59e23997a4234db32198"
+  },
+  "vcpkg": {"commit": "319504a5326aa870edde46438c5455fa76305a56"},
+  "language": "C++20",
+  "minimum_cmake": "3.25",
+  "cuda": {"status": "not_configured"},
+  "metal": {"status": "compiler_available_execution_not_yet_validated"}
+}

@@ -1,0 +1,104 @@
+syntax = "proto3";
+
+package lsm_lab.rpc.v1;
+
+service CompactionWorkerService {
+  rpc Capabilities(WorkerCapabilitiesRequest) returns (WorkerCapabilitiesResponse);
+  rpc Submit(SubmitCompactionRequest) returns (CompactionAttempt);
+  rpc Inspect(AttemptRequest) returns (CompactionAttempt);
+  rpc Cancel(AttemptRequest) returns (CompactionAttempt);
+  rpc Acknowledge(InstallationAcknowledgement) returns (CompactionAttempt);
+}
+
+message WorkerCapabilitiesRequest {
+  uint32 wire_version = 1;
+  string engine_fingerprint = 2;
+}
+
+message WorkerCapabilitiesResponse {
+  uint32 wire_version = 1;
+  string engine_fingerprint = 2;
+  string worker_instance_id = 3;
+  repeated string backends = 4;
+  uint32 maximum_active_jobs = 5;
+  uint32 maximum_queued_jobs = 6;
+  uint64 maximum_engine_payload_bytes = 7;
+  string shared_root = 8;
+  string shared_root_id = 9;
+}
+
+message JobIdentity {
+  string run_id = 1;
+  string db_id = 2;
+  string db_session_id = 3;
+  uint32 column_family_id = 4;
+  uint64 job_id = 5;
+}
+
+message AttemptIdentity {
+  JobIdentity job = 1;
+  string attempt_id = 2;
+}
+
+message SubmitCompactionRequest {
+  uint32 wire_version = 1;
+  string engine_fingerprint = 2;
+  string resolved_spec_sha256 = 3;
+  AttemptIdentity identity = 4;
+  string shared_root_id = 5;
+  string database_relative_path = 6;
+  string backend = 7;
+  bytes engine_input = 8;
+  bytes engine_input_sha256 = 9;
+}
+
+message AttemptRequest {
+  uint32 wire_version = 1;
+  AttemptIdentity identity = 2;
+  string worker_instance_id = 3;
+  uint32 wait_ms = 4;
+}
+
+enum AttemptState {
+  ATTEMPT_STATE_UNSPECIFIED = 0;
+  ATTEMPT_ACCEPTED = 1;
+  ATTEMPT_QUEUED = 2;
+  ATTEMPT_RUNNING = 3;
+  ATTEMPT_OUTPUT_READY = 4;
+  ATTEMPT_FAILED = 5;
+  ATTEMPT_CANCELLED = 6;
+  ATTEMPT_ABANDONED = 7;
+}
+
+enum InstallationState {
+  INSTALLATION_STATE_UNSPECIFIED = 0;
+  INSTALLATION_OUTPUTS_IMPORTED = 1;
+  INSTALLATION_COMMITTED = 2;
+  INSTALLATION_FAILED = 3;
+  INSTALLATION_LOCAL_FALLBACK = 4;
+}
+
+message CompactionAttempt {
+  uint32 wire_version = 1;
+  AttemptIdentity identity = 2;
+  string worker_instance_id = 3;
+  AttemptState state = 4;
+  InstallationState installation_state = 5;
+  bytes engine_input_sha256 = 6;
+  bytes engine_result = 7;
+  string output_relative_path = 8;
+  string failure_code = 9;
+  string failure_detail = 10;
+  uint64 execution_wall_ns = 11;
+  uint64 executed_gpu_blocks = 12;
+  uint64 executed_gpu_input_bytes = 13;
+  string backend = 14;
+}
+
+message InstallationAcknowledgement {
+  uint32 wire_version = 1;
+  AttemptIdentity identity = 2;
+  string worker_instance_id = 3;
+  InstallationState state = 4;
+  bytes engine_result_sha256 = 5;
+}

@@ -1,0 +1,79 @@
+syntax = "proto3";
+
+package lsm_lab.rpc.v1;
+
+service BenchmarkService {
+  rpc Describe(DescribeRequest) returns (DescribeResponse);
+  rpc Get(GetRequest) returns (GetResponse);
+  rpc Put(PutRequest) returns (WriteResponse);
+  rpc Delete(DeleteRequest) returns (WriteResponse);
+  rpc Maintain(MaintenanceRequest) returns (MaintenanceResponse);
+  rpc Statistics(DescribeRequest) returns (StatisticsResponse);
+}
+
+message DescribeRequest {
+  uint32 wire_version = 1;
+}
+
+message DescribeResponse {
+  uint32 wire_version = 1;
+  string run_id = 2;
+  string dataset_id = 3;
+  string db_session_id = 4;
+  string engine_fingerprint = 5;
+  string resolved_spec_sha256 = 6;
+  uint32 maximum_key_bytes = 7;
+  uint32 maximum_value_bytes = 8;
+  string compaction_backend = 9;
+  bool sync_writes = 10;
+  string dataset_spec_json = 11;
+}
+
+message RequestIdentity {
+  uint32 wire_version = 1;
+  string run_id = 2;
+  uint64 request_id = 3;
+}
+
+message GetRequest {
+  RequestIdentity identity = 1;
+  bytes key = 2;
+}
+
+message GetResponse {
+  uint64 request_id = 1;
+  bool found = 2;
+  bytes value = 3;
+}
+
+message PutRequest {
+  RequestIdentity identity = 1;
+  bytes key = 2;
+  bytes value = 3;
+}
+
+message DeleteRequest {
+  RequestIdentity identity = 1;
+  bytes key = 2;
+}
+
+message WriteResponse {
+  uint64 request_id = 1;
+}
+
+message MaintenanceRequest {
+  RequestIdentity identity = 1;
+  bool compact = 2;
+  bool verify_checksums = 3;
+  uint32 timeout_seconds = 4;
+}
+
+message MaintenanceResponse {
+  uint64 latest_sequence = 1;
+  bool checksums_verified = 2;
+  string statistics_json = 3;
+}
+
+message StatisticsResponse {
+  string statistics_json = 1;
+}
