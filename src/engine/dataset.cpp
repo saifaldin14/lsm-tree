@@ -5,6 +5,7 @@
 #include <chrono>
 #include <fstream>
 #include <limits>
+#include <map>
 #include <memory>
 #include <stdexcept>
 #include <vector>
@@ -121,7 +122,7 @@ namespace lsm_lab
             check(directory->Fsync());
         }
 
-        void publish_manifest(const fs::path &root, const Json &manifest)
+        void publish_manifest(const fs::path &root, const Json &manifest, const std::string &name = "dataset.json")
         {
             auto *env = rocksdb::Env::Default();
             const auto temporary = root / (".dataset-" + env->GenerateUniqueId());
@@ -131,7 +132,7 @@ namespace lsm_lab
             check(file->Fsync());
             check(file->Close());
             file.reset();
-            check(env->RenameFile(temporary.string(), (root / "dataset.json").string()));
+            check(env->RenameFile(temporary.string(), (root / name).string()));
             sync_directory(root);
         }
 
@@ -227,9 +228,13 @@ namespace lsm_lab
             rocksdb::FileLock *lock_ = nullptr;
         };
 
-        Json verify_locked(const fs::path &root, const Json &manifest)
+        Json verify_locked(const fs::path &root, const Json &manifest,
+                           const std::map<std::uint64_t, std::uint64_t> &versions = {}, bool check_inventory = true)
         {
-            require(manifest.at("files") == inventory(root / "db"), "dataset file inventory or SHA-256 mismatch");
+            if (check_inventory)
+            {
+                require(manifest.at("files") == inventory(root / "db"), "dataset file inventory or SHA-256 mismatch");
+            }
             const auto spec = parse_spec(manifest.at("spec").dump());
             auto options = engine_options(spec);
             std::unique_ptr<rocksdb::DB> database;
@@ -243,7 +248,9 @@ namespace lsm_lab
                     const auto index = decode_index(iterator->key());
                     require(index < spec.dataset.records && iterator->key() == record_key(spec.dataset, index),
                             "dataset key does not match generator");
-                    require(iterator->value() == record_value(spec.dataset, index, spec.dataset.overwrite_rounds),
+                    const auto changed = versions.find(index);
+                    const auto generation = changed == versions.end() ? spec.dataset.overwrite_rounds : changed->second;
+                    require(iterator->value() == record_value(spec.dataset, index, generation),
                             "dataset full value does not match generator");
                     ++count;
                 }
@@ -251,7 +258,7 @@ namespace lsm_lab
             }
             require(count == spec.dataset.records, "dataset record count mismatch");
             check(database->Close());
-            return {{"status", "ok"}, {"dataset_id", manifest.at("dataset_id")}, {"records_verified", count}, {"files_verified", manifest.at("files").size()}, {"full_payloads_verified", true}, {"file_hashes_verified", true}};
+            return {{"status", "ok"}, {"dataset_id", manifest.at("dataset_id")}, {"records_verified", count}, {"files_verified", check_inventory ? Json(manifest.at("files").size()) : Json(nullptr)}, {"full_payloads_verified", true}, {"native_checksums_verified", true}, {"file_hashes_verified", check_inventory}};
         }
     }
 
@@ -295,7 +302,7 @@ namespace lsm_lab
         return value;
     }
 
-    rocksdb::Options engine_options(const Spec &spec)
+    rocksdb::Options engine_options(const Spec &spec, std::shared_ptr<rocksdb::CompactionBlockTransform> transform)
     {
         validate(spec);
         if (spec.engine.compression == "lz4")
@@ -316,6 +323,8 @@ namespace lsm_lab
         options.paranoid_file_checks = true;
         rocksdb::BlockBasedTableOptions table;
         table.format_version = 6;
+        table.checksum = rocksdb::kCRC32c;
+        table.compaction_block_transform = std::move(transform);
         table.block_size = spec.engine.block_bytes;
         table.block_cache = rocksdb::NewLRUCache(spec.engine.block_cache_bytes);
         table.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10));
@@ -371,6 +380,66 @@ namespace lsm_lab
     Spec dataset_spec(const fs::path &directory)
     {
         return parse_spec(read_manifest(directory).at("spec").dump());
+    }
+
+    Json verify_trial(const fs::path &directory, const fs::path &load_output)
+    {
+        const auto document = [](const fs::path &path)
+        {
+            require(fs::is_regular_file(fs::symlink_status(path)) && fs::file_size(path) <= 1ULL << 20,
+                    "invalid trial metadata file: " + path.string());
+            std::ifstream input(path);
+            return Json::parse(input);
+        };
+        const auto manifest = read_manifest(directory);
+        const auto run = document(directory / "run.json");
+        const auto load = document(load_output / "manifest.json");
+        const auto result = document(load_output / "result.json");
+        require(run.at("owner") == "lsm-lab" && run.at("state") == "stopped" && load.at("owner") == "lsm-lab" &&
+                    load.at("state") == "complete" && result.at("state") == "complete" &&
+                    run.at("run_id") == load.at("run_id") && load.at("run_id") == result.at("run_id") &&
+                    load.at("dataset_id") == manifest.at("dataset_id") && load.at("spec") == manifest.at("spec"),
+                "trial identity mismatch or trial has not stopped cleanly");
+        require(result.at("warmup").at("indeterminate_writes") == 0 && result.at("measurement").at("indeterminate_writes") == 0,
+                "cannot prove expected state after indeterminate writes");
+        const auto spec = parse_spec(manifest.at("spec").dump());
+        const auto budget = load.at("memory_budget_bytes").get<std::uint64_t>();
+        require(budget <= 64ULL << 30, "invalid verification memory budget");
+        std::map<std::uint64_t, std::uint64_t> versions;
+        std::ifstream input(load_output / "final-versions.jsonl");
+        require(input.good(), "missing expected final versions");
+        std::array<char, 256> line{};
+        while (input.getline(line.data(), line.size()))
+        {
+            const auto entry = Json::parse(line.data());
+            require(entry.at("key_index").is_number_unsigned() && entry.at("generation").is_number_unsigned(), "invalid version entry");
+            const auto index = entry.at("key_index").get<std::uint64_t>();
+            const auto generation = entry.at("generation").get<std::uint64_t>();
+            require(index < spec.dataset.records && generation > spec.dataset.overwrite_rounds && versions.size() < budget / 192 &&
+                        versions.emplace(index, generation).second,
+                    "duplicate, out-of-range, or over-budget version entry");
+        }
+        require(input.eof() && !input.bad(), "malformed expected-version stream");
+        OfflineLock lock(directory);
+        auto report = verify_locked(directory, manifest, versions, false);
+        report["run_id"] = run.at("run_id");
+        report["modified_keys_verified"] = versions.size();
+        return report;
+    }
+
+    Json initialize_shared_root(const fs::path &directory)
+    {
+        const auto absolute = fs::absolute(directory).lexically_normal();
+        const auto parent = fs::canonical(absolute.parent_path());
+        require(!absolute.filename().empty(), "shared root must name a new directory");
+        disk_budget(parent, 1ULL << 20);
+        const auto root = parent / absolute.filename();
+        require(fs::create_directory(root), "shared root already exists");
+        require(fs::create_directory(root / ".lsm-staging"), "cannot create shared staging directory");
+        Json marker{{"schema_version", 1}, {"owner", "lsm-lab"}, {"shared_root_id", rocksdb::Env::Default()->GenerateUniqueId()}};
+        publish_manifest(root, marker, ".lsm-shared.json");
+        sync_directory(parent);
+        return marker;
     }
 
     Json clone_dataset(const fs::path &source, const fs::path &destination)

@@ -4,6 +4,7 @@
 /.venv/
 /vcpkg_installed/
 /CMakeUserPresets.json
+/infra/inventory.local.json
 __pycache__/
 .pytest_cache/
 .DS_Store

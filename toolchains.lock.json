@@ -8,6 +8,17 @@
   "vcpkg": {"commit": "319504a5326aa870edde46438c5455fa76305a56"},
   "language": "C++20",
   "minimum_cmake": "3.25",
-  "cuda": {"status": "not_configured"},
-  "metal": {"status": "compiler_available_execution_not_yet_validated"}
+  "cuda": {
+    "status": "source_implemented_compile_and_execution_require_linux_cuda_host",
+    "toolkit_minimum": "12.0",
+    "nvcomp": "5.3.0.16",
+    "nvcomp_archive_sha256": "535944be2e37ead56ad1ef80e9dd58a3126fc2ccf238ddffc9d1cb7a48f5300a",
+    "platform": "linux-x86_64",
+    "decompression_backend": "NVCOMP_DECOMPRESS_BACKEND_CUDA"
+  },
+  "metal": {
+    "status": "compiled_and_executed_on_apple_m3",
+    "validation_scope": "full-byte block checks and separate-process native compaction",
+    "device_selection": "default device, or first enumerated physical device when no default exists"
+  }
 }

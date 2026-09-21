@@ -1,4 +1,5 @@
 #include "lsm_lab/runtime.hpp"
+#include "lsm_lab/build_info.hpp"
 
 #include <array>
 #include <charconv>
@@ -67,7 +68,7 @@ namespace lsm_lab
 
     std::string engine_fingerprint()
     {
-        return LSM_ENGINE_FINGERPRINT;
+        return build::fingerprint;
     }
 
     std::string unique_id()

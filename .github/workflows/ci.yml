@@ -1,0 +1,31 @@
+name: Native CPU Checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  cpu:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Dependencies
+        run: bash scripts/bootstrap.sh
+      - name: Native build and checks
+        run: |
+          cmake --preset dev
+          cmake --build --preset dev
+          ctest --preset dev --output-on-failure
+      - name: Administration and real-process tests
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install -r tools/requirements.lock
+          .venv/bin/python -m unittest discover -s tests -p test_labctl.py -v

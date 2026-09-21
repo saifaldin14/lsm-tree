@@ -1,0 +1,7 @@
+#pragma once
+
+namespace lsm_lab::build
+{
+    inline constexpr char rocksdb_commit[] = "@LSM_ROCKSDB_COMMIT@";
+    inline constexpr char fingerprint[] = "rocksdb-@LSM_ROCKSDB_COMMIT@-@LSM_ENGINE_PATCH_SHA@";
+}

@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "name": "local-cpu-pilot",
+  "dataset_spec": "configs/local-smoke.json",
+  "modes": ["native_cpu", "cpu_native"],
+  "rates": [200, 500],
+  "repetitions": 2,
+  "seed": 41,
+  "warmup_seconds": 1,
+  "measurement_seconds": 2,
+  "read_percent": 50,
+  "threads": 4,
+  "queue_capacity": 256,
+  "deadline_ms": 5000,
+  "read_slo_ms": 10,
+  "write_slo_ms": 10,
+  "max_wall_seconds": 300,
+  "max_logical_write_bytes": 67108864,
+  "max_artifact_bytes": 268435456
+}

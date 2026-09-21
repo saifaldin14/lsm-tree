@@ -156,6 +156,15 @@ namespace lsm_lab
                 validate_response(*attempt, response);
                 if (response.state() == wire::ATTEMPT_OUTPUT_READY)
                 {
+                    if (!response.transform_statistics_json().empty())
+                    {
+                        const auto metrics = nlohmann::json::parse(response.transform_statistics_json());
+                        transformed_blocks_ += metrics.at("blocks").get<std::uint64_t>();
+                        gpu_blocks_ += response.executed_gpu_blocks();
+                        gpu_input_bytes_ += response.executed_gpu_input_bytes();
+                        events_->append({{"role", "worker"}, {"phase", "block_transform"},
+                                         {"attempt_id", attempt_id}, {"metrics", metrics}});
+                    }
                     require(!response.engine_result().empty(), "worker returned empty native result");
                     *result = response.engine_result();
                     {
@@ -326,6 +335,8 @@ namespace lsm_lab
 
     nlohmann::json RemoteCompaction::summary() const
     {
-        return {{"healthy", healthy_.load()}, {"submitted", submitted_.load()}, {"committed", committed_.load()}, {"local_fallback", fallback_.load()}};
+        return {{"healthy", healthy_.load()}, {"submitted", submitted_.load()}, {"committed", committed_.load()},
+            {"local_fallback", fallback_.load()}, {"transformed_blocks", transformed_blocks_.load()},
+            {"gpu_blocks", gpu_blocks_.load()}, {"gpu_input_bytes", gpu_input_bytes_.load()}};
     }
 }

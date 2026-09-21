@@ -1,0 +1,35 @@
+name: Required GPU Checks
+on:
+  workflow_dispatch:
+    inputs:
+      backend:
+        description: Trusted self-hosted GPU worker
+        type: choice
+        options: [metal, cuda]
+        required: true
+permissions:
+  contents: read
+jobs:
+  hardware:
+    runs-on: [self-hosted, "${{ inputs.backend }}"]
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Native dependencies
+        run: bash scripts/bootstrap.sh
+      - name: CUDA dependency
+        if: inputs.backend == 'cuda'
+        run: bash scripts/bootstrap-cuda.sh
+      - name: Configure Metal
+        if: inputs.backend == 'metal'
+        run: cmake --preset dev -DLSM_ENABLE_METAL=ON
+      - name: Configure CUDA
+        if: inputs.backend == 'cuda'
+        run: cmake --preset dev -DLSM_ENABLE_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=native
+      - name: Require actual GPU work
+        env:
+          BACKEND: ${{ inputs.backend }}
+        run: |
+          cmake --build --preset dev
+          build/dev/lsm_gpu_check "${BACKEND}_batched" --require
+          ctest --preset dev -R 'blocks.transforms|worker.lifecycle|hardware' --output-on-failure

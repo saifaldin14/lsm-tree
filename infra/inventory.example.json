@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "approved": false,
+  "approval_id": "",
+  "suite": "metal",
+  "shared_parent": "/opt/lsm-lab/shared",
+  "nfs_source": "10.0.0.4:/export/lsm-lab",
+  "nfs_protocol": "3",
+  "max_wall_seconds": 600,
+  "hosts": {
+    "primary": {
+      "ssh": "lsm-primary",
+      "project": "/opt/lsm-lab/source",
+      "python": "/usr/bin/python3",
+      "work_parent": "/opt/lsm-lab/work",
+      "endpoint": "10.0.0.2:50051",
+      "tls": {"ca": "/opt/lsm-lab/tls/ca.pem", "cert": "/opt/lsm-lab/tls/primary.pem", "key": "/opt/lsm-lab/tls/primary.key"}
+    },
+    "worker": {
+      "ssh": "lsm-worker",
+      "project": "/opt/lsm-lab/source",
+      "python": "/usr/bin/python3",
+      "work_parent": "/opt/lsm-lab/work",
+      "endpoint": "10.0.0.3:50052",
+      "tls": {"ca": "/opt/lsm-lab/tls/ca.pem", "cert": "/opt/lsm-lab/tls/worker.pem", "key": "/opt/lsm-lab/tls/worker.key"}
+    },
+    "load": {
+      "ssh": "lsm-load",
+      "project": "/opt/lsm-lab/source",
+      "python": "/usr/bin/python3",
+      "work_parent": "/opt/lsm-lab/work",
+      "endpoint": "",
+      "tls": {"ca": "/opt/lsm-lab/tls/ca.pem", "cert": "/opt/lsm-lab/tls/load.pem", "key": "/opt/lsm-lab/tls/load.key"}
+    },
+    "storage": {
+      "ssh": "lsm-storage",
+      "project": "/opt/lsm-lab/source",
+      "python": "/usr/bin/python3",
+      "work_parent": "/opt/lsm-lab/work",
+      "endpoint": "",
+      "tls": {}
+    }
+  }
+}

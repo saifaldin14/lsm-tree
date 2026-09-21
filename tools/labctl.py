@@ -3,6 +3,7 @@
 
 import argparse
 import datetime
+import importlib
 import json
 import os
 from pathlib import Path
@@ -87,11 +88,51 @@ def main() -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     doctor_parser = commands.add_parser("doctor", help="read-only local environment report")
     doctor_parser.add_argument("--directory", type=Path, default=ROOT)
+    plan_parser = commands.add_parser("plan", help="freeze a bounded, paired experiment plan without starting services")
+    plan_parser.add_argument("config", type=Path)
+    plan_parser.add_argument("output", type=Path)
+    run_parser = commands.add_parser("run", help="execute a frozen local-process plan within its declared budgets")
+    run_parser.add_argument("plan", type=Path)
+    run_parser.add_argument("output", type=Path)
+    audit_parser = commands.add_parser("audit", help="verify every checksum in a sealed run bundle")
+    audit_parser.add_argument("directory", type=Path)
+    analysis_parser = commands.add_parser("analyze", help="audit and analyze a measured bundle, preserving failures and censoring")
+    analysis_parser.add_argument("directory", type=Path)
+    analysis_parser.add_argument("output", type=Path)
+    analysis_parser.add_argument("--no-plots", action="store_true")
+    deployment_parser = commands.add_parser("deployment-plan", help="prepare cross-host checks without connecting to hosts")
+    deployment_parser.add_argument("inventory", type=Path)
+    deployment_parser.add_argument("output", type=Path)
+    qualification_parser = commands.add_parser("qualify", help="run approved cross-host filesystem, GPU, and RPC validation")
+    qualification_parser.add_argument("inventory", type=Path)
+    qualification_parser.add_argument("output", type=Path)
+    qualification_parser.add_argument("--apply", action="store_true")
     arguments = parser.parse_args()
     try:
-        print(json.dumps(doctor(arguments.directory), indent=2))
+        if arguments.command == "doctor":
+            result = doctor(arguments.directory)
+        else:
+            module = importlib.import_module(f"{__package__}.experiments" if __package__ else "experiments")
+            if arguments.command == "plan":
+                result = module.freeze_plan(arguments.config, arguments.output)
+            elif arguments.command == "run":
+                result = module.run_plan(arguments.plan, arguments.output)
+            elif arguments.command == "audit":
+                result = module.verify_bundle(arguments.directory)
+            elif arguments.command == "analyze":
+                analysis = importlib.import_module(f"{__package__}.analysis" if __package__ else "analysis")
+                result = analysis.analyze_run(arguments.directory, arguments.output, not arguments.no_plots)
+            else:
+                deployment = importlib.import_module(f"{__package__}.deployment" if __package__ else "deployment")
+                result = (deployment.deployment_plan(arguments.inventory, arguments.output)
+                          if arguments.command == "deployment-plan" else deployment.qualify(arguments.inventory, arguments.output, arguments.apply))
+        print(json.dumps(result, indent=2))
+        if arguments.command == "qualify" and not result["cross_host_qualified"]:
+            return 1
+        if arguments.command == "run" and not all(trial["valid"] for trial in result["trials"]):
+            return 3
         return 0
-    except (OSError, ValueError) as error:
+    except (OSError, ValueError, TypeError, KeyError, RuntimeError, subprocess.SubprocessError) as error:
         print(json.dumps({"status": "error", "detail": str(error)}), file=sys.stderr)
         return 1
 

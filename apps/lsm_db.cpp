@@ -3,6 +3,7 @@
 #include "benchmark.grpc.pb.h"
 
 #include <iostream>
+#include <charconv>
 #include <shared_mutex>
 #include <rocksdb/db.h>
 
@@ -210,7 +211,14 @@ namespace
                 }
                 else
                 {
-                    properties[name] = nullptr;
+                    std::string text;
+                    if (database_->GetProperty(name, &text))
+                    {
+                        const auto parsed = std::from_chars(text.data(), text.data() + text.size(), value);
+                        properties[name] = parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size() ? Json(value) : Json(nullptr);
+                    }
+                    else
+                        properties[name] = nullptr;
                 }
             }
             return {{"schema_version", 1}, {"run_id", run_id_}, {"db_session_id", session_}, {"reads", reads_.load()}, {"writes", writes_.load()}, {"deletes", deletes_.load()}, {"mode", mode_}, {"properties", properties}, {"process", lsm_lab::process_usage()}, {"remote", remote_ ? remote_->summary() : Json(nullptr)}};

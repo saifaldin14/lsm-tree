@@ -1,5 +1,6 @@
 #include "lsm_lab/worker.hpp"
 #include "lsm_lab/dataset.hpp"
+#include "lsm_lab/block_transform.hpp"
 
 #include <algorithm>
 
@@ -111,7 +112,8 @@ namespace lsm_lab
         result.set_wire_version(wire_version);
         result.set_engine_fingerprint(engine_fingerprint());
         result.set_worker_instance_id(instance_);
-        result.add_backends("cpu_native");
+        for (const auto &backend : available_transforms())
+            result.add_backends(backend);
         result.set_maximum_active_jobs(options_.threads);
         result.set_maximum_queued_jobs(options_.queue_limit);
         result.set_maximum_engine_payload_bytes(payload_limit);
@@ -142,7 +144,8 @@ namespace lsm_lab
                 "incompatible wire or engine version");
         validate_identity(request.identity());
         require(request.shared_root_id() == shared_id_, "shared root identity mismatch");
-        require(request.backend() == "cpu_native", "requested backend is not implemented in this build");
+        const auto backends = available_transforms();
+        require(std::find(backends.begin(), backends.end(), request.backend()) != backends.end(), "requested backend is not available in this build");
         require(!request.engine_input().empty() && request.engine_input().size() <= payload_limit &&
                     request.engine_input_sha256() == digest_bytes(request.engine_input()),
                 "invalid input payload or digest");
@@ -281,7 +284,8 @@ namespace lsm_lab
             const auto output = contained_path(options_.shared_root, record->status.output_relative_path());
             require(fs::is_empty(output), "output directory must be empty");
             const auto spec = dataset_spec(database.parent_path());
-            auto options = engine_options(spec);
+            auto transform = make_transform(request.backend());
+            auto options = engine_options(spec, transform);
             rocksdb::CompactionServiceOptionsOverride overrides;
             overrides.table_factory = options.table_factory;
             overrides.statistics = rocksdb::CreateDBStatistics();
@@ -307,6 +311,16 @@ namespace lsm_lab
             sync_directory(output);
             durable_bytes(record->directory / "result.bin", result);
             const std::lock_guard guard(record->mutex);
+            if (transform)
+            {
+                const auto metrics = transform->statistics();
+                record->status.set_transform_statistics_json(metrics.dump());
+                if (metrics.at("dispatches").get<std::uint64_t>() > 0)
+                {
+                    record->status.set_executed_gpu_blocks(metrics.at("blocks").get<std::uint64_t>());
+                    record->status.set_executed_gpu_input_bytes(metrics.at("input_bytes").get<std::uint64_t>());
+                }
+            }
             record->status.set_execution_wall_ns(std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - start).count());
             record->status.set_state(record->canceled.load() ? wire::ATTEMPT_CANCELLED : wire::ATTEMPT_OUTPUT_READY);
             persist(*record);

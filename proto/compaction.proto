@@ -93,6 +93,7 @@ message CompactionAttempt {
   uint64 executed_gpu_blocks = 12;
   uint64 executed_gpu_input_bytes = 13;
   string backend = 14;
+  string transform_statistics_json = 15;
 }
 
 message InstallationAcknowledgement {

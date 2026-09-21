@@ -63,5 +63,6 @@ namespace lsm_lab
         std::atomic<std::uint64_t> submitted_{0};
         std::atomic<std::uint64_t> committed_{0};
         std::atomic<std::uint64_t> fallback_{0};
+        std::atomic<std::uint64_t> transformed_blocks_{0}, gpu_blocks_{0}, gpu_input_bytes_{0};
     };
 }
