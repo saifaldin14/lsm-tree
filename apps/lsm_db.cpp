@@ -1,5 +1,6 @@
 #include "lsm_lab/dataset.hpp"
 #include "lsm_lab/remote_compaction.hpp"
+#include "lsm_lab/telemetry.hpp"
 #include "benchmark.grpc.pb.h"
 
 #include <iostream>
@@ -251,6 +252,11 @@ int main(int argc, char **argv)
         const auto ready = arguments.required("ready-file");
         const auto events_path = arguments.required("events");
         const auto summary_path = arguments.required("summary");
+        lsm_lab::telemetry::SamplerOptions resources;
+        resources.output = arguments.take("resources", summary_path + ".resources.jsonl");
+        resources.role = "primary";
+        resources.interval_ms = arguments.number("resource-interval-ms", 1000, 10, 60000);
+        resources.max_output_bytes = arguments.number("resource-budget-bytes", 256ULL << 20, 16384, 16ULL << 30);
         lsm_lab::require(!fs::exists(summary_path), "summary file already exists");
         const auto tls = lsm_lab::TlsOptions::take(arguments);
         lsm_lab::RemoteOptions remote;
@@ -263,15 +269,19 @@ int main(int argc, char **argv)
         lsm_lab::require(mode != "native_cpu" || (remote.endpoint.empty() && remote.backend == "cpu_native"),
                          "native mode cannot select a remote worker or GPU backend");
         lsm_lab::block_shutdown_signals();
+        lsm_lab::telemetry::Sampler sampler(resources);
         auto events = std::make_shared<lsm_lab::EventLog>(events_path);
         DatabaseService service(dataset, run_id, mode, remote, events);
         auto server = lsm_lab::start_server(endpoint, tls, service, ready);
         lsm_lab::wait_for_shutdown();
         server->Shutdown(std::chrono::system_clock::now() + std::chrono::seconds(10));
         server->Wait();
-        const auto summary = service.close();
+        auto summary = service.close();
+        summary["resources"] = sampler.stop();
+        summary["resource_file"] = resources.output.string();
         lsm_lab::durable_json(summary_path, summary);
         lsm_lab::durable_json(ready, {{"schema_version", 1}, {"state", "stopped"}});
+        lsm_lab::require(summary.at("resources").at("status") == "complete", "primary resource accounting incomplete");
         lsm_lab::require(summary.at("remote").is_null() || summary.at("remote").at("healthy") == true,
                          "trial contains remote compaction or telemetry failures");
         return 0;

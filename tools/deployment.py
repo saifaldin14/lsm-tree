@@ -76,7 +76,12 @@ def deployment_plan(path: Path, destination: Path) -> dict:
               "suite": hosts["suite"], "preflight_commands": {}, "required_gates": [
                   "four distinct machine identities", "same NFS export and path on primary/worker", "native GPU dispatch",
                   "cross-client file sync, full-byte reads, lock exclusion, and rename visibility", "mutually authenticated RPC",
-                  "native CPU, remote CPU, CPU-batched, GPU full-value smoke and offline verification"],
+                  "native CPU, remote CPU, CPU-batched, GPU full-value smoke and offline verification",
+                  "native resource logs on load, primary, worker, and storage hosts"],
+              "resource_collection": {"executable": "lsm_telemetry", "interval_ms": 1000,
+                  "hosts": ["load", "primary", "worker", "storage"], "scope": "one collector per physical host",
+                  "power_and_thermal_permissions": "operator_managed_no_automatic_elevation",
+                  "cross_host_measurement_window_alignment": "UNVERIFIED"},
               "excluded_actions": ["purchasing hardware", "formatting disks", "mount changes", "driver installation", "power-loss or storage-disconnection tests"]}
     for role, host in hosts["hosts"].items():
         root = hosts["shared_parent"] if role in ("primary", "worker") else host["work_parent"]
@@ -101,6 +106,9 @@ def qualify(path: Path, output: Path, apply: bool) -> dict:
               "suite": configuration["suite"], "cross_host_qualified": False, "hardware_qualified": False, "trials": [],
               "power_loss_durability": "UNVERIFIED", "storage_reconnect": "UNVERIFIED"}
     processes = []
+    resource_files = []
+    resource_summaries = []
+    reserved_roles = set()
     locker = None
 
     def timeout(limit=90):
@@ -157,6 +165,8 @@ def qualify(path: Path, output: Path, apply: bool) -> dict:
             root = configuration["shared_parent"] if role in ("primary", "worker") else host["work_parent"]
             reports[role] = call(role, probe(host, "doctor", root, "--project", host["project"]))
         report["hosts"] = reports
+        if any(not host["binaries"].get("lsm_telemetry", False) for host in reports.values()):
+            raise ValueError("native telemetry collector is required on all four hosts")
         if len({host["machine_id_sha256"] for host in reports.values()}) != 4:
             raise ValueError("qualification requires four distinct hosts; aliases on one host do not count")
         for role in ("primary", "worker"):
@@ -176,6 +186,7 @@ def qualify(path: Path, output: Path, apply: bool) -> dict:
         report["hardware_qualified"] = True
         for role, host in hosts.items():
             call(role, probe(host, "reserve", host["work_parent"], "--id", nonce))
+            reserved_roles.add(role)
         shared_probe = str(Path(configuration["shared_parent"]) / nonce)
         call("primary", probe(hosts["primary"], "reserve", configuration["shared_parent"], "--id", nonce))
         call("primary", probe(hosts["primary"], "publish", shared_probe))
@@ -206,16 +217,30 @@ def qualify(path: Path, output: Path, apply: bool) -> dict:
         call("primary", [binary(hosts["primary"], "lsm_admin"), "create", str(Path(work["primary"]) / "dataset-spec.json"), shared + "/baseline"])
         worker_arguments = [binary(hosts["worker"], "lsm_worker"), "--shared-root", shared,
                             "--journal", str(Path(work["worker"]) / "journal"), "--listen", hosts["worker"]["endpoint"],
-                            "--ready-file", str(Path(work["worker"]) / "worker.ready"), *tls(hosts["worker"])]
+                            "--ready-file", str(Path(work["worker"]) / "worker.ready"),
+                            "--resources", str(Path(work["worker"]) / "process-resources.jsonl"), *tls(hosts["worker"])]
+        resource_files.append(("worker", "process-resources.jsonl", "process-resources.jsonl"))
         worker = start("worker", worker_arguments, "worker.ready")
         for mode in ("native_cpu", "cpu_native", "cpu_batched", backend):
             dataset = shared + "/" + mode
             run_id = nonce + "-" + mode
             call("primary", [binary(hosts["primary"], "lsm_admin"), "clone", shared + "/baseline", dataset])
+            collectors = []
+            for role, host in hosts.items():
+                resource_name = mode + "-host-resources.jsonl"
+                ready_name = mode + "-telemetry.ready"
+                resource_files.append((role, resource_name, resource_name))
+                collectors.append(start(role, [binary(host, "lsm_telemetry"), "--role", role,
+                    "--output", str(Path(work[role]) / resource_name), "--interval-ms", "1000",
+                    "--max-output-bytes", "33554432", "--ready-file", str(Path(work[role]) / ready_name)], ready_name))
+            primary_resource_name = mode + "-process-resources.jsonl"
+            resource_files.append(("primary", primary_resource_name, primary_resource_name))
+            resource_files.append(("load", mode + "/resources.jsonl", primary_resource_name))
             primary_arguments = [binary(hosts["primary"], "lsm_db"), "--dataset", dataset, "--run-id", run_id,
                 "--mode", "native_cpu" if mode == "native_cpu" else "remote_worker", "--listen", hosts["primary"]["endpoint"],
                 "--ready-file", str(Path(work["primary"]) / (mode + ".ready")), "--events", str(Path(work["primary"]) / (mode + ".events")),
-                "--summary", str(Path(work["primary"]) / (mode + ".summary")), *tls(hosts["primary"])]
+                "--summary", str(Path(work["primary"]) / (mode + ".summary")),
+                "--resources", str(Path(work["primary"]) / primary_resource_name), *tls(hosts["primary"])]
             if mode != "native_cpu":
                 primary_arguments += ["--worker", hosts["worker"]["endpoint"], "--shared-root", shared, "--backend", mode,
                                       *tls(hosts["primary"], "worker-")]
@@ -225,6 +250,8 @@ def qualify(path: Path, output: Path, apply: bool) -> dict:
                 "--output", load_output, "--requests", "6000", "--warmup-requests", "1000", "--rate", "1000", "--seed", "17",
                 "--write-budget-bytes", "16777216", "--artifact-budget-bytes", "33554432", *tls(hosts["load"])], accepted=(0, 3))
             stop(primary)
+            for collector in collectors:
+                stop(collector)
             local_load = output / (mode + "-load")
             subprocess.run(["scp", "-r", "-oBatchMode=yes", "-oStrictHostKeyChecking=yes", f"{hosts['load']['ssh']}:{load_output}", str(local_load)],
                            check=True, timeout=timeout())
@@ -262,6 +289,31 @@ def qualify(path: Path, output: Path, apply: bool) -> dict:
                         entry["process"].kill()
                         entry["process"].wait()
                     entry["log"].close()
+        for role, remote_name, local_name in resource_files:
+            if role not in reserved_roles:
+                continue
+            destination = output / "resources" / role
+            destination.mkdir(parents=True, exist_ok=True)
+            remote_path = str(Path(work[role]) / remote_name)
+            try:
+                subprocess.run(["scp", "-oBatchMode=yes", "-oStrictHostKeyChecking=yes", "-oConnectTimeout=10",
+                                f"{hosts[role]['ssh']}:{remote_path}", str(destination / local_name)],
+                               check=True, timeout=30, capture_output=True, text=True)
+                analysis = importlib.import_module(f"{__package__}.analysis" if __package__ else "analysis")
+                resource_summaries.append({"file": str((destination / local_name).relative_to(output)),
+                    "host_role": role, **analysis.resource_stream(destination / local_name)})
+            except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
+                report.setdefault("resource_collection_failures", []).append({"role": role, "path": remote_name, "error": str(error)})
+                report["cross_host_qualified"] = False
+        report["resource_logs_retrieved"] = bool(resource_files) and not report.get("resource_collection_failures")
+        report["resource_logs_complete"] = report["resource_logs_retrieved"] and all(
+            summary["status"] == "complete" for summary in resource_summaries)
+        if resource_summaries:
+            analysis = importlib.import_module(f"{__package__}.analysis" if __package__ else "analysis")
+            analysis.write_resource_report(resource_summaries, output)
+            report["resource_report"] = "resources.json"
+        report["resource_sensor_availability"] = "reported_per_stream_not_implied_by_cross_host_correctness"
+        report["cross_host_resource_window_alignment"] = "UNVERIFIED: host-local clocks are not interchangeable"
         experiments.write_json(output / "qualification.json", report)
         experiments.seal_bundle(output)
     return report

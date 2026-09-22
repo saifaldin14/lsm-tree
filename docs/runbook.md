@@ -34,13 +34,19 @@ The checked-in profile has eight trials and a 300-second wall budget. It tests f
 
 Treatment names are `native_cpu` (compaction on the primary), `cpu_native` (native compaction on the remote worker), `cpu_batched`, `metal_batched`, and `cuda_batched`. The last three use the same bounded block-input path. A requested unavailable backend fails clearly. Local processes share one host and storage device, so they cannot qualify a cross-host claim.
 
-Configuration contains integer units, explicit warmup/measurement durations, repetition count, SLOs, workload seed, rates, and budgets. The frozen plan includes its hash and exact randomized order. Logical-write budgets count user key/value bytes, not SSD writes or compaction amplification. The memory budget is a conservative admission estimate, not an OS-enforced memory quota. Artifact budgets estimate raw request logs; filesystem free-space checks and host quotas remain necessary for database copies and amplification.
+Configuration contains integer units, explicit warmup/measurement durations, repetition count, SLOs, workload seed, rates, and budgets. The frozen plan includes its hash and exact randomized order. Logical-write budgets count user key/value bytes, not SSD writes or compaction amplification. The memory budget is a conservative admission estimate, not an OS-enforced memory quota. Artifact budgets include request logs and bounded resource streams; filesystem free-space checks and host quotas remain necessary for database copies and amplification.
 
 The load generator produces arrivals independently of completions. Keys are routed to bounded FIFO lanes to preserve per-key ordering. Queue rejection, pre-send expiry, RPC failures, payload mismatches, and indeterminate writes are counted. No write retries are hidden; later requests on a key with an indeterminate write are blocked and recorded. A failed or indeterminate trial cannot qualify. Native client timing includes intended-arrival delay and client queueing; server-only timings are not used as request latency.
 
 The current workload implements uniform Get/update mixes, including pure reads or writes through `read_percent`. It does not implement the proposed Zipfian condition yet. Raw request logging and value checks are always enabled, so their overhead is included. All writes use synchronous WAL durability. Warmup has separate counters and is excluded from measured histograms. Administrative drain and native checksums happen after the offered-load interval. Offline verification reopens the stopped database and compares every full value with acknowledged final versions.
 
 Analysis audits checksums and paired schedule hashes, retains unsuccessful outcomes, uses the contiguous qualifying rate prefix, and reports lower/upper capacity bounds. It requires at least three in-window compaction-debt samples and no observed debt growth for pilot qualification. This is not proof of steady state. Whole paired repetitions are bootstrapped; individual requests are not replicates. Censored capacities are never silently converted into exact ratios. GPU treatments require recorded useful GPU block work.
+
+## Resource collection
+
+Every new local trial has primary/load process logs, a worker log when used, and one host log shared by the local roles. Analysis includes lifetime and conservative in-window resource summaries, with no inferred readings for old bundles. The standalone `build/dev/lsm_telemetry` executable also runs on a storage host without a database or RPC service. Build it on all four hosts before remote qualification.
+
+See [telemetry.md](telemetry.md) for sources, sensor requirements, schema, individual-log analysis, and operator-managed macOS power capture. Missing power, energy, or Celsius readings are explicit. GPU memory may overlap host RSS, device bytes do not measure internal NAND traffic, and clocks from different machines cannot be substituted for each other.
 
 ## GPU gates
 

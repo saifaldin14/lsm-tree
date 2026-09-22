@@ -48,7 +48,7 @@ def integer(value: object, minimum: int, maximum: int, name: str) -> int:
     return value
 
 
-def make_plan(config: dict, dataset: dict) -> dict:
+def make_plan(config: dict, dataset: dict, *, resource_accounting: bool = True) -> dict:
     fields = {"schema_version", "name", "dataset_spec", "modes", "rates", "repetitions", "seed",
               "warmup_seconds", "measurement_seconds", "read_percent", "threads", "queue_capacity",
               "deadline_ms", "read_slo_ms", "write_slo_ms", "max_wall_seconds",
@@ -103,7 +103,13 @@ def make_plan(config: dict, dataset: dict) -> dict:
     baseline_bytes = records["records"] * row_bytes * (records["overwrite_rounds"] + 1)
     total_requests = sum(trial["requests"] + trial["warmup_requests"] for trial in trials)
     logical_upper_bound = baseline_bytes + (total_requests * row_bytes if config["read_percent"] < 100 else 0)
-    artifact_upper_bound = total_requests * 2048
+    resource_seconds = warmup + measurement + 80
+    telemetry = {"schema_version": 1, "interval_ms": 1000,
+                 "host_budget_bytes": min(256 << 20, resource_seconds * (128 << 10)),
+                 "process_budget_bytes": min(256 << 20, resource_seconds * (16 << 10)),
+                 "host_collection": "once_per_physical_host", "includes_background_activity": True}
+    resource_upper_bound = len(trials) * (telemetry["host_budget_bytes"] + 3 * telemetry["process_budget_bytes"])
+    artifact_upper_bound = total_requests * 2048 + (resource_upper_bound if resource_accounting else 0)
     if logical_upper_bound > logical_budget or artifact_upper_bound > artifact_budget:
         raise ValueError("experiment exceeds declared logical-write or artifact budget")
     if len(trials) * (warmup + measurement + 10) + 30 > wall:
@@ -111,6 +117,8 @@ def make_plan(config: dict, dataset: dict) -> dict:
     body = {"schema_version": 1, "owner": "lsm-lab", "topology": "local_process",
             "config": config, "dataset": dataset, "trials": trials,
             "logical_write_upper_bound": logical_upper_bound, "artifact_upper_bound": artifact_upper_bound}
+    if resource_accounting:
+        body.update(telemetry=telemetry, resource_artifact_upper_bound=resource_upper_bound)
     return {**body, "plan_sha256": hashlib.sha256(canonical(body)).hexdigest()}
 
 
@@ -119,7 +127,7 @@ def load_plan(path: Path) -> dict:
     digest = plan.pop("plan_sha256")
     if hashlib.sha256(canonical(plan)).hexdigest() != digest:
         raise ValueError("frozen plan checksum mismatch")
-    regenerated = make_plan(plan["config"], plan["dataset"])
+    regenerated = make_plan(plan["config"], plan["dataset"], resource_accounting="telemetry" in plan)
     if regenerated["plan_sha256"] != digest:
         raise ValueError("plan does not match its deterministic specification")
     return regenerated
@@ -150,18 +158,21 @@ class NativeProcess:
             self.log.close()
             raise
 
-    def ready(self) -> str:
+    def ready_report(self) -> dict:
         end = min(self.deadline, time.monotonic() + 30)
         while time.monotonic() < end:
             if self.ready_file.exists():
                 report = json.loads(self.ready_file.read_text())
                 if report.get("state") != "ready" or report.get("pid") != self.process.pid:
                     raise ValueError("readiness record does not match the started process")
-                return report["endpoint"]
+                return report
             if self.process.poll() is not None:
                 raise RuntimeError(f"process exited before readiness: {self.log_path}")
             time.sleep(0.02)
         raise TimeoutError(f"process readiness deadline exceeded: {self.log_path}")
+
+    def ready(self) -> str:
+        return self.ready_report()["endpoint"]
 
     def stop(self) -> int:
         if self.process.poll() is None:
@@ -216,9 +227,11 @@ def verify_bundle(directory: Path) -> dict:
 
 def run_plan(plan_path: Path, output: Path) -> dict:
     plan = load_plan(plan_path)
+    if "telemetry" not in plan:
+        raise ValueError("legacy plans remain analyzable; freeze a new plan to include resource budgets before execution")
     if output.exists():
         raise ValueError("run destination already exists")
-    executables = {name: BINARIES / name for name in ("lsm_admin", "lsm_db", "lsm_worker", "lsm_loadgen")}
+    executables = {name: BINARIES / name for name in ("lsm_admin", "lsm_db", "lsm_worker", "lsm_loadgen", "lsm_telemetry")}
     for path in executables.values():
         if not path.is_file() or not os.access(path, os.X_OK):
             raise ValueError(f"required executable unavailable: {path}")
@@ -273,18 +286,31 @@ def run_plan(plan_path: Path, output: Path) -> dict:
             run_id = f"{plan['config']['name']}-{trial['id']}"
             primary = None
             worker = None
+            host_collector = None
             outcome = {**trial, "state": "running", "valid": False}
             trials.append(outcome)
             write_json(output / "run.json", summary)
             try:
+                telemetry = plan["telemetry"]
+                host_arguments = [str(executables["lsm_telemetry"]), "--output", str(directory / "host-resources.jsonl"),
+                                  "--role", "local_host", "--ready-file", str(directory / "host.ready"),
+                                  "--interval-ms", str(telemetry["interval_ms"]),
+                                  "--max-output-bytes", str(telemetry["host_budget_bytes"])]
+                host_collector = NativeProcess(host_arguments, directory / "host.ready", directory / "host.log", deadline)
+                outcome["resource_host"] = host_collector.ready_report()["host"]
+                outcome["resource_scope"] = "one_shared_local_host_not_four_distinct_hosts"
+                resource_arguments = ["--resource-interval-ms", str(telemetry["interval_ms"]),
+                                      "--resource-budget-bytes", str(telemetry["process_budget_bytes"])]
                 mode = "native_cpu" if trial["mode"] == "native_cpu" else "remote_worker"
                 arguments = [str(executables["lsm_db"]), "--dataset", str(dataset), "--run-id", run_id, "--mode", mode,
                              "--listen", "127.0.0.1:0", "--ready-file", str(directory / "primary.ready"),
-                             "--events", str(directory / "primary.events.jsonl"), "--summary", str(directory / "primary-summary.json")]
+                             "--events", str(directory / "primary.events.jsonl"), "--summary", str(directory / "primary-summary.json"),
+                             "--resources", str(directory / "primary-resources.jsonl"), *resource_arguments]
                 if mode == "remote_worker":
                     worker_arguments = [str(executables["lsm_worker"]), "--shared-root", str(output / "shared"),
                                         "--journal", str(directory / "journal"), "--listen", "127.0.0.1:0",
-                                        "--ready-file", str(directory / "worker.ready")]
+                                        "--ready-file", str(directory / "worker.ready"),
+                                        "--resources", str(directory / "worker-resources.jsonl"), *resource_arguments]
                     worker = NativeProcess(worker_arguments, directory / "worker.ready", directory / "worker.log", deadline)
                     arguments += ["--worker", worker.ready(), "--shared-root", str(output / "shared"), "--backend", trial["mode"]]
                 primary = NativeProcess(arguments, directory / "primary.ready", directory / "primary.log", deadline)
@@ -306,11 +332,13 @@ def run_plan(plan_path: Path, output: Path) -> dict:
                 if worker:
                     outcome["worker_exit_code"] = worker.stop()
                     worker = None
+                outcome["host_collector_exit_code"] = host_collector.stop()
+                host_collector = None
                 verify_exit, verification = command([str(executables["lsm_admin"]), "verify-trial", str(dataset), str(directory / "load")],
                                                     directory / "verification", accepted=(0, 1))
                 outcome["verification"] = verification
                 outcome["valid"] = bool(result and result["valid"] and verify_exit == 0 and primary_exit == 0 and
-                                        outcome.get("worker_exit_code", 0) == 0)
+                                        outcome.get("worker_exit_code", 0) == 0 and outcome["host_collector_exit_code"] == 0)
                 outcome["state"] = "complete"
                 outcome["result"] = (directory / "load" / "result.json").relative_to(output).as_posix()
             except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
@@ -318,10 +346,12 @@ def run_plan(plan_path: Path, output: Path) -> dict:
                 if isinstance(error, TimeoutError):
                     raise
             finally:
-                for role, process in (("primary", primary), ("worker", worker)):
+                for role, process in (("primary", primary), ("worker", worker), ("host_collector", host_collector)):
                     if process:
                         try:
                             outcome[f"{role}_exit_code"] = process.stop()
+                            if outcome[f"{role}_exit_code"] != 0:
+                                outcome["valid"] = False
                         except (OSError, TimeoutError) as error:
                             outcome.update(state="failed", failure=str(error), valid=False)
                 write_json(output / "run.json", summary)

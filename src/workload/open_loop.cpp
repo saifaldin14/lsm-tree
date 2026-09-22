@@ -1,4 +1,5 @@
 #include "lsm_lab/load.hpp"
+#include "lsm_lab/telemetry.hpp"
 #include "benchmark.grpc.pb.h"
 
 #include <array>
@@ -71,11 +72,14 @@ namespace lsm_lab
         const auto warmup_ns = options.warmup_requests * 1'000'000'000ULL / options.rate;
         const auto end_ns = total_requests * 1'000'000'000ULL / options.rate;
         require(end_ns <= 86'400'000'000'000ULL, "load duration exceeds one day");
-        require(total_requests <= options.artifact_budget_bytes / 2048, "request artifacts exceed declared disk budget");
+        const auto resource_budget = std::min<std::uint64_t>(256ULL << 20, (end_ns / 1'000'000'000ULL + 80) * 16384);
+        require(resource_budget <= options.artifact_budget_bytes &&
+                    total_requests <= (options.artifact_budget_bytes - resource_budget) / 2048,
+                "request and resource artifacts exceed declared disk budget");
         require(!fs::exists(options.output), "load output already exists");
         const auto parent = fs::canonical(fs::absolute(options.output).parent_path());
         const auto available = fs::space(parent).available;
-        require(available >= (256ULL << 20) && total_requests * 2048 <= available - (256ULL << 20), "insufficient artifact disk space");
+        require(available >= (256ULL << 20) && total_requests * 2048 + resource_budget <= available - (256ULL << 20), "insufficient artifact disk space");
         auto channel = connect(options.endpoint, options.tls);
         auto control = wire::BenchmarkService::NewStub(channel);
         wire::DescribeRequest describe;
@@ -104,6 +108,7 @@ namespace lsm_lab
         const auto output = parent / fs::absolute(options.output).filename();
         require(fs::create_directory(output), "cannot reserve load output");
         sync_directory(parent);
+        telemetry::Sampler resources({.output = output / "resources.jsonl", .role = "load", .max_output_bytes = resource_budget});
         Json manifest{{"schema_version", 1}, {"owner", "lsm-lab"}, {"state", "incomplete"}, {"run_id", options.run_id}, {"dataset_id", description.dataset_id()}, {"engine_fingerprint", engine_fingerprint()}, {"spec", spec_json(spec)}, {"mode", description.compaction_backend()}, {"seed", options.seed}, {"rate", options.rate}, {"read_percent", options.read_percent}, {"requests", options.requests}, {"warmup_requests", options.warmup_requests}, {"threads", options.threads}, {"queue_capacity", options.queue_capacity}, {"deadline_ms", options.deadline_ms}, {"planned_logical_write_bytes", logical_bytes}, {"memory_budget_bytes", options.memory_budget_bytes}, {"schedule_generator", "splitmix64-uniform-v1"}, {"value_generator", "splitmix64-record-v1"}};
         durable_json(output / "manifest.json", manifest);
         std::ofstream schedule(output / "schedule.jsonl", std::ios::binary);
@@ -135,6 +140,11 @@ namespace lsm_lab
             lanes.push_back(std::make_unique<Lane>());
         }
         const auto start = Clock::now() + std::chrono::milliseconds(250);
+        const auto start_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(start.time_since_epoch()).count();
+        const Json resource_window{{"host", telemetry::host_identity()}, {"load_start_ns", start_ns}, {"measurement_start_ns", start_ns + warmup_ns}, {"measurement_end_ns", start_ns + end_ns}, {"clock", "std::chrono::steady_clock_host_local"}};
+        manifest["resource_window"] = resource_window;
+        manifest["resource_budget_bytes"] = resource_budget;
+        durable_json(output / "manifest.json", manifest);
         std::vector<std::thread> threads;
         std::thread sampler;
         std::atomic<bool> stop_sampling{false};
@@ -378,6 +388,9 @@ namespace lsm_lab
         durable_bytes(output / "queue.hdr", queue_delay.encode() + "\n");
         durable_bytes(output / "rpc.hdr", rpc_latency.encode() + "\n");
         durable_bytes(output / "generator.hdr", generator_lag.encode() + "\n");
+        result["resource_window"] = resource_window;
+        result["resources"] = resources.stop();
+        result["valid"] = result.at("valid").get<bool>() && result.at("resources").at("status") == "complete";
         durable_json(output / "result.json", result);
         manifest["state"] = "complete";
         durable_json(output / "manifest.json", manifest);

@@ -1,4 +1,5 @@
 #include "lsm_lab/worker.hpp"
+#include "lsm_lab/telemetry.hpp"
 #include "compaction.grpc.pb.h"
 
 #include <iostream>
@@ -68,9 +69,15 @@ int main(int argc, char **argv)
         options.queue_limit = arguments.number("queue-limit", 16, 1, 1024);
         const auto endpoint = arguments.take("listen", "127.0.0.1:50052");
         const auto ready = arguments.required("ready-file");
+        lsm_lab::telemetry::SamplerOptions resources;
+        resources.output = arguments.take("resources", ready + ".resources-" + lsm_lab::unique_id() + ".jsonl");
+        resources.role = "worker";
+        resources.interval_ms = arguments.number("resource-interval-ms", 1000, 10, 60000);
+        resources.max_output_bytes = arguments.number("resource-budget-bytes", 256ULL << 20, 16384, 16ULL << 30);
         const auto tls = lsm_lab::TlsOptions::take(arguments);
         arguments.finish();
         lsm_lab::block_shutdown_signals();
+        lsm_lab::telemetry::Sampler sampler(resources);
         lsm_lab::Worker worker(std::move(options));
         WorkerService service(worker);
         auto server = lsm_lab::start_server(endpoint, tls, service, ready);
@@ -78,7 +85,9 @@ int main(int argc, char **argv)
         server->Shutdown(std::chrono::system_clock::now() + std::chrono::seconds(5));
         worker.stop();
         server->Wait();
-        lsm_lab::durable_json(ready, {{"state", "stopped"}, {"schema_version", 1}});
+        const auto resource_summary = sampler.stop();
+        lsm_lab::durable_json(ready, {{"state", "stopped"}, {"schema_version", 1}, {"resource_file", resources.output.string()}, {"resources", resource_summary}});
+        lsm_lab::require(resource_summary.at("status") == "complete", "worker resource accounting incomplete");
         return 0;
     }
     catch (const std::exception &error)

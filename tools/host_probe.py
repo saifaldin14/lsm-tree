@@ -143,7 +143,7 @@ def host_report(project: Path, shared: Path) -> dict:
         mount["protocol"] = "4.0" if version == "4" else version
         mount["protocol_evidence"] = details[:16384]
     binaries = {}
-    for name in ("lsm_admin", "lsm_db", "lsm_worker", "lsm_loadgen", "lsm_gpu_check"):
+    for name in ("lsm_admin", "lsm_db", "lsm_worker", "lsm_loadgen", "lsm_gpu_check", "lsm_telemetry"):
         path = project / "build" / "dev" / name
         binaries[name] = path.is_file() and os.access(path, os.X_OK)
     capabilities = None

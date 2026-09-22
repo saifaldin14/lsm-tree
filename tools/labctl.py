@@ -63,7 +63,7 @@ def doctor(directory: Path) -> dict:
             "status": "PASS" if memory.is_file() else "UNAVAILABLE",
             "output": memory.read_text() if memory.is_file() else None,
         }
-    for name in ("lsm_admin", "lsm_db", "lsm_worker", "lsm_loadgen"):
+    for name in ("lsm_admin", "lsm_db", "lsm_worker", "lsm_loadgen", "lsm_telemetry"):
         binary = ROOT / "build" / "dev" / name
         checks[name] = {
             "status": "PASS" if binary.is_file() and os.access(binary, os.X_OK) else "UNAVAILABLE",
@@ -100,6 +100,13 @@ def main() -> int:
     analysis_parser.add_argument("directory", type=Path)
     analysis_parser.add_argument("output", type=Path)
     analysis_parser.add_argument("--no-plots", action="store_true")
+    resources_parser = commands.add_parser("resources", help="summarize native resource logs without combining overlapping scopes")
+    resources_parser.add_argument("files", type=Path, nargs="+")
+    resources_parser.add_argument("--output", type=Path, required=True)
+    resources_parser.add_argument("--load-result", type=Path)
+    power_parser = commands.add_parser("import-power", help="import an operator-captured NUL-separated powermetrics plist without elevating privileges")
+    power_parser.add_argument("capture", type=Path)
+    power_parser.add_argument("output", type=Path)
     deployment_parser = commands.add_parser("deployment-plan", help="prepare cross-host checks without connecting to hosts")
     deployment_parser.add_argument("inventory", type=Path)
     deployment_parser.add_argument("output", type=Path)
@@ -122,6 +129,15 @@ def main() -> int:
             elif arguments.command == "analyze":
                 analysis = importlib.import_module(f"{__package__}.analysis" if __package__ else "analysis")
                 result = analysis.analyze_run(arguments.directory, arguments.output, not arguments.no_plots)
+            elif arguments.command == "resources":
+                analysis = importlib.import_module(f"{__package__}.analysis" if __package__ else "analysis")
+                window = json.loads(arguments.load_result.read_text())["resource_window"] if arguments.load_result else None
+                streams = [{"file": str(path), **analysis.resource_stream(path, window)} for path in arguments.files]
+                arguments.output.mkdir()
+                result = analysis.write_resource_report(streams, arguments.output)
+            elif arguments.command == "import-power":
+                analysis = importlib.import_module(f"{__package__}.analysis" if __package__ else "analysis")
+                result = analysis.import_powermetrics(arguments.capture, arguments.output)
             else:
                 deployment = importlib.import_module(f"{__package__}.deployment" if __package__ else "deployment")
                 result = (deployment.deployment_plan(arguments.inventory, arguments.output)

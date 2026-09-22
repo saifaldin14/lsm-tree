@@ -54,6 +54,12 @@ GPU code accelerates input-block CRC32C verification and LZ4 decompression only.
 
 Recovered legacy configuration and [the previous README](legacy/README.pre-restart.md) are archived under `legacy`. Earlier experiment results are separate evidence and do not validate this RocksDB integration. Links inside the archived README describe its old tree and may no longer resolve.
 
+## Resource Accounting
+
+Native samplers record primary, worker, and load-process CPU/memory/I/O, plus per-host CPU/cache memory, interface bytes, and whole-device disk traffic. GPU utilization and memory come from actual macOS driver counters or NVML. Linux sensor readers include power, cumulative energy, and temperature; unsupported or inaccessible fields remain null with their source and reason. Host totals are kept separate from process metrics and virtual disk images.
+
+Local trials collect one host stream, and approved remote qualification collects each host, including storage. Analysis exports per-entity deltas, time-weighted gauges, coverage, and separately labeled sampled-power integration. [docs/telemetry.md](docs/telemetry.md) documents commands, schemas, strict sensor gates, and accounting limits. macOS collection is locally validated; Linux/NVML execution and privileged macOS power capture remain unverified.
+
 ## Environment Report
 
 Python is used only for unmeasured administration and analysis. Create an isolated environment with Python 3.12 or newer, then run the read-only doctor:

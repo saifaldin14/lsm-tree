@@ -1,5 +1,7 @@
 import importlib.util
+import datetime
 import json
+import plistlib
 from pathlib import Path
 import sys
 import tempfile
@@ -87,8 +89,27 @@ class PlanTests(unittest.TestCase):
             self.assertEqual(result["state"], "complete")
             self.assertEqual(len(result["trials"]), 2)
             self.assertTrue(all(trial["valid"] for trial in result["trials"]), result)
+            for trial in result["trials"]:
+                directory = root / "run" / "trials" / trial["id"]
+                self.assertEqual(trial["host_collector_exit_code"], 0)
+                paths = [directory / "host-resources.jsonl", directory / "primary-resources.jsonl",
+                         directory / "load" / "resources.jsonl"]
+                if trial["mode"] != "native_cpu":
+                    paths.append(directory / "worker-resources.jsonl")
+                for path in paths:
+                    with path.open() as source:
+                        records = [json.loads(line) for line in source]
+                    self.assertEqual(records[0]["type"], "header")
+                    self.assertEqual(records[-1]["status"], "complete")
+                    self.assertEqual(records[0]["includes_host"], path.name == "host-resources.jsonl")
             self.assertEqual(experiments.verify_bundle(root / "run")["status"], "ok")
             report = analysis.analyze_run(root / "run", root / "analysis", plots=True)
+            resources = json.loads((root / "analysis" / "resources.json").read_text())
+            host_streams = [stream for stream in resources["streams"] if stream.get("includes_host") and stream["window"] == "collector_lifetime"]
+            self.assertEqual(len(host_streams), 2)
+            self.assertTrue(all(stream["status"] == "complete" for stream in resources["streams"]))
+            self.assertTrue(all(stream["availability"]["network_bytes"]["status"] == "available" for stream in host_streams))
+            self.assertGreater((root / "analysis" / "resources.csv").stat().st_size, 1000)
             self.assertGreater((root / "analysis" / "load-curves.png").stat().st_size, 1000)
             self.assertEqual(report["trial_count"], 2)
             self.assertFalse(report["cross_host_qualified"])
@@ -101,6 +122,60 @@ class PlanTests(unittest.TestCase):
 
 
 class AnalysisTests(unittest.TestCase):
+    def test_power_import_preserves_units_and_rejects_ambiguous_fields(self):
+        document = {"timestamp": datetime.datetime(2026, 1, 1), "elapsed_ns": 2_000_000_000,
+                    "processor": {"gpu_power": 2500, "cpu_energy": 9000}, "thermal_pressure": "Nominal"}
+        parsed = analysis.powermetrics_sample(document)
+        cpu, gpu = parsed["metrics"][:2]
+        self.assertIsNone(cpu["power_watts"])
+        self.assertEqual(gpu["power_watts"], 2.5)
+        self.assertEqual(gpu["estimated_sample_energy_joules"], 5.0)
+        self.assertFalse(gpu["hardware_energy_counter"])
+        self.assertIsNone(parsed["temperature_celsius"])
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            capture = root / "capture.plist"
+            capture.write_bytes(plistlib.dumps(document) + b"\0")
+            report = analysis.import_powermetrics(capture, root / "imported")
+            self.assertEqual(report["samples"], 1)
+            self.assertEqual(report["available_power_readings"], 1)
+            self.assertEqual(experiments.verify_bundle(root / "imported")["status"], "ok")
+
+    def test_resource_intervals_reject_resets_gaps_and_foreign_clocks(self):
+        host = {"host_id": "host", "boot_id": "boot"}
+        header = {"type": "header", "schema_version": 1, "host": host, "role": "worker", "includes_host": False,
+                  "interval_ms": 1000, "start_ns": 0}
+        counter = {"name": "storage_read_bytes", "scope": "process", "entity": "42:start", "source": "OS",
+                   "unit": "bytes", "kind": "counter", "status": "ok"}
+        power = {"name": "power_watts", "scope": "host_gpu", "entity": "GPU-1", "source": "sensor",
+                 "unit": "watts", "kind": "gauge", "status": "ok", "value": 10.0}
+        records = [header]
+        for sequence, (seconds, value) in enumerate(((0, 100), (1, 300), (2, 50), (8, 800), (9, 900))):
+            records.append({"type": "sample", "sequence": sequence, "sample_start_ns": seconds * 10**9,
+                            "sample_end_ns": seconds * 10**9, "errors": [], "metrics": [dict(counter, value=value), power]})
+        records.append({"type": "footer", "status": "complete", "samples": 5, "end_ns": 10 * 10**9})
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "resources.jsonl"
+            path.write_text("".join(json.dumps(record) + "\n" for record in records))
+            report = analysis.resource_stream(path)
+            traffic, energy = report["metrics"]
+            self.assertEqual(report["availability"]["power"]["status"], "available")
+            self.assertEqual(report["availability"]["hardware_energy"]["status"], "not_collected")
+            self.assertEqual(traffic["observed_delta"], 300)
+            self.assertEqual(traffic["invalid_intervals"], 2)
+            self.assertEqual(traffic["coverage_fraction"], 0.2)
+            self.assertEqual(energy["integrated_power_joules"], 30)
+            window = {"host": host, "measurement_start_ns": 8 * 10**9, "measurement_end_ns": 10 * 10**9}
+            self.assertEqual(analysis.resource_stream(path, window)["metrics"][0]["observed_delta"], 100)
+            window["host"] = {"host_id": "elsewhere", "boot_id": "boot"}
+            self.assertEqual(analysis.resource_stream(path, window)["status"], "unavailable")
+            records[2]["metrics"] = [power]
+            path.write_text("".join(json.dumps(record) + "\n" for record in records))
+            missing = analysis.resource_stream(path)["metrics"][0]
+            self.assertEqual(missing["unavailable_samples"], 1)
+            self.assertEqual(missing["observed_delta"], 100)
+            self.assertIn("metric absent from sample", missing["reasons"])
+
     def test_contiguous_capacity_and_censoring(self):
         rows = [{"rate": 100, "qualification": "pass"}, {"rate": 200, "qualification": "fail"},
                 {"rate": 300, "qualification": "pass"}]
@@ -162,6 +237,8 @@ class DeploymentTests(unittest.TestCase):
             report = deployment.deployment_plan(inventory, root / "plan.json")
             self.assertFalse(report["executed"])
             self.assertEqual(set(report["preflight_commands"]), {"primary", "worker", "load", "storage"})
+            self.assertEqual(set(report["resource_collection"]["hosts"]), {"primary", "worker", "load", "storage"})
+            self.assertEqual(report["resource_collection"]["power_and_thermal_permissions"], "operator_managed_no_automatic_elevation")
             with self.assertRaises(ValueError):
                 deployment.qualify(inventory, root / "rejected", apply=True)
             self.assertFalse((root / "rejected").exists())

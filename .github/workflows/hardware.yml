@@ -32,4 +32,14 @@ jobs:
         run: |
           cmake --build --preset dev
           build/dev/lsm_gpu_check "${BACKEND}_batched" --require
-          ctest --preset dev -R 'blocks.transforms|worker.lifecycle|hardware' --output-on-failure
+          ctest --preset dev -R 'blocks.transforms|worker.lifecycle|hardware|telemetry.native' --output-on-failure
+      - name: Require GPU resource sensors
+        env:
+          BACKEND: ${{ inputs.backend }}
+        run: |
+          required='host_gpu:gpu_utilization_percent,host_gpu:gpu_memory_used_bytes'
+          if [ "$BACKEND" = cuda ]; then
+            required="$required,host_gpu:power_watts,host_gpu:energy_joules,host_gpu:temperature_celsius"
+          fi
+          mkdir -p artifacts
+          build/dev/lsm_telemetry --role hardware_check --duration-seconds 3 --output "artifacts/hardware-telemetry-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.jsonl" --require-metrics "$required"

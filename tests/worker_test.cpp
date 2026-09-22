@@ -458,7 +458,8 @@ namespace lsm_lab
         TEST_F(WorkerTest, OpenLoopClientPairsSchedulesAndVerifiesEveryValue)
         {
             Process worker({LSM_WORKER_EXE, "--shared-root", (root / "shared").string(), "--journal", (root / "journal").string(),
-                            "--listen", "127.0.0.1:0", "--ready-file", (root / "worker.ready").string()},
+                            "--listen", "127.0.0.1:0", "--ready-file", (root / "worker.ready").string(),
+                            "--resources", (root / "worker.resources.jsonl").string()},
                            root / "worker.log");
             const auto worker_endpoint = worker.ready(root / "worker.ready");
             std::string fingerprint;
@@ -480,6 +481,9 @@ namespace lsm_lab
                              root / (mode + "-load.log"));
                 ASSERT_EQ(load.wait(), 0) << read_file(root / (mode + "-load.log"));
                 const auto result = nlohmann::json::parse(read_file(output / "result.json"));
+                EXPECT_EQ(result.at("resources").at("status"), "complete");
+                EXPECT_GT(result.at("resource_window").at("measurement_start_ns"), result.at("resource_window").at("load_start_ns"));
+                EXPECT_TRUE(std::filesystem::file_size(output / "resources.jsonl") > 0);
                 EXPECT_EQ(result.at("measurement").at("completed"), 120);
                 EXPECT_EQ(result.at("warmup").at("completed"), 32);
                 EXPECT_EQ(result.at("measurement").at("queue_rejected"), 0);
@@ -498,6 +502,8 @@ namespace lsm_lab
                     fingerprint = current;
                 EXPECT_EQ(fingerprint, current);
                 EXPECT_EQ(primary.stop(), 0);
+                const auto primary_summary = nlohmann::json::parse(read_file(root / (mode + ".summary")));
+                EXPECT_EQ(primary_summary.at("resources").at("status"), "complete");
                 const auto verification = verify_trial(trial, output);
                 EXPECT_EQ(verification.at("records_verified"), spec.dataset.records);
                 EXPECT_EQ(verification.at("native_checksums_verified"), true);
@@ -526,6 +532,9 @@ namespace lsm_lab
                 check(database->Close());
             }
             EXPECT_EQ(worker.stop(), 0);
+            const auto stopped_worker = nlohmann::json::parse(read_file(root / "worker.ready"));
+            EXPECT_EQ(stopped_worker.at("resources").at("status"), "complete");
+            EXPECT_TRUE(std::filesystem::file_size(root / "worker.resources.jsonl") > 0);
         }
 
         TEST_F(WorkerTest, OpenLoopOverloadIsRecordedAndBudgetRefusesWrites)

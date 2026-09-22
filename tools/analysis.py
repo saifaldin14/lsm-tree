@@ -1,15 +1,269 @@
 """Analysis of sealed measured runs; never treats individual requests as replicates."""
 
 import csv
+import datetime
 import importlib
 import json
 import math
+import plistlib
 from pathlib import Path
 import random
 import statistics
+import shutil
 
 
 experiments = importlib.import_module(f"{__package__}.experiments" if __package__ else "experiments")
+
+
+def resource_stream(path: Path, window: dict | None = None) -> dict:
+    keys = ("scope", "entity", "name", "source", "unit", "kind")
+    rows = {}
+    previous = {}
+    last_end = 0
+    sequence = 0
+    footer = None
+    errors = 0
+    with path.open() as stream:
+        header = json.loads(stream.readline(8 << 20))
+        if header.get("type") != "header" or header.get("schema_version") != 1:
+            raise ValueError(f"invalid resource header: {path}")
+        host = header["host"]
+        if window and (not host.get("host_id") or not host.get("boot_id") or
+                       any(host.get(key) != window["host"].get(key) for key in ("host_id", "boot_id"))):
+            return {"status": "unavailable", "reason": "different host or boot; clock mapping is not verified",
+                    "host": host, "role": header["role"], "metrics": []}
+        lower = window["measurement_start_ns"] if window else header["start_ns"]
+        upper = window["measurement_end_ns"] if window else None
+        max_gap = header["interval_ms"] * 3_000_000
+        if upper is not None and upper <= lower:
+            raise ValueError("invalid resource measurement window")
+        while line := stream.readline(8 << 20):
+            if not line.endswith("\n"):
+                raise ValueError("truncated or oversized resource record")
+            record = json.loads(line)
+            if footer is not None:
+                raise ValueError("resource records after footer")
+            if record.get("type") == "footer":
+                footer = record
+                continue
+            if record.get("type") != "sample" or record["sequence"] != sequence:
+                raise ValueError("missing or unordered resource sample")
+            begin, end = record["sample_start_ns"], record["sample_end_ns"]
+            if begin < last_end or end < begin:
+                raise ValueError("nonmonotonic resource sample bounds")
+            last_end = end
+            sequence += 1
+            errors += bool(record["errors"])
+            midpoint = (begin + end) // 2
+            selected = begin >= lower and (upper is None or end <= upper)
+            current = {}
+            for metric in record["metrics"]:
+                identity = tuple(metric[key] for key in keys) + (metric.get("role", header["role"]),)
+                if identity in current:
+                    raise ValueError("duplicate resource metric in one sample")
+                value = metric["value"]
+                valid = metric["status"] == "ok" and type(value) in (int, float) and math.isfinite(value)
+                if metric["kind"] == "counter" and valid and value < 0:
+                    valid = False
+                current[identity] = (begin, end, midpoint, value if valid else None, selected)
+                row = rows.setdefault(identity, {**{key: metric[key] for key in keys},
+                    "role": identity[-1], "samples": 0, "available_samples": 0, "unavailable_samples": 0,
+                    "minimum": None, "maximum": None, "covered_ns": 0, "invalid_intervals": 0,
+                    "observed_delta": None, "time_weighted_mean": None, "mean_rate_per_second": None,
+                    "integrated_power_joules": None, "reasons": set(), "weighted_sum": 0.0,
+                    "intervals": 0, "metadata": {key: metric[key] for key in (
+                        "device", "interface", "loopback", "layer", "memory_model", "label", "chip", "measurement_scope",
+                        "sampling_window", "overlap_policy", "max_range_joules", "includes_children", "pid", "api_stability",
+                        "physical_interconnect", "device_location", "virtual_device", "virtualization") if key in metric}})
+                if not selected:
+                    continue
+                row["samples"] += 1
+                if not valid:
+                    row["unavailable_samples"] += 1
+                    row["reasons"].add(metric.get("reason", "invalid or nonfinite reading"))
+                    continue
+                row["available_samples"] += 1
+                row["minimum"] = value if row["minimum"] is None else min(value, row["minimum"])
+                row["maximum"] = value if row["maximum"] is None else max(value, row["maximum"])
+                prior = previous.get(identity)
+                if not prior or not prior[4]:
+                    continue
+                elapsed = midpoint - prior[2]
+                if prior[3] is None or not 0 < elapsed <= max_gap:
+                    row["invalid_intervals"] += 1
+                    row["reasons"].add("missing reading or excessive sampling gap")
+                    continue
+                if metric["kind"] == "counter":
+                    if value < prior[3]:
+                        row["invalid_intervals"] += 1
+                        row["reasons"].add("counter reset or wrap; no wrap size inferred")
+                        continue
+                    row["observed_delta"] = (row["observed_delta"] or 0) + value - prior[3]
+                elif metric["kind"] == "gauge":
+                    row["weighted_sum"] += (value + prior[3]) * 0.5 * elapsed
+                else:
+                    raise ValueError("unknown resource metric kind")
+                row["covered_ns"] += elapsed
+                row["intervals"] += 1
+            if selected:
+                for identity in rows.keys() - current.keys():
+                    rows[identity]["unavailable_samples"] += 1
+                    rows[identity]["reasons"].add("metric absent from sample")
+            previous = current
+    if footer and footer["samples"] != sequence:
+        raise ValueError("resource footer sample count mismatch")
+    duration = (upper if upper is not None else (footer or {}).get("end_ns", last_end)) - lower
+    for row in rows.values():
+        covered = row["covered_ns"]
+        row["coverage_fraction"] = min(1.0, covered / duration) if duration > 0 else 0.0
+        if covered and row["kind"] == "counter":
+            row["mean_rate_per_second"] = row["observed_delta"] * 1e9 / covered
+        if covered and row["kind"] == "gauge":
+            row["time_weighted_mean"] = row["weighted_sum"] / covered
+            if row["name"] == "power_watts" and row["unit"] == "watts" and row["minimum"] >= 0:
+                row["integrated_power_joules"] = row["weighted_sum"] / 1e9
+        row["status"] = "ok" if covered and not row["invalid_intervals"] and not row["unavailable_samples"] else "partial"
+        if not row["available_samples"]:
+            row["status"] = "unavailable"
+        row["reasons"] = sorted(row["reasons"])
+        del row["weighted_sum"]
+    families = {
+        "cpu_time": ("cpu_user_ns", "cpu_system_ns"),
+        "memory": ("resident_bytes", "memory_total_bytes"),
+        "process_storage_bytes": ("storage_read_bytes", "storage_write_bytes"),
+        "network_bytes": ("network_rx_bytes", "network_tx_bytes"),
+        "block_device_bytes": ("disk_read_bytes", "disk_write_bytes"),
+        "gpu_utilization": ("gpu_utilization_percent",),
+        "gpu_memory": ("gpu_memory_used_bytes",),
+        "power": ("power_watts",),
+        "hardware_energy": ("energy_joules",),
+        "temperature": ("temperature_celsius",),
+    }
+    availability = {}
+    for family, names in families.items():
+        candidates = [row for row in rows.values() if row["name"] in names and row["scope"] != "host_virtual_block_device"]
+        observed = [row for row in candidates if row["available_samples"]]
+        availability[family] = {"status": "available" if observed else ("unavailable" if candidates else "not_collected"),
+            "observed_entities": len({(row["scope"], row["entity"]) for row in observed}),
+            "maximum_coverage_fraction": max((row["coverage_fraction"] for row in observed), default=0.0)}
+    return {"status": "complete" if footer and footer["status"] == "complete" and not errors else "incomplete",
+            "role": header["role"], "host": host, "includes_host": header["includes_host"],
+            "window": "measurement" if window else "collector_lifetime", "duration_ns": max(0, duration),
+            "metrics": list(rows.values()), "availability": availability, "collector": footer,
+            "rules": ["observed deltas are not extrapolated to unsampled edges", "counter resets and long gaps are excluded",
+                      "host, process, interface and device totals overlap and must not be added together",
+                      "integrated_power_joules is a sampled estimate, separate from hardware energy counters"]}
+
+
+def write_resource_report(streams: list[dict], output: Path) -> dict:
+    report = {"schema_version": 1, "streams": streams, "aggregation": "per_entity_no_cross_scope_or_cross_host_sums"}
+    experiments.write_json(output / "resources.json", report)
+    columns = ("trial", "file", "window", "host_id", "role", "scope", "entity", "name", "source", "unit", "kind",
+               "status", "available_samples", "unavailable_samples", "observed_delta", "mean_rate_per_second",
+               "minimum", "maximum", "time_weighted_mean", "integrated_power_joules", "covered_ns", "coverage_fraction", "invalid_intervals")
+    with (output / "resources.csv").open("w", newline="") as destination:
+        writer = csv.DictWriter(destination, fieldnames=columns)
+        writer.writeheader()
+        for stream in streams:
+            for row in stream.get("metrics", []):
+                record = {key: row.get(key) for key in columns}
+                record.update(trial=stream.get("trial"), file=stream["file"], window=stream.get("window"), host_id=stream["host"].get("host_id"))
+                writer.writerow(record)
+    return report
+
+
+def analyze_resources(directory: Path, run: dict, output: Path) -> dict:
+    streams = []
+    for trial in run["trials"]:
+        base = directory / "trials" / trial["id"]
+        result_path = base / "load" / "result.json"
+        window = json.loads(result_path.read_text()).get("resource_window") if result_path.exists() else None
+        paths = [base / "host-resources.jsonl", base / "primary-resources.jsonl", base / "load" / "resources.jsonl"]
+        if trial["mode"] != "native_cpu":
+            paths.append(base / "worker-resources.jsonl")
+        for path in paths:
+            label = {"trial": trial["id"], "file": str(path.relative_to(directory))}
+            if not path.exists():
+                streams.append({**label, "status": "unavailable", "reason": "resource stream was not recorded", "metrics": []})
+                continue
+            streams.append({**label, **resource_stream(path)})
+            if window:
+                streams.append({**label, **resource_stream(path, window)})
+    return write_resource_report(streams, output)
+
+
+def powermetrics_sample(document: dict) -> dict:
+    timestamp = document.get("timestamp")
+    if not isinstance(timestamp, datetime.datetime):
+        raise ValueError("powermetrics sample has no plist timestamp")
+    duration = document.get("elapsed_ns")
+    if type(duration) not in (int, float) or not math.isfinite(duration) or not 0 < duration <= 3_600_000_000_000:
+        duration = None
+    processor = document.get("processor", {})
+    if not isinstance(processor, dict):
+        raise ValueError("powermetrics processor record must be a dictionary")
+    metrics = []
+    for domain, field in (("cpu", "cpu_power"), ("gpu", "gpu_power"), ("ane", "ane_power"),
+                          ("combined_cpu_gpu_ane", "combined_power")):
+        value = processor.get(field)
+        valid = type(value) in (int, float) and math.isfinite(value) and value >= 0 and not document.get("invalid", False)
+        watts = value / 1000 if valid else None
+        metrics.append({"domain": domain, "source": "powermetrics.plist:processor." + field,
+                        "power_watts": watts, "status": "ok" if valid else "unavailable",
+                        "reason": None if valid else "explicit power field absent or invalid; legacy energy-named fields are not assumed to be watts",
+                        "estimated_sample_energy_joules": watts * duration / 1e9 if valid and duration else None,
+                        "hardware_energy_counter": False, "measurement_kind": "OS_power_estimate"})
+    return {"timestamp_utc": timestamp.replace(tzinfo=datetime.timezone.utc).isoformat(), "elapsed_ns": duration,
+            "metrics": metrics, "thermal_pressure": document.get("thermal_pressure"),
+            "temperature_celsius": None, "temperature_reason": "thermal pressure is not a Celsius sensor"}
+
+
+def import_powermetrics(capture: Path, output: Path) -> dict:
+    if output.exists() or capture.stat().st_size > 1 << 30:
+        raise ValueError("power import requires a new output directory and a capture no larger than 1 GiB")
+    output.mkdir()
+    retained = output / "powermetrics.plist"
+    shutil.copyfile(capture, retained)
+    if retained.stat().st_size > 1 << 30:
+        raise ValueError("power capture grew beyond the import budget; stop collection before importing")
+    samples = 0
+    available = 0
+    previous_timestamp = None
+    with retained.open("rb") as source, (output / "power-samples.jsonl").open("x") as destination:
+        buffered = b""
+        while chunk := source.read(65536):
+            buffered += chunk
+            while b"\0" in buffered:
+                frame, buffered = buffered.split(b"\0", 1)
+                if not frame.strip():
+                    continue
+                if len(frame) > 8 << 20:
+                    raise ValueError("oversized powermetrics plist record")
+                sample = powermetrics_sample(plistlib.loads(frame))
+                if previous_timestamp and sample["timestamp_utc"] <= previous_timestamp:
+                    raise ValueError("duplicate or decreasing powermetrics timestamp")
+                previous_timestamp = sample["timestamp_utc"]
+                available += sum(metric["status"] == "ok" for metric in sample["metrics"])
+                destination.write(json.dumps(sample, allow_nan=False) + "\n")
+                samples += 1
+            if len(buffered) > 8 << 20:
+                raise ValueError("oversized powermetrics plist record")
+        if buffered.strip():
+            sample = powermetrics_sample(plistlib.loads(buffered))
+            if previous_timestamp and sample["timestamp_utc"] <= previous_timestamp:
+                raise ValueError("duplicate or decreasing powermetrics timestamp")
+            available += sum(metric["status"] == "ok" for metric in sample["metrics"])
+            destination.write(json.dumps(sample, allow_nan=False) + "\n")
+            samples += 1
+    report = {"schema_version": 1, "status": "imported" if samples and available else "unavailable", "samples": samples,
+              "available_power_readings": available, "capture_sha256": experiments.file_hash(retained),
+              "clock": "capture_realtime_UTC_not_aligned_to_benchmark_monotonic_clock",
+              "host_binding": "unverified_operator_provided_capture", "power_source": "OS_estimate_not_calibrated_meter",
+              "limitations": ["unsupported plist fields remain unavailable", "combined and component power must not be summed",
+                              "sample-energy estimates are not cumulative hardware counters", "thermal pressure is not temperature"]}
+    experiments.write_json(output / "power-import.json", report)
+    experiments.seal_bundle(output)
+    return report
 
 
 def capacity_bracket(rows: list[dict]) -> dict:
@@ -170,6 +424,10 @@ def analyze_run(directory: Path, output: Path, plots: bool = True) -> dict:
                "limitations": ["local-process runs do not establish cross-host speedup", "debt trend check is a pilot gate, not proof of long-run steady state",
                                "per-request validation and raw logging overhead is included", "censored capacity values are not replaced by point estimates"]}
     output.mkdir(parents=False)
+    resources = analyze_resources(directory, run, output)
+    summary["resource_streams"] = len(resources["streams"])
+    summary["resource_report"] = "resources.json"
+    summary["limitations"].append("sensor availability and sampling coverage are reported per entity; missing power is not zero energy")
     experiments.write_json(output / "analysis.json", summary)
     with (output / "trials.csv").open("w", newline="") as stream:
         writer = csv.DictWriter(stream, fieldnames=list(rows[0]))
