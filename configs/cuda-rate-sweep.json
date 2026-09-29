@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "name": "cuda-rate-sweep",
+  "dataset_spec": "configs/local-compaction-smoke.json",
+  "modes": ["native_cpu", "cpu_batched", "cuda_batched"],
+  "rates": [750, 3000, 6000, 12000],
+  "repetitions": 3,
+  "seed": 67,
+  "warmup_seconds": 2,
+  "measurement_seconds": 8,
+  "read_percent": 50,
+  "threads": 8,
+  "queue_capacity": 2048,
+  "deadline_ms": 5000,
+  "read_slo_ms": 10,
+  "write_slo_ms": 10,
+  "max_wall_seconds": 1800,
+  "max_logical_write_bytes": 1073741824,
+  "max_artifact_bytes": 5368709120
+}

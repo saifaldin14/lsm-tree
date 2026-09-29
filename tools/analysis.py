@@ -1,5 +1,7 @@
 """Analysis of sealed measured runs; never treats individual requests as replicates."""
 
+from __future__ import annotations
+
 import csv
 import datetime
 import importlib
@@ -10,6 +12,14 @@ from pathlib import Path
 import random
 import statistics
 import shutil
+
+
+def is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
 
 
 experiments = importlib.import_module(f"{__package__}.experiments" if __package__ else "experiments")
@@ -324,7 +334,7 @@ def measured_rows(directory: Path, run: dict, plan: dict) -> list[dict]:
                "backlog_first": None, "backlog_last": None}
         if trial.get("result"):
             path = (directory / trial["result"]).resolve(strict=True)
-            if not path.is_relative_to(directory.resolve(strict=True)):
+            if not is_relative_to(path, directory.resolve(strict=True)):
                 raise ValueError("trial result escaped run bundle")
             result = json.loads(path.read_text())
             measured = result["measurement"]
@@ -336,7 +346,9 @@ def measured_rows(directory: Path, run: dict, plan: dict) -> list[dict]:
                 percentile = result[f"{kind}_latency"]["p99"]
                 row[f"{kind}_p99_ms"] = None if percentile is None else percentile / 1e6
             row["schedule_sha256"] = result["schedule_sha256"]
-            remote = (result.get("database_statistics") or {}).get("remote")
+            database_statistics = result.get("database_statistics") or {}
+            remote = database_statistics.get("remote")
+            local_transform = database_statistics.get("local_transform")
             row["remote_committed"] = remote.get("committed", 0) if remote else 0
             metrics = []
             window_samples = []
@@ -353,15 +365,24 @@ def measured_rows(directory: Path, run: dict, plan: dict) -> list[dict]:
                 row["backlog_first"], row["backlog_last"] = metrics[0], metrics[-1]
             observed_work = window_work(window_samples)
             row["in_window_remote_committed"] = observed_work["committed"]
-            row["in_window_gpu_blocks"] = observed_work["gpu_blocks"]
+            local_blocks = [
+                sample["statistics"]["local_transform"]["blocks"]
+                for sample in window_samples
+                if (sample.get("statistics") or {}).get("local_transform") is not None
+                and (sample["statistics"]["local_transform"] or {}).get("blocks") is not None
+            ]
+            row["in_window_gpu_blocks"] = (
+                local_blocks[-1] - local_blocks[0] if local_transform is not None and len(local_blocks) >= 2
+                else observed_work["gpu_blocks"]
+            )
             complete = trial.get("valid", False) and result["valid"] and accounted == measured["completed"]
             read_ok = config["read_percent"] == 0 or (row["read_p99_ms"] is not None and row["read_p99_ms"] <= config["read_slo_ms"])
             write_ok = config["read_percent"] == 100 or (row["write_p99_ms"] is not None and row["write_p99_ms"] <= config["write_slo_ms"])
             if not complete:
                 row.update(qualification="invalid", reason="errors, overload, missing metrics, or failed offline verification")
-            elif trial["mode"] != "native_cpu" and config["read_percent"] < 100 and not observed_work["committed"]:
+            elif trial["mode"] not in ("native_cpu", "cuda_local") and config["read_percent"] < 100 and not observed_work["committed"]:
                 row.update(qualification="unverified", reason="no remote compaction commit observed between in-window samples")
-            elif trial["mode"] in ("metal_batched", "cuda_batched") and config["read_percent"] < 100 and not observed_work["gpu_blocks"]:
+            elif trial["mode"] in ("metal_batched", "cuda_batched", "cuda_local") and config["read_percent"] < 100 and not row["in_window_gpu_blocks"]:
                 row.update(qualification="unverified", reason="no useful GPU work observed between in-window samples")
             elif not read_ok or not write_ok:
                 row.update(qualification="fail", reason="operation p99 exceeds declared SLO")
@@ -389,7 +410,7 @@ def analyze_run(directory: Path, output: Path, plots: bool = True) -> dict:
     run = json.loads((directory / "run.json").read_text())
     if run["state"] != "complete" or run["plan_sha256"] != plan["plan_sha256"]:
         raise ValueError("cannot qualify an incomplete run or mismatched plan")
-    if output.exists() or output.absolute().is_relative_to(directory.absolute()):
+    if output.exists() or is_relative_to(output.absolute(), directory.absolute()):
         raise ValueError("analysis output must be new and outside the sealed run bundle")
     rows = measured_rows(directory, run, plan)
     modes = plan["config"]["modes"]

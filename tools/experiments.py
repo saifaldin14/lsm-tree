@@ -1,19 +1,31 @@
 """Unmeasured experiment planning, execution, and artifact verification."""
 
+from __future__ import annotations
+
 import hashlib
 import json
 import os
 from pathlib import Path
 import random
+import shutil
 import subprocess
+import tempfile
 import time
 import uuid
 import socket
 
 
+def is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
 ROOT = Path(__file__).resolve().parents[1]
 BINARIES = ROOT / "build" / "dev"
-MODES = {"native_cpu", "cpu_native", "cpu_batched", "metal_batched", "cuda_batched"}
+MODES = {"native_cpu", "cpu_native", "cpu_batched", "metal_batched", "cuda_batched", "cuda_local"}
 
 
 def canonical(value: object) -> bytes:
@@ -40,6 +52,17 @@ def write_json(path: Path, value: object) -> None:
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
+
+
+def working_directory(output: Path) -> tuple[Path, Path | None]:
+    configured = os.environ.get("LSM_LAB_SCRATCH_ROOT")
+    if not configured:
+        return output / "shared", None
+    root = Path(configured).expanduser().resolve(strict=True)
+    if not root.is_dir():
+        raise ValueError("LSM_LAB_SCRATCH_ROOT must name an existing directory")
+    container = Path(tempfile.mkdtemp(prefix=f"lsm-lab-{output.name}-", dir=root))
+    return container / "shared", container
 
 
 def integer(value: object, minimum: int, maximum: int, name: str) -> int:
@@ -215,7 +238,7 @@ def verify_bundle(directory: Path) -> dict:
             raise ValueError("invalid or repeated bundle path")
         paths.add(entry["path"])
         path = root / relative
-        if path.is_symlink() or not path.resolve(strict=True).is_relative_to(root):
+        if path.is_symlink() or not is_relative_to(path.resolve(strict=True), root):
             raise ValueError("bundle path escaped run directory")
         if path.stat().st_size != entry["bytes"] or file_hash(path) != entry["sha256"]:
             raise ValueError(f"bundle checksum mismatch: {entry['path']}")
@@ -238,12 +261,14 @@ def run_plan(plan_path: Path, output: Path) -> dict:
     output = output.absolute()
     output.mkdir()
     output = output.resolve()
+    shared, scratch_container = working_directory(output)
     deadline = time.monotonic() + plan["config"]["max_wall_seconds"]
     write_json(output / "plan.json", plan)
     write_json(output / "dataset-spec.json", plan["dataset"])
     build = {"binaries": {name: file_hash(path) for name, path in executables.items()},
              "toolchain_lock": json.loads((ROOT / "toolchains.lock.json").read_text()),
-             "host": socket.gethostname(), "topology": "local_process", "cross_host_qualified": False}
+             "host": socket.gethostname(), "topology": "local_process", "cross_host_qualified": False,
+             "working_directory": str(shared), "external_working_directory": scratch_container is not None}
     write_json(output / "build.json", build)
     records = []
 
@@ -272,17 +297,17 @@ def run_plan(plan_path: Path, output: Path) -> dict:
                "topology": "local_process", "cross_host_qualified": False, "trials": trials}
     write_json(output / "run.json", summary)
     try:
-        command([str(executables["lsm_admin"]), "init-shared", str(output / "shared")], output / "init-shared")
-        command([str(executables["lsm_admin"]), "create", str(output / "dataset-spec.json"), str(output / "shared" / "baseline")],
+        command([str(executables["lsm_admin"]), "init-shared", str(shared)], output / "init-shared")
+        command([str(executables["lsm_admin"]), "create", str(output / "dataset-spec.json"), str(shared / "baseline")],
                 output / "baseline-create")
-        command([str(executables["lsm_admin"]), "verify", str(output / "shared" / "baseline")], output / "baseline-verify")
+        command([str(executables["lsm_admin"]), "verify", str(shared / "baseline")], output / "baseline-verify")
         (output / "trials").mkdir()
         for trial in plan["trials"]:
             remaining()
             directory = output / "trials" / trial["id"]
             directory.mkdir()
-            dataset = output / "shared" / trial["id"]
-            command([str(executables["lsm_admin"]), "clone", str(output / "shared" / "baseline"), str(dataset)], directory / "clone")
+            dataset = shared / trial["id"]
+            command([str(executables["lsm_admin"]), "clone", str(shared / "baseline"), str(dataset)], directory / "clone")
             run_id = f"{plan['config']['name']}-{trial['id']}"
             primary = None
             worker = None
@@ -301,18 +326,18 @@ def run_plan(plan_path: Path, output: Path) -> dict:
                 outcome["resource_scope"] = "one_shared_local_host_not_four_distinct_hosts"
                 resource_arguments = ["--resource-interval-ms", str(telemetry["interval_ms"]),
                                       "--resource-budget-bytes", str(telemetry["process_budget_bytes"])]
-                mode = "native_cpu" if trial["mode"] == "native_cpu" else "remote_worker"
+                mode = trial["mode"] if trial["mode"] in ("native_cpu", "cuda_local") else "remote_worker"
                 arguments = [str(executables["lsm_db"]), "--dataset", str(dataset), "--run-id", run_id, "--mode", mode,
                              "--listen", "127.0.0.1:0", "--ready-file", str(directory / "primary.ready"),
                              "--events", str(directory / "primary.events.jsonl"), "--summary", str(directory / "primary-summary.json"),
                              "--resources", str(directory / "primary-resources.jsonl"), *resource_arguments]
                 if mode == "remote_worker":
-                    worker_arguments = [str(executables["lsm_worker"]), "--shared-root", str(output / "shared"),
+                    worker_arguments = [str(executables["lsm_worker"]), "--shared-root", str(shared),
                                         "--journal", str(directory / "journal"), "--listen", "127.0.0.1:0",
                                         "--ready-file", str(directory / "worker.ready"),
                                         "--resources", str(directory / "worker-resources.jsonl"), *resource_arguments]
                     worker = NativeProcess(worker_arguments, directory / "worker.ready", directory / "worker.log", deadline)
-                    arguments += ["--worker", worker.ready(), "--shared-root", str(output / "shared"), "--backend", trial["mode"]]
+                    arguments += ["--worker", worker.ready(), "--shared-root", str(shared), "--backend", trial["mode"]]
                 primary = NativeProcess(arguments, directory / "primary.ready", directory / "primary.log", deadline)
                 endpoint = primary.ready()
                 config = plan["config"]
@@ -362,5 +387,8 @@ def run_plan(plan_path: Path, output: Path) -> dict:
     finally:
         summary["wall_ns"] = time.monotonic_ns() - started
         write_json(output / "run.json", summary)
+        if scratch_container is not None and shared.exists():
+            shutil.copytree(shared, output / "shared")
+            shutil.rmtree(scratch_container)
         seal_bundle(output)
     return summary

@@ -1,0 +1,223 @@
+{
+  "capacity_curves": [
+    {
+      "censoring": "right",
+      "fully_observed": true,
+      "lower": 750,
+      "mode": "native_cpu",
+      "repetition": 0,
+      "upper": null
+    },
+    {
+      "censoring": "right",
+      "fully_observed": true,
+      "lower": 750,
+      "mode": "cpu_native",
+      "repetition": 0,
+      "upper": null
+    },
+    {
+      "censoring": "right",
+      "fully_observed": true,
+      "lower": 750,
+      "mode": "cpu_batched",
+      "repetition": 0,
+      "upper": null
+    },
+    {
+      "censoring": "right",
+      "fully_observed": true,
+      "lower": 750,
+      "mode": "cuda_batched",
+      "repetition": 0,
+      "upper": null
+    },
+    {
+      "censoring": "right",
+      "fully_observed": true,
+      "lower": 750,
+      "mode": "native_cpu",
+      "repetition": 1,
+      "upper": null
+    },
+    {
+      "censoring": "right",
+      "fully_observed": true,
+      "lower": 750,
+      "mode": "cpu_native",
+      "repetition": 1,
+      "upper": null
+    },
+    {
+      "censoring": "right",
+      "fully_observed": true,
+      "lower": 750,
+      "mode": "cpu_batched",
+      "repetition": 1,
+      "upper": null
+    },
+    {
+      "censoring": "right",
+      "fully_observed": true,
+      "lower": 750,
+      "mode": "cuda_batched",
+      "repetition": 1,
+      "upper": null
+    }
+  ],
+  "comparisons": [
+    {
+      "baseline": "native_cpu",
+      "capacity_ratio_bounds": [
+        {
+          "lower": null,
+          "repetition": 0,
+          "upper": null
+        },
+        {
+          "lower": null,
+          "repetition": 1,
+          "upper": null
+        }
+      ],
+      "note": "lower-bound ratios compare tested rates, not exact capacities; null bounds remain censored",
+      "qualifying_lower_bound_ratio": {
+        "ci95": null,
+        "estimate": null,
+        "pairs": 0,
+        "reason": "at least two positive complete pairs required"
+      },
+      "treatment": "cpu_native"
+    },
+    {
+      "baseline": "native_cpu",
+      "capacity_ratio_bounds": [
+        {
+          "lower": null,
+          "repetition": 0,
+          "upper": null
+        },
+        {
+          "lower": null,
+          "repetition": 1,
+          "upper": null
+        }
+      ],
+      "note": "lower-bound ratios compare tested rates, not exact capacities; null bounds remain censored",
+      "qualifying_lower_bound_ratio": {
+        "ci95": null,
+        "estimate": null,
+        "pairs": 0,
+        "reason": "at least two positive complete pairs required"
+      },
+      "treatment": "cpu_batched"
+    },
+    {
+      "baseline": "native_cpu",
+      "capacity_ratio_bounds": [
+        {
+          "lower": null,
+          "repetition": 0,
+          "upper": null
+        },
+        {
+          "lower": null,
+          "repetition": 1,
+          "upper": null
+        }
+      ],
+      "note": "lower-bound ratios compare tested rates, not exact capacities; null bounds remain censored",
+      "qualifying_lower_bound_ratio": {
+        "ci95": null,
+        "estimate": null,
+        "pairs": 0,
+        "reason": "at least two positive complete pairs required"
+      },
+      "treatment": "cuda_batched"
+    },
+    {
+      "baseline": "cpu_native",
+      "capacity_ratio_bounds": [
+        {
+          "lower": null,
+          "repetition": 0,
+          "upper": null
+        },
+        {
+          "lower": null,
+          "repetition": 1,
+          "upper": null
+        }
+      ],
+      "note": "lower-bound ratios compare tested rates, not exact capacities; null bounds remain censored",
+      "qualifying_lower_bound_ratio": {
+        "ci95": null,
+        "estimate": null,
+        "pairs": 0,
+        "reason": "at least two positive complete pairs required"
+      },
+      "treatment": "cpu_batched"
+    },
+    {
+      "baseline": "cpu_native",
+      "capacity_ratio_bounds": [
+        {
+          "lower": null,
+          "repetition": 0,
+          "upper": null
+        },
+        {
+          "lower": null,
+          "repetition": 1,
+          "upper": null
+        }
+      ],
+      "note": "lower-bound ratios compare tested rates, not exact capacities; null bounds remain censored",
+      "qualifying_lower_bound_ratio": {
+        "ci95": null,
+        "estimate": null,
+        "pairs": 0,
+        "reason": "at least two positive complete pairs required"
+      },
+      "treatment": "cuda_batched"
+    },
+    {
+      "baseline": "cpu_batched",
+      "capacity_ratio_bounds": [
+        {
+          "lower": null,
+          "repetition": 0,
+          "upper": null
+        },
+        {
+          "lower": null,
+          "repetition": 1,
+          "upper": null
+        }
+      ],
+      "note": "lower-bound ratios compare tested rates, not exact capacities; null bounds remain censored",
+      "qualifying_lower_bound_ratio": {
+        "ci95": null,
+        "estimate": null,
+        "pairs": 0,
+        "reason": "at least two positive complete pairs required"
+      },
+      "treatment": "cuda_batched"
+    }
+  ],
+  "cross_host_qualified": false,
+  "limitations": [
+    "local-process runs do not establish cross-host speedup",
+    "debt trend check is a pilot gate, not proof of long-run steady state",
+    "per-request validation and raw logging overhead is included",
+    "censored capacity values are not replaced by point estimates",
+    "sensor availability and sampling coverage are reported per entity; missing power is not zero energy"
+  ],
+  "plan_sha256": "92f9cf8bb463d4deca202d4f163069cb0091edebbc90b98ed0b8f5ac2247bc7f",
+  "qualification_rule": "all requests successful, offline verified, per-operation p99 SLO, at least three debt samples, no debt growth, useful work between in-window samples",
+  "resource_report": "resources.json",
+  "resource_streams": 60,
+  "schema_version": 1,
+  "topology": "local_process",
+  "trial_count": 8
+}

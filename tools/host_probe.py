@@ -1,5 +1,7 @@
 """Unmeasured native-host and shared-filesystem qualification probes."""
 
+from __future__ import annotations
+
 import argparse
 import fcntl
 import hashlib
@@ -12,6 +14,14 @@ import signal
 import socket
 import subprocess
 import sys
+
+
+def is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
 
 
 def sync_directory(path: Path) -> None:
@@ -123,7 +133,7 @@ def host_report(project: Path, shared: Path) -> dict:
         choices = []
         for line in command(["mount"]).splitlines():
             match = re.fullmatch(r"(.+) on (.+) \(([^)]+)\)", line)
-            if match and shared.resolve().is_relative_to(Path(match.group(2))):
+            if match and is_relative_to(shared.resolve(), Path(match.group(2))):
                 options = match.group(3).split(", ")
                 choices.append({"target": match.group(2), "source": match.group(1), "fstype": options[0], "options": ",".join(options[1:])})
         mount = max(choices, key=lambda entry: len(entry["target"])) if choices else None

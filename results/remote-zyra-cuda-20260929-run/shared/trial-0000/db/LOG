@@ -1,0 +1,812 @@
+2026/09/29-12:53:07.066327 1409026 RocksDB version: 11.8.1
+2026/09/29-12:53:07.066401 1409026 Git sha 0
+2026/09/29-12:53:07.066406 1409026 Compile date 2026-09-29 16:41:18
+2026/09/29-12:53:07.066410 1409026 DB SUMMARY
+2026/09/29-12:53:07.066414 1409026 Host name (Env):  zyra
+2026/09/29-12:53:07.066417 1409026 DB Session ID:  WG2NDWKR0IVSZ1F6IW7F
+2026/09/29-12:53:07.067539 1409026 CURRENT file:  CURRENT
+2026/09/29-12:53:07.067546 1409026 IDENTITY file:  IDENTITY
+2026/09/29-12:53:07.067558 1409026 MANIFEST file:  MANIFEST-000005 size: 969 Bytes
+2026/09/29-12:53:07.067563 1409026 SST files in /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db dir, Total Num: 4, files: 000015.sst 000016.sst 000017.sst 000018.sst 
+2026/09/29-12:53:07.067567 1409026 Write Ahead Log file in /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db: 000014.log size: 0 ; 
+2026/09/29-12:53:07.067571 1409026                         Options.error_if_exists: 0
+2026/09/29-12:53:07.067574 1409026                       Options.create_if_missing: 0
+2026/09/29-12:53:07.067577 1409026                         Options.paranoid_checks: 1
+2026/09/29-12:53:07.067580 1409026                        Options.open_files_async: 0
+2026/09/29-12:53:07.067583 1409026             Options.flush_verify_memtable_count: 1
+2026/09/29-12:53:07.067586 1409026          Options.compaction_verify_record_count: 1
+2026/09/29-12:53:07.067589 1409026                               Options.track_and_verify_wals_in_manifest: 0
+2026/09/29-12:53:07.067591 1409026                               Options.track_and_verify_wals: 0
+2026/09/29-12:53:07.067594 1409026        Options.verify_sst_unique_id_in_manifest: 1
+2026/09/29-12:53:07.067611 1409026                                     Options.env: 0x195967a0
+2026/09/29-12:53:07.067615 1409026                                      Options.fs: PosixFileSystem
+2026/09/29-12:53:07.067618 1409026                                Options.info_log: 0x195ff4e0
+2026/09/29-12:53:07.067621 1409026                Options.max_file_opening_threads: 16
+2026/09/29-12:53:07.067623 1409026                Options.read_io_executor_threads: 1
+2026/09/29-12:53:07.067626 1409026                              Options.statistics: (nil)
+2026/09/29-12:53:07.067629 1409026                               Options.use_fsync: 0
+2026/09/29-12:53:07.067632 1409026                       Options.max_log_file_size: 0
+2026/09/29-12:53:07.067635 1409026                   Options.log_file_time_to_roll: 0
+2026/09/29-12:53:07.067637 1409026                       Options.keep_log_file_num: 1000
+2026/09/29-12:53:07.067640 1409026                    Options.recycle_log_file_num: 0
+2026/09/29-12:53:07.067643 1409026                     Options.async_wal_precreate: 0
+2026/09/29-12:53:07.067646 1409026                         Options.allow_fallocate: 1
+2026/09/29-12:53:07.067648 1409026                        Options.allow_mmap_reads: 0
+2026/09/29-12:53:07.067651 1409026                       Options.allow_mmap_writes: 0
+2026/09/29-12:53:07.067654 1409026                        Options.use_direct_reads: 0
+2026/09/29-12:53:07.067656 1409026             Options.use_direct_io_for_compaction_reads: 0
+2026/09/29-12:53:07.067659 1409026         Options.use_direct_io_for_flush_and_compaction: 0
+2026/09/29-12:53:07.067662 1409026          Options.create_missing_column_families: 0
+2026/09/29-12:53:07.067664 1409026                              Options.db_log_dir: 
+2026/09/29-12:53:07.067667 1409026                                 Options.wal_dir: 
+2026/09/29-12:53:07.067670 1409026                Options.table_cache_numshardbits: 6
+2026/09/29-12:53:07.067673 1409026                         Options.WAL_ttl_seconds: 0
+2026/09/29-12:53:07.067675 1409026                       Options.WAL_size_limit_MB: 0
+2026/09/29-12:53:07.067678 1409026                        Options.max_write_batch_group_size_bytes: 1048576
+2026/09/29-12:53:07.067681 1409026                     Options.is_fd_close_on_exec: 1
+2026/09/29-12:53:07.067683 1409026                   Options.advise_random_on_open: 1
+2026/09/29-12:53:07.067686 1409026                    Options.db_write_buffer_size: 0
+2026/09/29-12:53:07.067689 1409026                    Options.write_buffer_manager: 0x19605db0
+2026/09/29-12:53:07.067692 1409026                      Options.use_adaptive_mutex: 0
+2026/09/29-12:53:07.067695 1409026                            Options.rate_limiter: (nil)
+2026/09/29-12:53:07.067698 1409026     Options.sst_file_manager.rate_bytes_per_sec: 0
+2026/09/29-12:53:07.067700 1409026                       Options.wal_recovery_mode: 2
+2026/09/29-12:53:07.067703 1409026                  Options.enable_thread_tracking: 0
+2026/09/29-12:53:07.067706 1409026                  Options.enable_pipelined_write: 0
+2026/09/29-12:53:07.067709 1409026                  Options.unordered_write: 0
+2026/09/29-12:53:07.067711 1409026         Options.allow_concurrent_memtable_write: 1
+2026/09/29-12:53:07.067714 1409026      Options.enable_write_thread_adaptive_yield: 1
+2026/09/29-12:53:07.067717 1409026             Options.write_thread_max_yield_usec: 100
+2026/09/29-12:53:07.067720 1409026            Options.write_thread_slow_yield_usec: 3
+2026/09/29-12:53:07.067723 1409026                               Options.row_cache: None
+2026/09/29-12:53:07.067725 1409026                              Options.wal_filter: None
+2026/09/29-12:53:07.067728 1409026             Options.avoid_flush_during_recovery: 0
+2026/09/29-12:53:07.067731 1409026         Options.enforce_write_buffer_manager_during_recovery: 1
+2026/09/29-12:53:07.067733 1409026             Options.allow_ingest_behind: 0
+2026/09/29-12:53:07.067736 1409026             Options.two_write_queues: 0
+2026/09/29-12:53:07.067739 1409026             Options.manual_wal_flush: 0
+2026/09/29-12:53:07.067741 1409026             Options.wal_compression: 0
+2026/09/29-12:53:07.067744 1409026             Options.background_close_inactive_wals: 0
+2026/09/29-12:53:07.067747 1409026             Options.atomic_flush: 0
+2026/09/29-12:53:07.067749 1409026             Options.avoid_unnecessary_blocking_io: 0
+2026/09/29-12:53:07.067752 1409026             Options.prefix_seek_opt_in_only: 0
+2026/09/29-12:53:07.067755 1409026                 Options.persist_stats_to_disk: 0
+2026/09/29-12:53:07.067757 1409026                 Options.write_dbid_to_manifest: 1
+2026/09/29-12:53:07.067760 1409026                 Options.reuse_manifest_on_open: 0
+2026/09/29-12:53:07.067763 1409026                 Options.write_identity_file: 1
+2026/09/29-12:53:07.067766 1409026                 Options.log_readahead_size: 0
+2026/09/29-12:53:07.067768 1409026                 Options.file_checksum_gen_factory: Unknown
+2026/09/29-12:53:07.067771 1409026                 Options.best_efforts_recovery: 0
+2026/09/29-12:53:07.067774 1409026                Options.max_bgerror_resume_count: 2147483647
+2026/09/29-12:53:07.067777 1409026            Options.bgerror_resume_retry_interval: 1000000
+2026/09/29-12:53:07.067780 1409026             Options.allow_data_in_errors: 0
+2026/09/29-12:53:07.067782 1409026             Options.db_host_id: __hostname__
+2026/09/29-12:53:07.067785 1409026             Options.enforce_single_del_contracts: true
+2026/09/29-12:53:07.067801 1409026             Options.metadata_write_temperature: kUnknown
+2026/09/29-12:53:07.067802 1409026             Options.wal_write_temperature: kUnknown
+2026/09/29-12:53:07.067804 1409026             Options.max_background_jobs: 2
+2026/09/29-12:53:07.067805 1409026             Options.max_background_compactions: -1
+2026/09/29-12:53:07.067806 1409026             Options.max_subcompactions: 1
+2026/09/29-12:53:07.067807 1409026             Options.avoid_flush_during_shutdown: 0
+2026/09/29-12:53:07.067809 1409026           Options.writable_file_max_buffer_size: 1048576
+2026/09/29-12:53:07.067810 1409026             Options.delayed_write_rate : 16777216
+2026/09/29-12:53:07.067811 1409026             Options.max_total_wal_size: 0
+2026/09/29-12:53:07.067813 1409026             Options.delete_obsolete_files_period_micros: 21600000000
+2026/09/29-12:53:07.067814 1409026                   Options.stats_dump_period_sec: 600
+2026/09/29-12:53:07.067815 1409026                 Options.stats_persist_period_sec: 600
+2026/09/29-12:53:07.067817 1409026                 Options.stats_history_buffer_size: 1048576
+2026/09/29-12:53:07.067818 1409026                          Options.max_open_files: -1
+2026/09/29-12:53:07.067819 1409026                          Options.bytes_per_sync: 0
+2026/09/29-12:53:07.067821 1409026                      Options.wal_bytes_per_sync: 0
+2026/09/29-12:53:07.067822 1409026                   Options.strict_bytes_per_sync: 0
+2026/09/29-12:53:07.067823 1409026       Options.compaction_readahead_size: 2097152
+2026/09/29-12:53:07.067825 1409026                  Options.max_background_flushes: -1
+2026/09/29-12:53:07.067826 1409026                  Options.max_manifest_file_size: 1073741824
+2026/09/29-12:53:07.067827 1409026                  Options.max_manifest_space_amp_pct: 500
+2026/09/29-12:53:07.067828 1409026             Options.manifest_preallocation_size: 4194304
+2026/09/29-12:53:07.067830 1409026       Options.verify_manifest_content_on_close: 0
+2026/09/29-12:53:07.067831 1409026          Options.optimize_manifest_for_recovery: 0
+2026/09/29-12:53:07.067832 1409026 Options.daily_offpeak_time_utc: 
+2026/09/29-12:53:07.067833 1409026 Options.max_compaction_trigger_wakeup_seconds: 43200
+2026/09/29-12:53:07.067835 1409026                          Options.fast_sst_open: 0
+2026/09/29-12:53:07.067836 1409026 Compression algorithms supported:
+2026/09/29-12:53:07.067837 1409026 	kCustomCompressionFE supported: 0
+2026/09/29-12:53:07.067839 1409026 	kCustomCompressionFC supported: 0
+2026/09/29-12:53:07.067840 1409026 	kCustomCompressionF8 supported: 0
+2026/09/29-12:53:07.067841 1409026 	kCustomCompressionF7 supported: 0
+2026/09/29-12:53:07.067843 1409026 	kCustomCompressionB2 supported: 0
+2026/09/29-12:53:07.067844 1409026 	kLZ4Compression supported: 1
+2026/09/29-12:53:07.067845 1409026 	kCustomCompression88 supported: 0
+2026/09/29-12:53:07.067847 1409026 	kCustomCompressionD8 supported: 0
+2026/09/29-12:53:07.067848 1409026 	kCustomCompression9F supported: 0
+2026/09/29-12:53:07.067849 1409026 	kCustomCompressionD6 supported: 0
+2026/09/29-12:53:07.067850 1409026 	kCustomCompressionA9 supported: 0
+2026/09/29-12:53:07.067852 1409026 	kCustomCompressionEC supported: 0
+2026/09/29-12:53:07.067853 1409026 	kCustomCompressionA3 supported: 0
+2026/09/29-12:53:07.067854 1409026 	kCustomCompressionCB supported: 0
+2026/09/29-12:53:07.067855 1409026 	kCustomCompression90 supported: 0
+2026/09/29-12:53:07.067857 1409026 	kCustomCompressionA0 supported: 0
+2026/09/29-12:53:07.067858 1409026 	kCustomCompressionC6 supported: 0
+2026/09/29-12:53:07.067859 1409026 	kCustomCompression9D supported: 0
+2026/09/29-12:53:07.067860 1409026 	kCustomCompression8B supported: 0
+2026/09/29-12:53:07.067862 1409026 	kCustomCompressionA8 supported: 0
+2026/09/29-12:53:07.067863 1409026 	kCustomCompression8D supported: 0
+2026/09/29-12:53:07.067864 1409026 	kCustomCompression97 supported: 0
+2026/09/29-12:53:07.067865 1409026 	kCustomCompression98 supported: 0
+2026/09/29-12:53:07.067867 1409026 	kCustomCompressionAC supported: 0
+2026/09/29-12:53:07.067868 1409026 	kCustomCompressionE9 supported: 0
+2026/09/29-12:53:07.067869 1409026 	kCustomCompression96 supported: 0
+2026/09/29-12:53:07.067870 1409026 	kCustomCompressionB1 supported: 0
+2026/09/29-12:53:07.067872 1409026 	kCustomCompression95 supported: 0
+2026/09/29-12:53:07.067873 1409026 	kCustomCompression84 supported: 0
+2026/09/29-12:53:07.067874 1409026 	kCustomCompression91 supported: 0
+2026/09/29-12:53:07.067875 1409026 	kCustomCompressionAB supported: 0
+2026/09/29-12:53:07.067877 1409026 	kCustomCompressionB3 supported: 0
+2026/09/29-12:53:07.067878 1409026 	kCustomCompression81 supported: 0
+2026/09/29-12:53:07.067879 1409026 	kCustomCompressionDC supported: 0
+2026/09/29-12:53:07.067880 1409026 	kBZip2Compression supported: 0
+2026/09/29-12:53:07.067882 1409026 	kCustomCompressionBB supported: 0
+2026/09/29-12:53:07.067883 1409026 	kCustomCompression9C supported: 0
+2026/09/29-12:53:07.067884 1409026 	kCustomCompressionC9 supported: 0
+2026/09/29-12:53:07.067885 1409026 	kCustomCompressionCC supported: 0
+2026/09/29-12:53:07.067887 1409026 	kCustomCompression92 supported: 0
+2026/09/29-12:53:07.067888 1409026 	kCustomCompressionB9 supported: 0
+2026/09/29-12:53:07.067889 1409026 	kCustomCompression8F supported: 0
+2026/09/29-12:53:07.067890 1409026 	kCustomCompression8A supported: 0
+2026/09/29-12:53:07.067892 1409026 	kCustomCompression9B supported: 0
+2026/09/29-12:53:07.067893 1409026 	kZSTD supported: 0
+2026/09/29-12:53:07.067894 1409026 	kCustomCompressionAA supported: 0
+2026/09/29-12:53:07.067895 1409026 	kCustomCompressionA2 supported: 0
+2026/09/29-12:53:07.067897 1409026 	kZlibCompression supported: 0
+2026/09/29-12:53:07.067898 1409026 	kXpressCompression supported: 0
+2026/09/29-12:53:07.067899 1409026 	kCustomCompressionFD supported: 0
+2026/09/29-12:53:07.067901 1409026 	kCustomCompressionE2 supported: 0
+2026/09/29-12:53:07.067902 1409026 	kLZ4HCCompression supported: 1
+2026/09/29-12:53:07.067903 1409026 	kCustomCompressionA6 supported: 0
+2026/09/29-12:53:07.067904 1409026 	kCustomCompression85 supported: 0
+2026/09/29-12:53:07.067905 1409026 	kCustomCompressionA4 supported: 0
+2026/09/29-12:53:07.067907 1409026 	kCustomCompression86 supported: 0
+2026/09/29-12:53:07.067908 1409026 	kCustomCompression83 supported: 0
+2026/09/29-12:53:07.067909 1409026 	kCustomCompression87 supported: 0
+2026/09/29-12:53:07.067910 1409026 	kCustomCompression89 supported: 0
+2026/09/29-12:53:07.067912 1409026 	kCustomCompression8C supported: 0
+2026/09/29-12:53:07.067913 1409026 	kCustomCompressionDB supported: 0
+2026/09/29-12:53:07.067914 1409026 	kCustomCompressionF3 supported: 0
+2026/09/29-12:53:07.067915 1409026 	kCustomCompressionE6 supported: 0
+2026/09/29-12:53:07.067917 1409026 	kCustomCompression8E supported: 0
+2026/09/29-12:53:07.067918 1409026 	kCustomCompressionDA supported: 0
+2026/09/29-12:53:07.067919 1409026 	kCustomCompression93 supported: 0
+2026/09/29-12:53:07.067920 1409026 	kCustomCompression94 supported: 0
+2026/09/29-12:53:07.067922 1409026 	kCustomCompression9E supported: 0
+2026/09/29-12:53:07.067923 1409026 	kCustomCompressionB4 supported: 0
+2026/09/29-12:53:07.067924 1409026 	kCustomCompressionFB supported: 0
+2026/09/29-12:53:07.067925 1409026 	kCustomCompressionB5 supported: 0
+2026/09/29-12:53:07.067927 1409026 	kCustomCompressionD5 supported: 0
+2026/09/29-12:53:07.067928 1409026 	kCustomCompressionB8 supported: 0
+2026/09/29-12:53:07.067929 1409026 	kCustomCompressionD1 supported: 0
+2026/09/29-12:53:07.067930 1409026 	kCustomCompressionBA supported: 0
+2026/09/29-12:53:07.067931 1409026 	kCustomCompressionBC supported: 0
+2026/09/29-12:53:07.067933 1409026 	kCustomCompressionCE supported: 0
+2026/09/29-12:53:07.067934 1409026 	kCustomCompressionBD supported: 0
+2026/09/29-12:53:07.067935 1409026 	kCustomCompressionC4 supported: 0
+2026/09/29-12:53:07.067936 1409026 	kCustomCompression9A supported: 0
+2026/09/29-12:53:07.067938 1409026 	kCustomCompression99 supported: 0
+2026/09/29-12:53:07.067939 1409026 	kCustomCompressionBE supported: 0
+2026/09/29-12:53:07.067940 1409026 	kCustomCompressionE5 supported: 0
+2026/09/29-12:53:07.067941 1409026 	kCustomCompressionD9 supported: 0
+2026/09/29-12:53:07.067942 1409026 	kCustomCompressionC1 supported: 0
+2026/09/29-12:53:07.067944 1409026 	kCustomCompressionC5 supported: 0
+2026/09/29-12:53:07.067945 1409026 	kCustomCompressionC2 supported: 0
+2026/09/29-12:53:07.067946 1409026 	kCustomCompressionA5 supported: 0
+2026/09/29-12:53:07.067947 1409026 	kCustomCompressionC7 supported: 0
+2026/09/29-12:53:07.067949 1409026 	kCustomCompressionBF supported: 0
+2026/09/29-12:53:07.067950 1409026 	kCustomCompressionE8 supported: 0
+2026/09/29-12:53:07.067951 1409026 	kCustomCompressionC8 supported: 0
+2026/09/29-12:53:07.067952 1409026 	kCustomCompressionAF supported: 0
+2026/09/29-12:53:07.067954 1409026 	kCustomCompressionCA supported: 0
+2026/09/29-12:53:07.067955 1409026 	kCustomCompressionCD supported: 0
+2026/09/29-12:53:07.067956 1409026 	kCustomCompressionC0 supported: 0
+2026/09/29-12:53:07.067957 1409026 	kCustomCompressionCF supported: 0
+2026/09/29-12:53:07.067959 1409026 	kCustomCompressionF9 supported: 0
+2026/09/29-12:53:07.067960 1409026 	kCustomCompressionD0 supported: 0
+2026/09/29-12:53:07.067961 1409026 	kCustomCompressionD2 supported: 0
+2026/09/29-12:53:07.067962 1409026 	kCustomCompressionAD supported: 0
+2026/09/29-12:53:07.067964 1409026 	kCustomCompressionD3 supported: 0
+2026/09/29-12:53:07.067965 1409026 	kCustomCompressionD4 supported: 0
+2026/09/29-12:53:07.067966 1409026 	kCustomCompressionD7 supported: 0
+2026/09/29-12:53:07.067967 1409026 	kCustomCompression82 supported: 0
+2026/09/29-12:53:07.067969 1409026 	kCustomCompressionDD supported: 0
+2026/09/29-12:53:07.067970 1409026 	kCustomCompressionC3 supported: 0
+2026/09/29-12:53:07.067971 1409026 	kCustomCompressionEE supported: 0
+2026/09/29-12:53:07.067972 1409026 	kCustomCompressionDE supported: 0
+2026/09/29-12:53:07.067973 1409026 	kCustomCompressionDF supported: 0
+2026/09/29-12:53:07.067975 1409026 	kCustomCompressionA7 supported: 0
+2026/09/29-12:53:07.067976 1409026 	kCustomCompressionE0 supported: 0
+2026/09/29-12:53:07.067977 1409026 	kCustomCompressionF1 supported: 0
+2026/09/29-12:53:07.067978 1409026 	kCustomCompressionE1 supported: 0
+2026/09/29-12:53:07.067980 1409026 	kCustomCompressionF5 supported: 0
+2026/09/29-12:53:07.067981 1409026 	kCustomCompression80 supported: 0
+2026/09/29-12:53:07.067982 1409026 	kCustomCompressionE3 supported: 0
+2026/09/29-12:53:07.067983 1409026 	kCustomCompressionE4 supported: 0
+2026/09/29-12:53:07.067984 1409026 	kCustomCompressionB0 supported: 0
+2026/09/29-12:53:07.067986 1409026 	kCustomCompressionEA supported: 0
+2026/09/29-12:53:07.067987 1409026 	kCustomCompressionFA supported: 0
+2026/09/29-12:53:07.067988 1409026 	kCustomCompressionE7 supported: 0
+2026/09/29-12:53:07.067989 1409026 	kCustomCompressionAE supported: 0
+2026/09/29-12:53:07.067991 1409026 	kCustomCompressionEB supported: 0
+2026/09/29-12:53:07.067992 1409026 	kCustomCompressionED supported: 0
+2026/09/29-12:53:07.067993 1409026 	kCustomCompressionB6 supported: 0
+2026/09/29-12:53:07.067994 1409026 	kCustomCompressionEF supported: 0
+2026/09/29-12:53:07.067995 1409026 	kCustomCompressionF0 supported: 0
+2026/09/29-12:53:07.067997 1409026 	kCustomCompressionB7 supported: 0
+2026/09/29-12:53:07.067998 1409026 	kCustomCompressionF2 supported: 0
+2026/09/29-12:53:07.067999 1409026 	kCustomCompressionA1 supported: 0
+2026/09/29-12:53:07.068000 1409026 	kCustomCompressionF4 supported: 0
+2026/09/29-12:53:07.068002 1409026 	kSnappyCompression supported: 0
+2026/09/29-12:53:07.068003 1409026 	kCustomCompressionF6 supported: 0
+2026/09/29-12:53:07.068005 1409026 Fast CRC32 supported: Not supported on x86
+2026/09/29-12:53:07.068006 1409026 DMutex implementation: pthread_mutex_t
+2026/09/29-12:53:07.068007 1409026 Jemalloc supported: 0
+2026/09/29-12:53:07.069321 1409026 [db/version_set.cc:6562] Recovering from manifest file: /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/MANIFEST-000005
+2026/09/29-12:53:07.069580 1409026 [db/column_family.cc:711] --------------- Options for column family [default]:
+2026/09/29-12:53:07.069583 1409026               Options.comparator: leveldb.BytewiseComparator
+2026/09/29-12:53:07.069584 1409026           Options.merge_operator: None
+2026/09/29-12:53:07.069586 1409026        Options.compaction_filter: None
+2026/09/29-12:53:07.069587 1409026        Options.compaction_filter_factory: None
+2026/09/29-12:53:07.069588 1409026  Options.sst_partitioner_factory: None
+2026/09/29-12:53:07.069589 1409026         Options.memtable_factory: SkipListFactory
+2026/09/29-12:53:07.069591 1409026            Options.table_factory: BlockBasedTable
+2026/09/29-12:53:07.069614 1409026            table_factory options:   flush_block_policy_factory: FlushBlockBySizePolicyFactory (0x196020f0)
+  cache_index_and_filter_blocks: 0
+  cache_index_and_filter_blocks_with_high_priority: 1
+  pin_l0_filter_and_index_blocks_in_cache: 0
+  pin_top_level_index_and_filter: 1
+  index_type: 0
+  data_block_index_type: 0
+  index_shortening: 1
+  data_block_hash_table_util_ratio: 0.750000
+  checksum: 1
+  no_block_cache: 0
+  block_cache: 0x196034e0
+  block_cache_name: LRUCache
+  block_cache_options:
+    capacity : 4194304
+    num_shard_bits : 3
+    strict_capacity_limit : 0
+    memory_allocator : None
+    high_pri_pool_ratio: 0.500
+    low_pri_pool_ratio: 0.000
+  persistent_cache: (nil)
+  block_size: 4096
+  block_size_deviation: 10
+  block_restart_interval: 16
+  index_block_restart_interval: 1
+  metadata_block_size: 4096
+  partition_filters: 0
+  use_delta_encoding: 1
+  filter_policy: bloomfilter
+  user_defined_index_factory: nullptr
+  use_udi_as_primary_index: 0
+  fail_if_no_udi_on_open: 0
+  whole_key_filtering: 1
+  verify_compression: 1
+  read_amp_bytes_per_bit: 0
+  format_version: 6
+  uniform_cv_threshold: -1.000000
+  enable_index_compression: 1
+  block_align: 0
+  super_block_alignment_size: 0
+  super_block_alignment_space_overhead_ratio: 128
+  max_auto_readahead_size: 262144
+  prepopulate_block_cache: 0
+  initial_auto_readahead_size: 8192
+  num_file_reads_for_auto_readahead: 2
+2026/09/29-12:53:07.069616 1409026        Options.write_buffer_size: 65536
+2026/09/29-12:53:07.069618 1409026  Options.max_write_buffer_number: 4
+2026/09/29-12:53:07.069619 1409026          Options.compression: LZ4
+2026/09/29-12:53:07.069621 1409026                  Options.bottommost_compression: Disabled
+2026/09/29-12:53:07.069622 1409026       Options.prefix_extractor: nullptr
+2026/09/29-12:53:07.069623 1409026   Options.memtable_insert_with_hint_prefix_extractor: nullptr
+2026/09/29-12:53:07.069624 1409026             Options.num_levels: 4
+2026/09/29-12:53:07.069626 1409026        Options.min_write_buffer_number_to_merge: 1
+2026/09/29-12:53:07.069627 1409026     Options.max_write_buffer_size_to_maintain: 0
+2026/09/29-12:53:07.069628 1409026            Options.bottommost_compression_opts.window_bits: -14
+2026/09/29-12:53:07.069630 1409026                  Options.bottommost_compression_opts.level: 32767
+2026/09/29-12:53:07.069631 1409026               Options.bottommost_compression_opts.strategy: 0
+2026/09/29-12:53:07.069632 1409026         Options.bottommost_compression_opts.max_dict_bytes: 0
+2026/09/29-12:53:07.069634 1409026         Options.bottommost_compression_opts.zstd_max_train_bytes: 0
+2026/09/29-12:53:07.069635 1409026         Options.bottommost_compression_opts.parallel_threads: 1
+2026/09/29-12:53:07.069636 1409026                  Options.bottommost_compression_opts.enabled: false
+2026/09/29-12:53:07.069637 1409026         Options.bottommost_compression_opts.max_dict_buffer_bytes: 0
+2026/09/29-12:53:07.069639 1409026         Options.bottommost_compression_opts.use_zstd_dict_trainer: true
+2026/09/29-12:53:07.069640 1409026            Options.compression_opts.window_bits: -14
+2026/09/29-12:53:07.069641 1409026                  Options.compression_opts.level: 32767
+2026/09/29-12:53:07.069643 1409026               Options.compression_opts.strategy: 0
+2026/09/29-12:53:07.069644 1409026         Options.compression_opts.max_dict_bytes: 0
+2026/09/29-12:53:07.069645 1409026         Options.compression_opts.zstd_max_train_bytes: 0
+2026/09/29-12:53:07.069646 1409026         Options.compression_opts.use_zstd_dict_trainer: true
+2026/09/29-12:53:07.069648 1409026         Options.compression_opts.parallel_threads: 1
+2026/09/29-12:53:07.069649 1409026                  Options.compression_opts.enabled: false
+2026/09/29-12:53:07.069650 1409026         Options.compression_opts.max_dict_buffer_bytes: 0
+2026/09/29-12:53:07.069651 1409026      Options.level0_file_num_compaction_trigger: 4
+2026/09/29-12:53:07.069653 1409026          Options.level0_slowdown_writes_trigger: 20
+2026/09/29-12:53:07.069654 1409026              Options.level0_stop_writes_trigger: 36
+2026/09/29-12:53:07.069655 1409026                   Options.target_file_size_base: 65536
+2026/09/29-12:53:07.069656 1409026             Options.target_file_size_multiplier: 1
+2026/09/29-12:53:07.069658 1409026            Options.target_file_size_is_upper_bound: 0
+2026/09/29-12:53:07.069659 1409026                Options.max_bytes_for_level_base: 262144
+2026/09/29-12:53:07.069660 1409026 Options.level_compaction_dynamic_level_bytes: 1
+2026/09/29-12:53:07.069662 1409026          Options.max_bytes_for_level_multiplier: 10.000000
+2026/09/29-12:53:07.069664 1409026 Options.max_bytes_for_level_multiplier_addtl[0]: 1
+2026/09/29-12:53:07.069665 1409026 Options.max_bytes_for_level_multiplier_addtl[1]: 1
+2026/09/29-12:53:07.069667 1409026 Options.max_bytes_for_level_multiplier_addtl[2]: 1
+2026/09/29-12:53:07.069668 1409026 Options.max_bytes_for_level_multiplier_addtl[3]: 1
+2026/09/29-12:53:07.069669 1409026 Options.max_bytes_for_level_multiplier_addtl[4]: 1
+2026/09/29-12:53:07.069670 1409026 Options.max_bytes_for_level_multiplier_addtl[5]: 1
+2026/09/29-12:53:07.069672 1409026 Options.max_bytes_for_level_multiplier_addtl[6]: 1
+2026/09/29-12:53:07.069673 1409026       Options.max_sequential_skip_in_iterations: 8
+2026/09/29-12:53:07.069674 1409026          Options.memtable_op_scan_flush_trigger: 0
+2026/09/29-12:53:07.069675 1409026      Options.memtable_avg_op_scan_flush_trigger: 0
+2026/09/29-12:53:07.069677 1409026      Options.min_tombstones_for_range_conversion: 0
+2026/09/29-12:53:07.069678 1409026                    Options.max_compaction_bytes: 1638400
+2026/09/29-12:53:07.069679 1409026                        Options.arena_block_size: 8192
+2026/09/29-12:53:07.069681 1409026   Options.soft_pending_compaction_bytes_limit: 68719476736
+2026/09/29-12:53:07.069682 1409026   Options.hard_pending_compaction_bytes_limit: 274877906944
+2026/09/29-12:53:07.069683 1409026                Options.disable_auto_compactions: 0
+2026/09/29-12:53:07.069685 1409026                        Options.compaction_style: kCompactionStyleLevel
+2026/09/29-12:53:07.069687 1409026                          Options.compaction_pri: kMinOverlappingRatio
+2026/09/29-12:53:07.069688 1409026 Options.compaction_options_universal.size_ratio: 1
+2026/09/29-12:53:07.069689 1409026 Options.compaction_options_universal.min_merge_width: 2
+2026/09/29-12:53:07.069690 1409026 Options.compaction_options_universal.max_merge_width: 4294967295
+2026/09/29-12:53:07.069692 1409026 Options.compaction_options_universal.max_size_amplification_percent: 200
+2026/09/29-12:53:07.069693 1409026 Options.compaction_options_universal.compression_size_percent: -1
+2026/09/29-12:53:07.069695 1409026 Options.compaction_options_universal.stop_style: kCompactionStopStyleTotalSize
+2026/09/29-12:53:07.069696 1409026 Options.compaction_options_universal.max_read_amp: -1
+2026/09/29-12:53:07.069697 1409026 Options.compaction_options_universal.reduce_file_locking: 1
+2026/09/29-12:53:07.069698 1409026 Options.compaction_options_fifo.max_table_files_size: 1073741824
+2026/09/29-12:53:07.069699 1409026 Options.compaction_options_fifo.allow_compaction: 0
+2026/09/29-12:53:07.069702 1409026                   Options.table_properties_collectors: 
+2026/09/29-12:53:07.069703 1409026                   Options.inplace_update_support: 0
+2026/09/29-12:53:07.069704 1409026                 Options.inplace_update_num_locks: 10000
+2026/09/29-12:53:07.069706 1409026               Options.memtable_prefix_bloom_size_ratio: 0.000000
+2026/09/29-12:53:07.069707 1409026               Options.memtable_whole_key_filtering: 0
+2026/09/29-12:53:07.069708 1409026   Options.memtable_huge_page_size: 0
+2026/09/29-12:53:07.069710 1409026                           Options.bloom_locality: 0
+2026/09/29-12:53:07.069711 1409026                    Options.max_successive_merges: 0
+2026/09/29-12:53:07.069712 1409026             Options.strict_max_successive_merges: 0
+2026/09/29-12:53:07.069713 1409026                Options.optimize_filters_for_hits: 0
+2026/09/29-12:53:07.069715 1409026                Options.paranoid_file_checks: 1
+2026/09/29-12:53:07.069716 1409026                Options.force_consistency_checks: 1
+2026/09/29-12:53:07.069717 1409026                Options.report_bg_io_stats: 0
+2026/09/29-12:53:07.069718 1409026                Options.disallow_memtable_writes: 0
+2026/09/29-12:53:07.069719 1409026                               Options.ttl: 2592000
+2026/09/29-12:53:07.069721 1409026          Options.periodic_compaction_seconds: 0
+2026/09/29-12:53:07.069722 1409026                        Options.default_temperature: kUnknown
+2026/09/29-12:53:07.069723 1409026  Options.preclude_last_level_data_seconds: 0
+2026/09/29-12:53:07.069725 1409026    Options.preserve_internal_time_seconds: 0
+2026/09/29-12:53:07.069726 1409026                       Options.enable_blob_files: false
+2026/09/29-12:53:07.069727 1409026                           Options.min_blob_size: 0
+2026/09/29-12:53:07.069728 1409026                          Options.blob_file_size: 268435456
+2026/09/29-12:53:07.069730 1409026                   Options.blob_compression_type: NoCompression
+2026/09/29-12:53:07.069731 1409026             Options.blob_compression_opts.level: 32767
+2026/09/29-12:53:07.069732 1409026          Options.enable_blob_garbage_collection: false
+2026/09/29-12:53:07.069734 1409026      Options.blob_garbage_collection_age_cutoff: 0.250000
+2026/09/29-12:53:07.069735 1409026 Options.blob_garbage_collection_force_threshold: 1.000000
+2026/09/29-12:53:07.069737 1409026          Options.blob_compaction_readahead_size: 0
+2026/09/29-12:53:07.069738 1409026                Options.blob_file_starting_level: 0
+2026/09/29-12:53:07.069739 1409026         Options.experimental_mempurge_threshold: 0.000000
+2026/09/29-12:53:07.069740 1409026            Options.memtable_max_range_deletions: 0
+2026/09/29-12:53:07.069742 1409026                  Options.cf_allow_ingest_behind: false
+2026/09/29-12:53:07.069743 1409026   Options.memtable_batch_lookup_optimization: false
+2026/09/29-12:53:07.069744 1409026              Options.enable_blob_direct_write: false
+2026/09/29-12:53:07.069745 1409026            Options.blob_direct_write_partitions: 1
+2026/09/29-12:53:07.070346 1409026 [db/version_set.cc:6613] Recovered from manifest file:/home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/MANIFEST-000005 succeeded,manifest_file_number is 5, next_file_number is 20, last_sequence is 2000, log_number is 14,prev_log_number is 0,max_column_family is 0,min_log_number_to_keep is 14
+2026/09/29-12:53:07.070352 1409026 [db/version_set.cc:6628] Column family [default] (ID 0), log number is 14
+2026/09/29-12:53:07.070396 1409026 [db/db_impl/db_impl_open.cc:728] DB ID: 48ae4f6b-53d3-48a2-9393-f1b69d6ca093
+2026/09/29-12:53:07.071680 1409026 EVENT_LOG_v1 {"time_micros": 1790700787071673, "job": 1, "event": "recovery_started", "wal_files": [14]}
+2026/09/29-12:53:07.071688 1409026 [db/db_impl/db_impl_open.cc:1428] Recovering log #14 mode 2
+2026/09/29-12:53:07.071735 1409026 [db/db_impl/db_impl_open.cc:1402] Recovered to log #14 next seq #72057594037927935
+2026/09/29-12:53:07.073190 1409026 EVENT_LOG_v1 {"time_micros": 1790700787073185, "job": 1, "event": "recovery_finished", "status": "OK"}
+2026/09/29-12:53:07.077289 1409026 [db/version_set.cc:6071] Created manifest 22, compacted+appended from 969 to 585
+2026/09/29-12:53:07.082506 1409026 [db/db_impl/db_impl_open.cc:2902] SstFileManager instance 0x195fc990
+2026/09/29-12:53:07.083548 1409026 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000014.log immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 185633, max_trash_db_ratio 0.250000
+2026/09/29-12:53:07.084246 1409026 DB pointer 0x1960ae80
+2026/09/29-12:53:07.084669 1409075 [db/db_impl/db_impl.cc:1532] ------- DUMPING STATS -------
+2026/09/29-12:53:07.084695 1409075 [db/db_impl/db_impl.cc:1534] 
+** DB Stats **
+Uptime(secs): 0.0 total, 0.0 interval
+Cumulative writes: 0 writes, 0 keys, 0 commit groups, 0.0 writes per commit group, ingest: 0.00 GB, 0.00 MB/s
+Cumulative WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 0 writes, 0 keys, 0 commit groups, 0.0 writes per commit group, ingest: 0.00 MB, 0.00 MB/s
+Interval WAL: 0 writes, 0 syncs, 0.00 writes per sync, written: 0.00 GB, 0.00 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+
+** Compaction Stats [default] **
+Level    Files   Size     Score Read(GB)  Rn(GB) Rnp1(GB) Write(GB) WPreComp(GB) Wnew(GB) Moved(GB) W-Amp Rd(MB/s) Wr(MB/s) Comp(sec) CompMergeCPU(sec) Comp(cnt) Avg(sec) KeyIn KeyDrop Rblob(GB) Wblob(GB)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  L0      1/0      9.73 KB   0.2      0.0     0.0      0.0       0.0       0.0      0.0       0.0   0.0      0.0      0.0      0.00              0.00         0    0.000       0      0       0.0       0.0
+  L3      3/0    171.55 KB   0.0      0.0     0.0      0.0       0.0       0.0      0.0       0.0   0.0      0.0      0.0      0.00              0.00         0    0.000       0      0       0.0       0.0
+ Sum      4/0    181.28 KB   0.0      0.0     0.0      0.0       0.0       0.0      0.0       0.0   0.0      0.0      0.0      0.00              0.00         0    0.000       0      0       0.0       0.0
+ Int      0/0      0.00 KB   0.0      0.0     0.0      0.0       0.0       0.0      0.0       0.0   0.0      0.0      0.0      0.00              0.00         0    0.000       0      0       0.0       0.0
+
+** Compaction Stats [default] **
+Priority    Files   Size     Score Read(GB)  Rn(GB) Rnp1(GB) Write(GB) WPreComp(GB) Wnew(GB) Moved(GB) W-Amp Rd(MB/s) Wr(MB/s) Comp(sec) CompMergeCPU(sec) Comp(cnt) Avg(sec) KeyIn KeyDrop Rblob(GB) Wblob(GB)
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Blob file count: 0, total size: 0.0 GB, garbage size: 0.0 GB, space amp: 0.0
+
+Uptime(secs): 0.0 total, 0.0 interval
+Flush(GB): cumulative 0.000, interval 0.000
+AddFile(GB): cumulative 0.000, interval 0.000
+AddFile(Total Files): cumulative 0, interval 0
+AddFile(L0 Files): cumulative 0, interval 0
+AddFile(Keys): cumulative 0, interval 0
+Cumulative compaction: 0.00 GB write, 0.00 MB/s write, 0.00 GB read, 0.00 MB/s read, 0.0 seconds
+Interval compaction: 0.00 GB write, 0.00 MB/s write, 0.00 GB read, 0.00 MB/s read, 0.0 seconds
+Estimated pending compaction bytes: 0
+Write Stall (count): cf-l0-file-count-limit-delays-with-ongoing-compaction: 0, cf-l0-file-count-limit-stops-with-ongoing-compaction: 0, l0-file-count-limit-delays: 0, l0-file-count-limit-stops: 0, memtable-limit-delays: 0, memtable-limit-stops: 0, pending-compaction-bytes-delays: 0, pending-compaction-bytes-stops: 0, total-delays: 0, total-stops: 0
+Block cache LRUCache@0x196034e0#1409026 capacity: 4.00 MB seed: 1445900239 usage: 0.09 KB table_size: 128 occupancy: 1 collections: 1 last_copies: 0 last_secs: 5.1e-05 secs_since: 0
+Block cache entry stats(count,size,portion): Misc(1,0.00 KB,0%)
+
+** File Read Latency Histogram By Level [default] **
+2026/09/29-12:53:07.982165 1409094 [db/db_impl/db_impl_write.cc:3249] [default] New memtable created with log file: #25. Immutable memtables: 0.
+2026/09/29-12:53:07.982232 1409029 (Original Log Time 2026/09/29-12:53:07.982207) [db/db_impl/db_impl_compaction_flush.cc:3893] Calling FlushMemTableToOutputFile with column family [default], flush slots available 1, compaction slots available 1, flush slots scheduled 1, compaction slots scheduled 0
+2026/09/29-12:53:07.982240 1409029 [db/flush_job.cc:935] [default] [JOB 3] Flushing memtable id 1 with next log file: 25, marked_for_flush: 0
+2026/09/29-12:53:07.982258 1409029 EVENT_LOG_v1 {"time_micros": 1790700787982248, "job": 3, "event": "flush_started", "num_memtables": 1, "total_num_input_entries": 207, "num_deletes": 0, "total_data_size": 58581, "memory_usage": 66008, "num_range_deletes": 0, "flush_reason": "Write Buffer Full"}
+2026/09/29-12:53:07.982261 1409029 [db/flush_job.cc:994] [default] [JOB 3] Level-0 flush table #26: started
+2026/09/29-12:53:07.985471 1409029 EVENT_LOG_v1 {"time_micros": 1790700787985439, "cf_name": "default", "job": 3, "event": "table_file_creation", "file_number": 26, "file_size": 33506, "file_checksum": "", "file_checksum_func_name": "Unknown", "smallest_seqno": 2001, "largest_seqno": 2207, "table_properties": {"data_size": 31755, "index_size": 188, "index_partitions": 0, "top_level_index_size": 0, "index_key_is_user_key": 1, "index_value_is_delta_encoded": 1, "filter_size": 261, "raw_key_size": 4440, "raw_average_key_size": 24, "raw_value_size": 47360, "raw_average_value_size": 256, "num_data_blocks": 14, "num_entries": 185, "num_filter_entries": 185, "num_deletions": 0, "num_merge_operands": 0, "num_range_deletions": 0, "format_version": 6, "fixed_key_len": 0, "filter_policy": "bloomfilter", "column_family_name": "default", "column_family_id": 0, "comparator": "leveldb.BytewiseComparator", "user_defined_timestamps_persisted": 1, "key_largest_seqno": 2207, "key_smallest_seqno": 2001, "merge_operator": "nullptr", "prefix_extractor_name": "nullptr", "property_collectors": "[]", "compression": "LZ4", "compression_options": "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; max_dict_buffer_bytes=0; use_zstd_dict_trainer=1; max_compressed_bytes_per_kb=896; checksum=0; _type=4; ", "creation_time": 1790700787, "oldest_key_time": 1790700787, "newest_key_time": 1790700787, "file_creation_time": 1790700787, "slow_compression_estimated_data_size": 0, "fast_compression_estimated_data_size": 0, "db_id": "48ae4f6b-53d3-48a2-9393-f1b69d6ca093", "db_session_id": "WG2NDWKR0IVSZ1F6IW7F", "orig_file_number": 26, "seqno_to_time_mapping": "N/A"}, "status": "OK"}
+2026/09/29-12:53:07.985501 1409029 [db/flush_job.cc:1167] [default] [JOB 3] Flush lasted 3272 microseconds, and 1185 cpu microseconds.
+2026/09/29-12:53:07.986821 1409029 (Original Log Time 2026/09/29-12:53:07.985491) [db/flush_job.cc:1105] [default] [JOB 3] Level-0 flush table #26: 33506 bytes OK  
+2026/09/29-12:53:07.986825 1409029 (Original Log Time 2026/09/29-12:53:07.985505) [db/memtable_list.cc:670] [default] Level-0 commit flush result of table #26 started
+2026/09/29-12:53:07.986827 1409029 (Original Log Time 2026/09/29-12:53:07.985868) [db/memtable_list.cc:874] [default] Level-0 commit flush result of table #26: memtable #1 done
+2026/09/29-12:53:07.986830 1409029 (Original Log Time 2026/09/29-12:53:07.985879) EVENT_LOG_v1 {"time_micros": 1790700787985875, "job": 3, "event": "flush_finished", "output_compression": "LZ4", "lsm_state": [2, 0, 0, 3], "immutable_memtables": 0}
+2026/09/29-12:53:07.986832 1409029 (Original Log Time 2026/09/29-12:53:07.985893) [db/db_impl/db_impl_compaction_flush.cc:432] [default] Level summary: base level 3 level multiplier 10.00 max bytes base 262144 files[2 0 0 3] max score 0.50, estimated pending compaction bytes 0
+2026/09/29-12:53:07.986837 1409029 [db/db_impl/db_impl_files.cc:598] [JOB 3] Try to delete WAL files size 59616, prev total WAL file size 60192, number of live WAL files 2.
+2026/09/29-12:53:07.987308 1409029 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000021.log immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 219139, max_trash_db_ratio 0.250000
+2026/09/29-12:53:08.479592 1409114 [db/db_impl/db_impl_write.cc:3249] [default] New memtable created with log file: #27. Immutable memtables: 0.
+2026/09/29-12:53:08.479641 1409029 (Original Log Time 2026/09/29-12:53:08.479628) [db/db_impl/db_impl_compaction_flush.cc:3893] Calling FlushMemTableToOutputFile with column family [default], flush slots available 1, compaction slots available 1, flush slots scheduled 1, compaction slots scheduled 0
+2026/09/29-12:53:08.479646 1409029 [db/flush_job.cc:935] [default] [JOB 4] Flushing memtable id 2 with next log file: 27, marked_for_flush: 0
+2026/09/29-12:53:08.479658 1409029 EVENT_LOG_v1 {"time_micros": 1790700788479653, "job": 4, "event": "flush_started", "num_memtables": 1, "total_num_input_entries": 207, "num_deletes": 0, "total_data_size": 58581, "memory_usage": 65984, "num_range_deletes": 0, "flush_reason": "Write Buffer Full"}
+2026/09/29-12:53:08.479660 1409029 [db/flush_job.cc:994] [default] [JOB 4] Level-0 flush table #28: started
+2026/09/29-12:53:08.482526 1409029 EVENT_LOG_v1 {"time_micros": 1790700788482494, "cf_name": "default", "job": 4, "event": "table_file_creation", "file_number": 28, "file_size": 34323, "file_checksum": "", "file_checksum_func_name": "Unknown", "smallest_seqno": 2208, "largest_seqno": 2414, "table_properties": {"data_size": 32574, "index_size": 186, "index_partitions": 0, "top_level_index_size": 0, "index_key_is_user_key": 1, "index_value_is_delta_encoded": 1, "filter_size": 261, "raw_key_size": 4560, "raw_average_key_size": 24, "raw_value_size": 48640, "raw_average_value_size": 256, "num_data_blocks": 14, "num_entries": 190, "num_filter_entries": 190, "num_deletions": 0, "num_merge_operands": 0, "num_range_deletions": 0, "format_version": 6, "fixed_key_len": 0, "filter_policy": "bloomfilter", "column_family_name": "default", "column_family_id": 0, "comparator": "leveldb.BytewiseComparator", "user_defined_timestamps_persisted": 1, "key_largest_seqno": 2414, "key_smallest_seqno": 2208, "merge_operator": "nullptr", "prefix_extractor_name": "nullptr", "property_collectors": "[]", "compression": "LZ4", "compression_options": "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; max_dict_buffer_bytes=0; use_zstd_dict_trainer=1; max_compressed_bytes_per_kb=896; checksum=0; _type=4; ", "creation_time": 1790700787, "oldest_key_time": 1790700788, "newest_key_time": 1790700787, "file_creation_time": 1790700788, "slow_compression_estimated_data_size": 0, "fast_compression_estimated_data_size": 0, "db_id": "48ae4f6b-53d3-48a2-9393-f1b69d6ca093", "db_session_id": "WG2NDWKR0IVSZ1F6IW7F", "orig_file_number": 28, "seqno_to_time_mapping": "N/A"}, "status": "OK"}
+2026/09/29-12:53:08.482549 1409029 [db/flush_job.cc:1167] [default] [JOB 4] Flush lasted 2911 microseconds, and 864 cpu microseconds.
+2026/09/29-12:53:08.483838 1409029 (Original Log Time 2026/09/29-12:53:08.482540) [db/flush_job.cc:1105] [default] [JOB 4] Level-0 flush table #28: 34323 bytes OK  
+2026/09/29-12:53:08.483842 1409029 (Original Log Time 2026/09/29-12:53:08.482552) [db/memtable_list.cc:670] [default] Level-0 commit flush result of table #28 started
+2026/09/29-12:53:08.483844 1409029 (Original Log Time 2026/09/29-12:53:08.482943) [db/memtable_list.cc:874] [default] Level-0 commit flush result of table #28: memtable #1 done
+2026/09/29-12:53:08.483845 1409029 (Original Log Time 2026/09/29-12:53:08.482953) EVENT_LOG_v1 {"time_micros": 1790700788482949, "job": 4, "event": "flush_finished", "output_compression": "LZ4", "lsm_state": [3, 0, 0, 3], "immutable_memtables": 0}
+2026/09/29-12:53:08.483847 1409029 (Original Log Time 2026/09/29-12:53:08.482965) [db/db_impl/db_impl_compaction_flush.cc:432] [default] Level summary: base level 3 level multiplier 10.00 max bytes base 262144 files[3 0 0 3] max score 0.75, estimated pending compaction bytes 0
+2026/09/29-12:53:08.483851 1409029 [db/db_impl/db_impl_files.cc:598] [JOB 4] Try to delete WAL files size 59616, prev total WAL file size 60192, number of live WAL files 2.
+2026/09/29-12:53:08.484471 1409029 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000025.log immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 253462, max_trash_db_ratio 0.250000
+2026/09/29-12:53:09.065955 1409114 [db/db_impl/db_impl_write.cc:3249] [default] New memtable created with log file: #29. Immutable memtables: 0.
+2026/09/29-12:53:09.065993 1409029 (Original Log Time 2026/09/29-12:53:09.065981) [db/db_impl/db_impl_compaction_flush.cc:3893] Calling FlushMemTableToOutputFile with column family [default], flush slots available 1, compaction slots available 1, flush slots scheduled 1, compaction slots scheduled 0
+2026/09/29-12:53:09.065998 1409029 [db/flush_job.cc:935] [default] [JOB 5] Flushing memtable id 3 with next log file: 29, marked_for_flush: 0
+2026/09/29-12:53:09.066010 1409029 EVENT_LOG_v1 {"time_micros": 1790700789066006, "job": 5, "event": "flush_started", "num_memtables": 1, "total_num_input_entries": 207, "num_deletes": 0, "total_data_size": 58581, "memory_usage": 65984, "num_range_deletes": 0, "flush_reason": "Write Buffer Full"}
+2026/09/29-12:53:09.066013 1409029 [db/flush_job.cc:994] [default] [JOB 5] Level-0 flush table #30: started
+2026/09/29-12:53:09.069321 1409029 EVENT_LOG_v1 {"time_micros": 1790700789069290, "cf_name": "default", "job": 5, "event": "table_file_creation", "file_number": 30, "file_size": 33805, "file_checksum": "", "file_checksum_func_name": "Unknown", "smallest_seqno": 2415, "largest_seqno": 2621, "table_properties": {"data_size": 32049, "index_size": 193, "index_partitions": 0, "top_level_index_size": 0, "index_key_is_user_key": 1, "index_value_is_delta_encoded": 1, "filter_size": 261, "raw_key_size": 4488, "raw_average_key_size": 24, "raw_value_size": 47872, "raw_average_value_size": 256, "num_data_blocks": 14, "num_entries": 187, "num_filter_entries": 187, "num_deletions": 0, "num_merge_operands": 0, "num_range_deletions": 0, "format_version": 6, "fixed_key_len": 0, "filter_policy": "bloomfilter", "column_family_name": "default", "column_family_id": 0, "comparator": "leveldb.BytewiseComparator", "user_defined_timestamps_persisted": 1, "key_largest_seqno": 2621, "key_smallest_seqno": 2415, "merge_operator": "nullptr", "prefix_extractor_name": "nullptr", "property_collectors": "[]", "compression": "LZ4", "compression_options": "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; max_dict_buffer_bytes=0; use_zstd_dict_trainer=1; max_compressed_bytes_per_kb=896; checksum=0; _type=4; ", "creation_time": 1790700788, "oldest_key_time": 1790700789, "newest_key_time": 1790700788, "file_creation_time": 1790700789, "slow_compression_estimated_data_size": 0, "fast_compression_estimated_data_size": 0, "db_id": "48ae4f6b-53d3-48a2-9393-f1b69d6ca093", "db_session_id": "WG2NDWKR0IVSZ1F6IW7F", "orig_file_number": 30, "seqno_to_time_mapping": "N/A"}, "status": "OK"}
+2026/09/29-12:53:09.069344 1409029 [db/flush_job.cc:1167] [default] [JOB 5] Flush lasted 3352 microseconds, and 1035 cpu microseconds.
+2026/09/29-12:53:09.070133 1409028 [db/compaction/compaction_job.cc:2850] [default] [JOB 6] Compacting 4@0 + 3@3 files to L3, score 1.00
+2026/09/29-12:53:09.070156 1409028 [db/compaction/compaction_job.cc:2856] [default]: Compaction start summary: Base version 5 Base level 0, inputs: [30(33KB) 28(33KB) 26(32KB) 16(9965B)], [15(67KB) 17(67KB) 18(37KB)]
+2026/09/29-12:53:09.070188 1409028 EVENT_LOG_v1 {"time_micros": 1790700789070169, "job": 6, "event": "compaction_started", "cf_name": "default", "compaction_reason": "LevelL0FilesNum", "files_L0": [30, 28, 26, 16], "files_L3": [15, 17, 18], "score": 1, "input_data_size": 287267, "oldest_snapshot_seqno": -1}
+2026/09/29-12:53:09.070681 1409029 (Original Log Time 2026/09/29-12:53:09.069335) [db/flush_job.cc:1105] [default] [JOB 5] Level-0 flush table #30: 33805 bytes OK  
+2026/09/29-12:53:09.070685 1409029 (Original Log Time 2026/09/29-12:53:09.069347) [db/memtable_list.cc:670] [default] Level-0 commit flush result of table #30 started
+2026/09/29-12:53:09.070687 1409029 (Original Log Time 2026/09/29-12:53:09.069723) [db/memtable_list.cc:874] [default] Level-0 commit flush result of table #30: memtable #1 done
+2026/09/29-12:53:09.070689 1409029 (Original Log Time 2026/09/29-12:53:09.069734) EVENT_LOG_v1 {"time_micros": 1790700789069730, "job": 5, "event": "flush_finished", "output_compression": "LZ4", "lsm_state": [4, 0, 0, 3], "immutable_memtables": 0}
+2026/09/29-12:53:09.070691 1409029 (Original Log Time 2026/09/29-12:53:09.069748) [db/db_impl/db_impl_compaction_flush.cc:432] [default] Level summary: base level 3 level multiplier 10.00 max bytes base 262144 files[4 0 0 3] max score 1.00, estimated pending compaction bytes 111599
+2026/09/29-12:53:09.070696 1409029 [db/db_impl/db_impl_files.cc:598] [JOB 5] Try to delete WAL files size 59616, prev total WAL file size 60480, number of live WAL files 2.
+2026/09/29-12:53:09.071558 1409029 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000027.log immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 287267, max_trash_db_ratio 0.250000
+2026/09/29-12:53:09.074496 1409028 [db/compaction/compaction_job.cc:2196] [default] [JOB 6] Generated table #31: 393 keys, 68789 bytes, temperature: kUnknown
+2026/09/29-12:53:09.074566 1409028 EVENT_LOG_v1 {"time_micros": 1790700789074519, "cf_name": "default", "job": 6, "event": "table_file_creation", "file_number": 31, "file_size": 68789, "file_checksum": "", "file_checksum_func_name": "Unknown", "smallest_seqno": 0, "largest_seqno": 0, "table_properties": {"data_size": 66593, "index_size": 383, "index_partitions": 0, "top_level_index_size": 0, "index_key_is_user_key": 1, "index_value_is_delta_encoded": 1, "filter_size": 517, "raw_key_size": 9432, "raw_average_key_size": 24, "raw_value_size": 100608, "raw_average_value_size": 256, "num_data_blocks": 29, "num_entries": 393, "num_filter_entries": 393, "num_deletions": 0, "num_merge_operands": 0, "num_range_deletions": 0, "format_version": 6, "fixed_key_len": 0, "filter_policy": "bloomfilter", "column_family_name": "default", "column_family_id": 0, "comparator": "leveldb.BytewiseComparator", "user_defined_timestamps_persisted": 1, "key_largest_seqno": 0, "key_smallest_seqno": 0, "merge_operator": "nullptr", "prefix_extractor_name": "nullptr", "property_collectors": "[]", "compression": "LZ4", "compression_options": "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; max_dict_buffer_bytes=0; use_zstd_dict_trainer=1; max_compressed_bytes_per_kb=896; checksum=0; _type=4; ", "creation_time": 1790700786, "oldest_key_time": 1790700789, "newest_key_time": 0, "file_creation_time": 1790700789, "slow_compression_estimated_data_size": 0, "fast_compression_estimated_data_size": 0, "db_id": "48ae4f6b-53d3-48a2-9393-f1b69d6ca093", "db_session_id": "WG2NDWKR0IVSZ1F6IW7F", "orig_file_number": 31, "seqno_to_time_mapping": "N/A"}, "status": "OK"}
+2026/09/29-12:53:09.078421 1409028 [db/compaction/compaction_job.cc:2196] [default] [JOB 6] Generated table #32: 393 keys, 68734 bytes, temperature: kUnknown
+2026/09/29-12:53:09.078456 1409028 EVENT_LOG_v1 {"time_micros": 1790700789078431, "cf_name": "default", "job": 6, "event": "table_file_creation", "file_number": 32, "file_size": 68734, "file_checksum": "", "file_checksum_func_name": "Unknown", "smallest_seqno": 0, "largest_seqno": 0, "table_properties": {"data_size": 66537, "index_size": 384, "index_partitions": 0, "top_level_index_size": 0, "index_key_is_user_key": 1, "index_value_is_delta_encoded": 1, "filter_size": 517, "raw_key_size": 9432, "raw_average_key_size": 24, "raw_value_size": 100608, "raw_average_value_size": 256, "num_data_blocks": 29, "num_entries": 393, "num_filter_entries": 393, "num_deletions": 0, "num_merge_operands": 0, "num_range_deletions": 0, "format_version": 6, "fixed_key_len": 0, "filter_policy": "bloomfilter", "column_family_name": "default", "column_family_id": 0, "comparator": "leveldb.BytewiseComparator", "user_defined_timestamps_persisted": 1, "key_largest_seqno": 0, "key_smallest_seqno": 0, "merge_operator": "nullptr", "prefix_extractor_name": "nullptr", "property_collectors": "[]", "compression": "LZ4", "compression_options": "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; max_dict_buffer_bytes=0; use_zstd_dict_trainer=1; max_compressed_bytes_per_kb=896; checksum=0; _type=4; ", "creation_time": 1790700786, "oldest_key_time": 1790700789, "newest_key_time": 0, "file_creation_time": 1790700789, "slow_compression_estimated_data_size": 0, "fast_compression_estimated_data_size": 0, "db_id": "48ae4f6b-53d3-48a2-9393-f1b69d6ca093", "db_session_id": "WG2NDWKR0IVSZ1F6IW7F", "orig_file_number": 32, "seqno_to_time_mapping": "N/A"}, "status": "OK"}
+2026/09/29-12:53:09.081345 1409028 [db/compaction/compaction_job.cc:2196] [default] [JOB 6] Generated table #33: 214 keys, 38121 bytes, temperature: kUnknown
+2026/09/29-12:53:09.081381 1409028 EVENT_LOG_v1 {"time_micros": 1790700789081356, "cf_name": "default", "job": 6, "event": "table_file_creation", "file_number": 33, "file_size": 38121, "file_checksum": "", "file_checksum_func_name": "Unknown", "smallest_seqno": 0, "largest_seqno": 0, "table_properties": {"data_size": 36280, "index_size": 220, "index_partitions": 0, "top_level_index_size": 0, "index_key_is_user_key": 1, "index_value_is_delta_encoded": 1, "filter_size": 325, "raw_key_size": 5136, "raw_average_key_size": 24, "raw_value_size": 54784, "raw_average_value_size": 256, "num_data_blocks": 16, "num_entries": 214, "num_filter_entries": 214, "num_deletions": 0, "num_merge_operands": 0, "num_range_deletions": 0, "format_version": 6, "fixed_key_len": 0, "filter_policy": "bloomfilter", "column_family_name": "default", "column_family_id": 0, "comparator": "leveldb.BytewiseComparator", "user_defined_timestamps_persisted": 1, "key_largest_seqno": 0, "key_smallest_seqno": 0, "merge_operator": "nullptr", "prefix_extractor_name": "nullptr", "property_collectors": "[]", "compression": "LZ4", "compression_options": "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; max_dict_buffer_bytes=0; use_zstd_dict_trainer=1; max_compressed_bytes_per_kb=896; checksum=0; _type=4; ", "creation_time": 1790700786, "oldest_key_time": 1790700789, "newest_key_time": 0, "file_creation_time": 1790700789, "slow_compression_estimated_data_size": 0, "fast_compression_estimated_data_size": 0, "db_id": "48ae4f6b-53d3-48a2-9393-f1b69d6ca093", "db_session_id": "WG2NDWKR0IVSZ1F6IW7F", "orig_file_number": 33, "seqno_to_time_mapping": "N/A"}, "status": "OK"}
+2026/09/29-12:53:09.083686 1409028 (Original Log Time 2026/09/29-12:53:09.083223) [db/compaction/compaction_job.cc:2360] [default] [JOB 6] Compacted 4@0 + 3@3 files to L3 => 175644 bytes
+2026/09/29-12:53:09.083698 1409028 (Original Log Time 2026/09/29-12:53:09.083643) [db/compaction/compaction_job.cc:1238] [default] compacted to: base level 3 level multiplier 10.00 max bytes base 262144 files[0 0 0 3] max score 0.00, estimated pending compaction bytes 0, MB/sec: 25.6 rd, 15.7 wr, level 3, files in(4, 3) filtered(0, 0) out(3 +0 blob) MB in(0.1, 0.2 +0.0 blob) filtered(0.0, 0.0) out(0.2 +0.0 blob), read-write-amplify(4.1) write-amplify(1.6) OK, records in: 1612, records dropped: 612 output_compression: LZ4
+2026/09/29-12:53:09.083702 1409028 (Original Log Time 2026/09/29-12:53:09.083664) EVENT_LOG_v1 {"time_micros": 1790700789083653, "job": 6, "event": "compaction_finished", "compaction_time_micros": 11210, "compaction_time_cpu_micros": 3381, "output_level": 3, "num_output_files": 3, "total_output_size": 175644, "num_input_records": 1612, "num_output_records": 1000, "num_subcompactions": 1, "output_compression": "LZ4", "num_single_delete_mismatches": 0, "num_single_delete_fallthrough": 0, "lsm_state": [0, 0, 0, 3]}
+2026/09/29-12:53:09.085185 1409028 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000015.sst immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 462911, max_trash_db_ratio 0.250000
+2026/09/29-12:53:09.085195 1409028 EVENT_LOG_v1 {"time_micros": 1790700789085192, "job": 6, "event": "table_file_deletion", "file_number": 15, "status": "OK"}
+2026/09/29-12:53:09.086002 1409028 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000016.sst immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 394097, max_trash_db_ratio 0.250000
+2026/09/29-12:53:09.086009 1409028 EVENT_LOG_v1 {"time_micros": 1790700789086007, "job": 6, "event": "table_file_deletion", "file_number": 16, "status": "OK"}
+2026/09/29-12:53:09.086632 1409028 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000017.sst immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 384132, max_trash_db_ratio 0.250000
+2026/09/29-12:53:09.086644 1409028 EVENT_LOG_v1 {"time_micros": 1790700789086642, "job": 6, "event": "table_file_deletion", "file_number": 17, "status": "OK"}
+2026/09/29-12:53:09.087262 1409028 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000018.sst immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 315392, max_trash_db_ratio 0.250000
+2026/09/29-12:53:09.087273 1409028 EVENT_LOG_v1 {"time_micros": 1790700789087271, "job": 6, "event": "table_file_deletion", "file_number": 18, "status": "OK"}
+2026/09/29-12:53:09.087746 1409028 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000026.sst immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 277278, max_trash_db_ratio 0.250000
+2026/09/29-12:53:09.087752 1409028 EVENT_LOG_v1 {"time_micros": 1790700789087751, "job": 6, "event": "table_file_deletion", "file_number": 26, "status": "OK"}
+2026/09/29-12:53:09.088210 1409028 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000028.sst immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 243772, max_trash_db_ratio 0.250000
+2026/09/29-12:53:09.088216 1409028 EVENT_LOG_v1 {"time_micros": 1790700789088214, "job": 6, "event": "table_file_deletion", "file_number": 28, "status": "OK"}
+2026/09/29-12:53:09.088727 1409028 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000030.sst immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 209449, max_trash_db_ratio 0.250000
+2026/09/29-12:53:09.088738 1409028 EVENT_LOG_v1 {"time_micros": 1790700789088736, "job": 6, "event": "table_file_deletion", "file_number": 30, "status": "OK"}
+2026/09/29-12:53:09.579243 1409123 [db/db_impl/db_impl_write.cc:3249] [default] New memtable created with log file: #34. Immutable memtables: 0.
+2026/09/29-12:53:09.579283 1409029 (Original Log Time 2026/09/29-12:53:09.579271) [db/db_impl/db_impl_compaction_flush.cc:3893] Calling FlushMemTableToOutputFile with column family [default], flush slots available 1, compaction slots available 1, flush slots scheduled 1, compaction slots scheduled 0
+2026/09/29-12:53:09.579288 1409029 [db/flush_job.cc:935] [default] [JOB 7] Flushing memtable id 4 with next log file: 34, marked_for_flush: 0
+2026/09/29-12:53:09.579300 1409029 EVENT_LOG_v1 {"time_micros": 1790700789579296, "job": 7, "event": "flush_started", "num_memtables": 1, "total_num_input_entries": 207, "num_deletes": 0, "total_data_size": 58581, "memory_usage": 65976, "num_range_deletes": 0, "flush_reason": "Write Buffer Full"}
+2026/09/29-12:53:09.579303 1409029 [db/flush_job.cc:994] [default] [JOB 7] Level-0 flush table #35: started
+2026/09/29-12:53:09.582504 1409029 EVENT_LOG_v1 {"time_micros": 1790700789582475, "cf_name": "default", "job": 7, "event": "table_file_creation", "file_number": 35, "file_size": 35570, "file_checksum": "", "file_checksum_func_name": "Unknown", "smallest_seqno": 2622, "largest_seqno": 2828, "table_properties": {"data_size": 33808, "index_size": 199, "index_partitions": 0, "top_level_index_size": 0, "index_key_is_user_key": 1, "index_value_is_delta_encoded": 1, "filter_size": 261, "raw_key_size": 4728, "raw_average_key_size": 24, "raw_value_size": 50432, "raw_average_value_size": 256, "num_data_blocks": 15, "num_entries": 197, "num_filter_entries": 197, "num_deletions": 0, "num_merge_operands": 0, "num_range_deletions": 0, "format_version": 6, "fixed_key_len": 0, "filter_policy": "bloomfilter", "column_family_name": "default", "column_family_id": 0, "comparator": "leveldb.BytewiseComparator", "user_defined_timestamps_persisted": 1, "key_largest_seqno": 2828, "key_smallest_seqno": 2622, "merge_operator": "nullptr", "prefix_extractor_name": "nullptr", "property_collectors": "[]", "compression": "LZ4", "compression_options": "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; max_dict_buffer_bytes=0; use_zstd_dict_trainer=1; max_compressed_bytes_per_kb=896; checksum=0; _type=4; ", "creation_time": 1790700789, "oldest_key_time": 1790700789, "newest_key_time": 1790700789, "file_creation_time": 1790700789, "slow_compression_estimated_data_size": 0, "fast_compression_estimated_data_size": 0, "db_id": "48ae4f6b-53d3-48a2-9393-f1b69d6ca093", "db_session_id": "WG2NDWKR0IVSZ1F6IW7F", "orig_file_number": 35, "seqno_to_time_mapping": "N/A"}, "status": "OK"}
+2026/09/29-12:53:09.582528 1409029 [db/flush_job.cc:1167] [default] [JOB 7] Flush lasted 3246 microseconds, and 1070 cpu microseconds.
+2026/09/29-12:53:09.583825 1409029 (Original Log Time 2026/09/29-12:53:09.582519) [db/flush_job.cc:1105] [default] [JOB 7] Level-0 flush table #35: 35570 bytes OK  
+2026/09/29-12:53:09.583830 1409029 (Original Log Time 2026/09/29-12:53:09.582531) [db/memtable_list.cc:670] [default] Level-0 commit flush result of table #35 started
+2026/09/29-12:53:09.583832 1409029 (Original Log Time 2026/09/29-12:53:09.582917) [db/memtable_list.cc:874] [default] Level-0 commit flush result of table #35: memtable #1 done
+2026/09/29-12:53:09.583834 1409029 (Original Log Time 2026/09/29-12:53:09.582927) EVENT_LOG_v1 {"time_micros": 1790700789582924, "job": 7, "event": "flush_finished", "output_compression": "LZ4", "lsm_state": [1, 0, 0, 3], "immutable_memtables": 0}
+2026/09/29-12:53:09.583837 1409029 (Original Log Time 2026/09/29-12:53:09.582939) [db/db_impl/db_impl_compaction_flush.cc:432] [default] Level summary: base level 3 level multiplier 10.00 max bytes base 262144 files[1 0 0 3] max score 0.25, estimated pending compaction bytes 0
+2026/09/29-12:53:09.583841 1409029 [db/db_impl/db_impl_files.cc:598] [JOB 7] Try to delete WAL files size 59616, prev total WAL file size 60192, number of live WAL files 2.
+2026/09/29-12:53:09.584290 1409029 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000029.log immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 211214, max_trash_db_ratio 0.250000
+2026/09/29-12:53:10.110208 1409123 [db/db_impl/db_impl_write.cc:3249] [default] New memtable created with log file: #36. Immutable memtables: 0.
+2026/09/29-12:53:10.110282 1409029 (Original Log Time 2026/09/29-12:53:10.110259) [db/db_impl/db_impl_compaction_flush.cc:3893] Calling FlushMemTableToOutputFile with column family [default], flush slots available 1, compaction slots available 1, flush slots scheduled 1, compaction slots scheduled 0
+2026/09/29-12:53:10.110292 1409029 [db/flush_job.cc:935] [default] [JOB 8] Flushing memtable id 5 with next log file: 36, marked_for_flush: 0
+2026/09/29-12:53:10.110315 1409029 EVENT_LOG_v1 {"time_micros": 1790700790110305, "job": 8, "event": "flush_started", "num_memtables": 1, "total_num_input_entries": 207, "num_deletes": 0, "total_data_size": 58581, "memory_usage": 65960, "num_range_deletes": 0, "flush_reason": "Write Buffer Full"}
+2026/09/29-12:53:10.110320 1409029 [db/flush_job.cc:994] [default] [JOB 8] Level-0 flush table #37: started
+2026/09/29-12:53:10.113271 1409029 EVENT_LOG_v1 {"time_micros": 1790700790113242, "cf_name": "default", "job": 8, "event": "table_file_creation", "file_number": 37, "file_size": 34139, "file_checksum": "", "file_checksum_func_name": "Unknown", "smallest_seqno": 2829, "largest_seqno": 3035, "table_properties": {"data_size": 32388, "index_size": 188, "index_partitions": 0, "top_level_index_size": 0, "index_key_is_user_key": 1, "index_value_is_delta_encoded": 1, "filter_size": 261, "raw_key_size": 4536, "raw_average_key_size": 24, "raw_value_size": 48384, "raw_average_value_size": 256, "num_data_blocks": 14, "num_entries": 189, "num_filter_entries": 189, "num_deletions": 0, "num_merge_operands": 0, "num_range_deletions": 0, "format_version": 6, "fixed_key_len": 0, "filter_policy": "bloomfilter", "column_family_name": "default", "column_family_id": 0, "comparator": "leveldb.BytewiseComparator", "user_defined_timestamps_persisted": 1, "key_largest_seqno": 3035, "key_smallest_seqno": 2829, "merge_operator": "nullptr", "prefix_extractor_name": "nullptr", "property_collectors": "[]", "compression": "LZ4", "compression_options": "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; max_dict_buffer_bytes=0; use_zstd_dict_trainer=1; max_compressed_bytes_per_kb=896; checksum=0; _type=4; ", "creation_time": 1790700789, "oldest_key_time": 1790700790, "newest_key_time": 1790700789, "file_creation_time": 1790700790, "slow_compression_estimated_data_size": 0, "fast_compression_estimated_data_size": 0, "db_id": "48ae4f6b-53d3-48a2-9393-f1b69d6ca093", "db_session_id": "WG2NDWKR0IVSZ1F6IW7F", "orig_file_number": 37, "seqno_to_time_mapping": "N/A"}, "status": "OK"}
+2026/09/29-12:53:10.113292 1409029 [db/flush_job.cc:1167] [default] [JOB 8] Flush lasted 3016 microseconds, and 849 cpu microseconds.
+2026/09/29-12:53:10.114594 1409029 (Original Log Time 2026/09/29-12:53:10.113284) [db/flush_job.cc:1105] [default] [JOB 8] Level-0 flush table #37: 34139 bytes OK  
+2026/09/29-12:53:10.114598 1409029 (Original Log Time 2026/09/29-12:53:10.113295) [db/memtable_list.cc:670] [default] Level-0 commit flush result of table #37 started
+2026/09/29-12:53:10.114600 1409029 (Original Log Time 2026/09/29-12:53:10.113720) [db/memtable_list.cc:874] [default] Level-0 commit flush result of table #37: memtable #1 done
+2026/09/29-12:53:10.114601 1409029 (Original Log Time 2026/09/29-12:53:10.113731) EVENT_LOG_v1 {"time_micros": 1790700790113727, "job": 8, "event": "flush_finished", "output_compression": "LZ4", "lsm_state": [2, 0, 0, 3], "immutable_memtables": 0}
+2026/09/29-12:53:10.114603 1409029 (Original Log Time 2026/09/29-12:53:10.113742) [db/db_impl/db_impl_compaction_flush.cc:432] [default] Level summary: base level 3 level multiplier 10.00 max bytes base 262144 files[2 0 0 3] max score 0.50, estimated pending compaction bytes 0
+2026/09/29-12:53:10.114607 1409029 [db/db_impl/db_impl_files.cc:598] [JOB 8] Try to delete WAL files size 59616, prev total WAL file size 60480, number of live WAL files 2.
+2026/09/29-12:53:10.115242 1409029 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000034.log immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 245353, max_trash_db_ratio 0.250000
+2026/09/29-12:53:10.658157 1409125 [db/db_impl/db_impl_write.cc:3249] [default] New memtable created with log file: #38. Immutable memtables: 0.
+2026/09/29-12:53:10.658195 1409029 (Original Log Time 2026/09/29-12:53:10.658183) [db/db_impl/db_impl_compaction_flush.cc:3893] Calling FlushMemTableToOutputFile with column family [default], flush slots available 1, compaction slots available 1, flush slots scheduled 1, compaction slots scheduled 0
+2026/09/29-12:53:10.658200 1409029 [db/flush_job.cc:935] [default] [JOB 9] Flushing memtable id 6 with next log file: 38, marked_for_flush: 0
+2026/09/29-12:53:10.658212 1409029 EVENT_LOG_v1 {"time_micros": 1790700790658208, "job": 9, "event": "flush_started", "num_memtables": 1, "total_num_input_entries": 207, "num_deletes": 0, "total_data_size": 58581, "memory_usage": 65984, "num_range_deletes": 0, "flush_reason": "Write Buffer Full"}
+2026/09/29-12:53:10.658215 1409029 [db/flush_job.cc:994] [default] [JOB 9] Level-0 flush table #39: started
+2026/09/29-12:53:10.661172 1409029 EVENT_LOG_v1 {"time_micros": 1790700790661140, "cf_name": "default", "job": 9, "event": "table_file_creation", "file_number": 39, "file_size": 34045, "file_checksum": "", "file_checksum_func_name": "Unknown", "smallest_seqno": 3037, "largest_seqno": 3242, "table_properties": {"data_size": 32294, "index_size": 188, "index_partitions": 0, "top_level_index_size": 0, "index_key_is_user_key": 1, "index_value_is_delta_encoded": 1, "filter_size": 261, "raw_key_size": 4512, "raw_average_key_size": 24, "raw_value_size": 48128, "raw_average_value_size": 256, "num_data_blocks": 14, "num_entries": 188, "num_filter_entries": 188, "num_deletions": 0, "num_merge_operands": 0, "num_range_deletions": 0, "format_version": 6, "fixed_key_len": 0, "filter_policy": "bloomfilter", "column_family_name": "default", "column_family_id": 0, "comparator": "leveldb.BytewiseComparator", "user_defined_timestamps_persisted": 1, "key_largest_seqno": 3242, "key_smallest_seqno": 3037, "merge_operator": "nullptr", "prefix_extractor_name": "nullptr", "property_collectors": "[]", "compression": "LZ4", "compression_options": "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; max_dict_buffer_bytes=0; use_zstd_dict_trainer=1; max_compressed_bytes_per_kb=896; checksum=0; _type=4; ", "creation_time": 1790700790, "oldest_key_time": 1790700790, "newest_key_time": 1790700790, "file_creation_time": 1790700790, "slow_compression_estimated_data_size": 0, "fast_compression_estimated_data_size": 0, "db_id": "48ae4f6b-53d3-48a2-9393-f1b69d6ca093", "db_session_id": "WG2NDWKR0IVSZ1F6IW7F", "orig_file_number": 39, "seqno_to_time_mapping": "N/A"}, "status": "OK"}
+2026/09/29-12:53:10.661193 1409029 [db/flush_job.cc:1167] [default] [JOB 9] Flush lasted 3001 microseconds, and 975 cpu microseconds.
+2026/09/29-12:53:10.662511 1409029 (Original Log Time 2026/09/29-12:53:10.661185) [db/flush_job.cc:1105] [default] [JOB 9] Level-0 flush table #39: 34045 bytes OK  
+2026/09/29-12:53:10.662516 1409029 (Original Log Time 2026/09/29-12:53:10.661197) [db/memtable_list.cc:670] [default] Level-0 commit flush result of table #39 started
+2026/09/29-12:53:10.662518 1409029 (Original Log Time 2026/09/29-12:53:10.661594) [db/memtable_list.cc:874] [default] Level-0 commit flush result of table #39: memtable #1 done
+2026/09/29-12:53:10.662520 1409029 (Original Log Time 2026/09/29-12:53:10.661616) EVENT_LOG_v1 {"time_micros": 1790700790661608, "job": 9, "event": "flush_finished", "output_compression": "LZ4", "lsm_state": [3, 0, 0, 3], "immutable_memtables": 0}
+2026/09/29-12:53:10.662522 1409029 (Original Log Time 2026/09/29-12:53:10.661640) [db/db_impl/db_impl_compaction_flush.cc:432] [default] Level summary: base level 3 level multiplier 10.00 max bytes base 262144 files[3 0 0 3] max score 0.75, estimated pending compaction bytes 0
+2026/09/29-12:53:10.662527 1409029 [db/db_impl/db_impl_files.cc:598] [JOB 9] Try to delete WAL files size 59616, prev total WAL file size 59904, number of live WAL files 2.
+2026/09/29-12:53:10.662991 1409029 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000036.log immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 279398, max_trash_db_ratio 0.250000
+2026/09/29-12:53:11.138095 1409126 [db/db_impl/db_impl_write.cc:3249] [default] New memtable created with log file: #40. Immutable memtables: 0.
+2026/09/29-12:53:11.138133 1409029 (Original Log Time 2026/09/29-12:53:11.138121) [db/db_impl/db_impl_compaction_flush.cc:3893] Calling FlushMemTableToOutputFile with column family [default], flush slots available 1, compaction slots available 1, flush slots scheduled 1, compaction slots scheduled 0
+2026/09/29-12:53:11.138138 1409029 [db/flush_job.cc:935] [default] [JOB 10] Flushing memtable id 7 with next log file: 40, marked_for_flush: 0
+2026/09/29-12:53:11.138150 1409029 EVENT_LOG_v1 {"time_micros": 1790700791138145, "job": 10, "event": "flush_started", "num_memtables": 1, "total_num_input_entries": 207, "num_deletes": 0, "total_data_size": 58581, "memory_usage": 65968, "num_range_deletes": 0, "flush_reason": "Write Buffer Full"}
+2026/09/29-12:53:11.138152 1409029 [db/flush_job.cc:994] [default] [JOB 10] Level-0 flush table #41: started
+2026/09/29-12:53:11.141079 1409029 EVENT_LOG_v1 {"time_micros": 1790700791141047, "cf_name": "default", "job": 10, "event": "table_file_creation", "file_number": 41, "file_size": 34015, "file_checksum": "", "file_checksum_func_name": "Unknown", "smallest_seqno": 3243, "largest_seqno": 3449, "table_properties": {"data_size": 32263, "index_size": 189, "index_partitions": 0, "top_level_index_size": 0, "index_key_is_user_key": 1, "index_value_is_delta_encoded": 1, "filter_size": 261, "raw_key_size": 4512, "raw_average_key_size": 24, "raw_value_size": 48128, "raw_average_value_size": 256, "num_data_blocks": 14, "num_entries": 188, "num_filter_entries": 188, "num_deletions": 0, "num_merge_operands": 0, "num_range_deletions": 0, "format_version": 6, "fixed_key_len": 0, "filter_policy": "bloomfilter", "column_family_name": "default", "column_family_id": 0, "comparator": "leveldb.BytewiseComparator", "user_defined_timestamps_persisted": 1, "key_largest_seqno": 3449, "key_smallest_seqno": 3243, "merge_operator": "nullptr", "prefix_extractor_name": "nullptr", "property_collectors": "[]", "compression": "LZ4", "compression_options": "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; max_dict_buffer_bytes=0; use_zstd_dict_trainer=1; max_compressed_bytes_per_kb=896; checksum=0; _type=4; ", "creation_time": 1790700790, "oldest_key_time": 1790700791, "newest_key_time": 1790700790, "file_creation_time": 1790700791, "slow_compression_estimated_data_size": 0, "fast_compression_estimated_data_size": 0, "db_id": "48ae4f6b-53d3-48a2-9393-f1b69d6ca093", "db_session_id": "WG2NDWKR0IVSZ1F6IW7F", "orig_file_number": 41, "seqno_to_time_mapping": "N/A"}, "status": "OK"}
+2026/09/29-12:53:11.141100 1409029 [db/flush_job.cc:1167] [default] [JOB 10] Flush lasted 2969 microseconds, and 802 cpu microseconds.
+2026/09/29-12:53:11.141979 1409028 [db/compaction/compaction_job.cc:2850] [default] [JOB 11] Compacting 4@0 + 3@3 files to L3, score 1.00
+2026/09/29-12:53:11.141989 1409028 [db/compaction/compaction_job.cc:2856] [default]: Compaction start summary: Base version 10 Base level 0, inputs: [41(33KB) 39(33KB) 37(33KB) 35(34KB)], [31(67KB) 32(67KB) 33(37KB)]
+2026/09/29-12:53:11.142003 1409028 EVENT_LOG_v1 {"time_micros": 1790700791141994, "job": 11, "event": "compaction_started", "cf_name": "default", "compaction_reason": "LevelL0FilesNum", "files_L0": [41, 39, 37, 35], "files_L3": [31, 32, 33], "score": 1, "input_data_size": 313413, "oldest_snapshot_seqno": -1}
+2026/09/29-12:53:11.142352 1409029 (Original Log Time 2026/09/29-12:53:11.141092) [db/flush_job.cc:1105] [default] [JOB 10] Level-0 flush table #41: 34015 bytes OK  
+2026/09/29-12:53:11.142356 1409029 (Original Log Time 2026/09/29-12:53:11.141104) [db/memtable_list.cc:670] [default] Level-0 commit flush result of table #41 started
+2026/09/29-12:53:11.142358 1409029 (Original Log Time 2026/09/29-12:53:11.141518) [db/memtable_list.cc:874] [default] Level-0 commit flush result of table #41: memtable #1 done
+2026/09/29-12:53:11.142360 1409029 (Original Log Time 2026/09/29-12:53:11.141528) EVENT_LOG_v1 {"time_micros": 1790700791141524, "job": 10, "event": "flush_finished", "output_compression": "LZ4", "lsm_state": [4, 0, 0, 3], "immutable_memtables": 0}
+2026/09/29-12:53:11.142363 1409029 (Original Log Time 2026/09/29-12:53:11.141542) [db/db_impl/db_impl_compaction_flush.cc:432] [default] Level summary: base level 3 level multiplier 10.00 max bytes base 262144 files[4 0 0 3] max score 1.00, estimated pending compaction bytes 137769
+2026/09/29-12:53:11.142367 1409029 [db/db_impl/db_impl_files.cc:598] [JOB 10] Try to delete WAL files size 59616, prev total WAL file size 60480, number of live WAL files 2.
+2026/09/29-12:53:11.143172 1409029 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000038.log immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 313413, max_trash_db_ratio 0.250000
+2026/09/29-12:53:11.146249 1409028 [db/compaction/compaction_job.cc:2196] [default] [JOB 11] Generated table #42: 393 keys, 68791 bytes, temperature: kUnknown
+2026/09/29-12:53:11.146288 1409028 EVENT_LOG_v1 {"time_micros": 1790700791146261, "cf_name": "default", "job": 11, "event": "table_file_creation", "file_number": 42, "file_size": 68791, "file_checksum": "", "file_checksum_func_name": "Unknown", "smallest_seqno": 0, "largest_seqno": 0, "table_properties": {"data_size": 66595, "index_size": 383, "index_partitions": 0, "top_level_index_size": 0, "index_key_is_user_key": 1, "index_value_is_delta_encoded": 1, "filter_size": 517, "raw_key_size": 9432, "raw_average_key_size": 24, "raw_value_size": 100608, "raw_average_value_size": 256, "num_data_blocks": 29, "num_entries": 393, "num_filter_entries": 393, "num_deletions": 0, "num_merge_operands": 0, "num_range_deletions": 0, "format_version": 6, "fixed_key_len": 0, "filter_policy": "bloomfilter", "column_family_name": "default", "column_family_id": 0, "comparator": "leveldb.BytewiseComparator", "user_defined_timestamps_persisted": 1, "key_largest_seqno": 0, "key_smallest_seqno": 0, "merge_operator": "nullptr", "prefix_extractor_name": "nullptr", "property_collectors": "[]", "compression": "LZ4", "compression_options": "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; max_dict_buffer_bytes=0; use_zstd_dict_trainer=1; max_compressed_bytes_per_kb=896; checksum=0; _type=4; ", "creation_time": 1790700786, "oldest_key_time": 1790700791, "newest_key_time": 0, "file_creation_time": 1790700791, "slow_compression_estimated_data_size": 0, "fast_compression_estimated_data_size": 0, "db_id": "48ae4f6b-53d3-48a2-9393-f1b69d6ca093", "db_session_id": "WG2NDWKR0IVSZ1F6IW7F", "orig_file_number": 42, "seqno_to_time_mapping": "N/A"}, "status": "OK"}
+2026/09/29-12:53:11.150479 1409028 [db/compaction/compaction_job.cc:2196] [default] [JOB 11] Generated table #43: 393 keys, 68707 bytes, temperature: kUnknown
+2026/09/29-12:53:11.150517 1409028 EVENT_LOG_v1 {"time_micros": 1790700791150491, "cf_name": "default", "job": 11, "event": "table_file_creation", "file_number": 43, "file_size": 68707, "file_checksum": "", "file_checksum_func_name": "Unknown", "smallest_seqno": 0, "largest_seqno": 0, "table_properties": {"data_size": 66510, "index_size": 384, "index_partitions": 0, "top_level_index_size": 0, "index_key_is_user_key": 1, "index_value_is_delta_encoded": 1, "filter_size": 517, "raw_key_size": 9432, "raw_average_key_size": 24, "raw_value_size": 100608, "raw_average_value_size": 256, "num_data_blocks": 29, "num_entries": 393, "num_filter_entries": 393, "num_deletions": 0, "num_merge_operands": 0, "num_range_deletions": 0, "format_version": 6, "fixed_key_len": 0, "filter_policy": "bloomfilter", "column_family_name": "default", "column_family_id": 0, "comparator": "leveldb.BytewiseComparator", "user_defined_timestamps_persisted": 1, "key_largest_seqno": 0, "key_smallest_seqno": 0, "merge_operator": "nullptr", "prefix_extractor_name": "nullptr", "property_collectors": "[]", "compression": "LZ4", "compression_options": "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; max_dict_buffer_bytes=0; use_zstd_dict_trainer=1; max_compressed_bytes_per_kb=896; checksum=0; _type=4; ", "creation_time": 1790700786, "oldest_key_time": 1790700791, "newest_key_time": 0, "file_creation_time": 1790700791, "slow_compression_estimated_data_size": 0, "fast_compression_estimated_data_size": 0, "db_id": "48ae4f6b-53d3-48a2-9393-f1b69d6ca093", "db_session_id": "WG2NDWKR0IVSZ1F6IW7F", "orig_file_number": 43, "seqno_to_time_mapping": "N/A"}, "status": "OK"}
+2026/09/29-12:53:11.153588 1409028 [db/compaction/compaction_job.cc:2196] [default] [JOB 11] Generated table #44: 214 keys, 38102 bytes, temperature: kUnknown
+2026/09/29-12:53:11.153625 1409028 EVENT_LOG_v1 {"time_micros": 1790700791153599, "cf_name": "default", "job": 11, "event": "table_file_creation", "file_number": 44, "file_size": 38102, "file_checksum": "", "file_checksum_func_name": "Unknown", "smallest_seqno": 0, "largest_seqno": 0, "table_properties": {"data_size": 36261, "index_size": 220, "index_partitions": 0, "top_level_index_size": 0, "index_key_is_user_key": 1, "index_value_is_delta_encoded": 1, "filter_size": 325, "raw_key_size": 5136, "raw_average_key_size": 24, "raw_value_size": 54784, "raw_average_value_size": 256, "num_data_blocks": 16, "num_entries": 214, "num_filter_entries": 214, "num_deletions": 0, "num_merge_operands": 0, "num_range_deletions": 0, "format_version": 6, "fixed_key_len": 0, "filter_policy": "bloomfilter", "column_family_name": "default", "column_family_id": 0, "comparator": "leveldb.BytewiseComparator", "user_defined_timestamps_persisted": 1, "key_largest_seqno": 0, "key_smallest_seqno": 0, "merge_operator": "nullptr", "prefix_extractor_name": "nullptr", "property_collectors": "[]", "compression": "LZ4", "compression_options": "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; max_dict_buffer_bytes=0; use_zstd_dict_trainer=1; max_compressed_bytes_per_kb=896; checksum=0; _type=4; ", "creation_time": 1790700786, "oldest_key_time": 1790700791, "newest_key_time": 0, "file_creation_time": 1790700791, "slow_compression_estimated_data_size": 0, "fast_compression_estimated_data_size": 0, "db_id": "48ae4f6b-53d3-48a2-9393-f1b69d6ca093", "db_session_id": "WG2NDWKR0IVSZ1F6IW7F", "orig_file_number": 44, "seqno_to_time_mapping": "N/A"}, "status": "OK"}
+2026/09/29-12:53:11.157442 1409028 (Original Log Time 2026/09/29-12:53:11.157009) [db/compaction/compaction_job.cc:2360] [default] [JOB 11] Compacted 4@0 + 3@3 files to L3 => 175600 bytes
+2026/09/29-12:53:11.157453 1409028 (Original Log Time 2026/09/29-12:53:11.157402) [db/compaction/compaction_job.cc:1238] [default] compacted to: base level 3 level multiplier 10.00 max bytes base 262144 files[0 0 0 3] max score 0.00, estimated pending compaction bytes 0, MB/sec: 26.9 rd, 15.1 wr, level 3, files in(4, 3) filtered(0, 0) out(3 +0 blob) MB in(0.1, 0.2 +0.0 blob) filtered(0.0, 0.0) out(0.2 +0.0 blob), read-write-amplify(3.5) write-amplify(1.3) OK, records in: 1762, records dropped: 762 output_compression: LZ4
+2026/09/29-12:53:11.157459 1409028 (Original Log Time 2026/09/29-12:53:11.157421) EVENT_LOG_v1 {"time_micros": 1790700791157411, "job": 11, "event": "compaction_finished", "compaction_time_micros": 11644, "compaction_time_cpu_micros": 3332, "output_level": 3, "num_output_files": 3, "total_output_size": 175600, "num_input_records": 1762, "num_output_records": 1000, "num_subcompactions": 1, "output_compression": "LZ4", "num_single_delete_mismatches": 0, "num_single_delete_fallthrough": 0, "lsm_state": [0, 0, 0, 3]}
+2026/09/29-12:53:11.159853 1409028 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000031.sst immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 489013, max_trash_db_ratio 0.250000
+2026/09/29-12:53:11.159863 1409028 EVENT_LOG_v1 {"time_micros": 1790700791159861, "job": 11, "event": "table_file_deletion", "file_number": 31, "status": "OK"}
+2026/09/29-12:53:11.160420 1409028 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000032.sst immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 420224, max_trash_db_ratio 0.250000
+2026/09/29-12:53:11.160426 1409028 EVENT_LOG_v1 {"time_micros": 1790700791160424, "job": 11, "event": "table_file_deletion", "file_number": 32, "status": "OK"}
+2026/09/29-12:53:11.160947 1409028 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000033.sst immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 351490, max_trash_db_ratio 0.250000
+2026/09/29-12:53:11.160953 1409028 EVENT_LOG_v1 {"time_micros": 1790700791160951, "job": 11, "event": "table_file_deletion", "file_number": 33, "status": "OK"}
+2026/09/29-12:53:11.161447 1409028 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000035.sst immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 313369, max_trash_db_ratio 0.250000
+2026/09/29-12:53:11.161452 1409028 EVENT_LOG_v1 {"time_micros": 1790700791161451, "job": 11, "event": "table_file_deletion", "file_number": 35, "status": "OK"}
+2026/09/29-12:53:11.161981 1409028 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000037.sst immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 277799, max_trash_db_ratio 0.250000
+2026/09/29-12:53:11.161993 1409028 EVENT_LOG_v1 {"time_micros": 1790700791161990, "job": 11, "event": "table_file_deletion", "file_number": 37, "status": "OK"}
+2026/09/29-12:53:11.162492 1409028 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000039.sst immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 243660, max_trash_db_ratio 0.250000
+2026/09/29-12:53:11.162497 1409028 EVENT_LOG_v1 {"time_micros": 1790700791162496, "job": 11, "event": "table_file_deletion", "file_number": 39, "status": "OK"}
+2026/09/29-12:53:11.162957 1409028 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000041.sst immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 209615, max_trash_db_ratio 0.250000
+2026/09/29-12:53:11.162968 1409028 EVENT_LOG_v1 {"time_micros": 1790700791162965, "job": 11, "event": "table_file_deletion", "file_number": 41, "status": "OK"}
+2026/09/29-12:53:11.685954 1409126 [db/db_impl/db_impl_write.cc:3249] [default] New memtable created with log file: #45. Immutable memtables: 0.
+2026/09/29-12:53:11.686000 1409029 (Original Log Time 2026/09/29-12:53:11.685988) [db/db_impl/db_impl_compaction_flush.cc:3893] Calling FlushMemTableToOutputFile with column family [default], flush slots available 1, compaction slots available 1, flush slots scheduled 1, compaction slots scheduled 0
+2026/09/29-12:53:11.686005 1409029 [db/flush_job.cc:935] [default] [JOB 12] Flushing memtable id 8 with next log file: 45, marked_for_flush: 0
+2026/09/29-12:53:11.686017 1409029 EVENT_LOG_v1 {"time_micros": 1790700791686012, "job": 12, "event": "flush_started", "num_memtables": 1, "total_num_input_entries": 207, "num_deletes": 0, "total_data_size": 58581, "memory_usage": 65992, "num_range_deletes": 0, "flush_reason": "Write Buffer Full"}
+2026/09/29-12:53:11.686019 1409029 [db/flush_job.cc:994] [default] [JOB 12] Level-0 flush table #46: started
+2026/09/29-12:53:11.688848 1409029 EVENT_LOG_v1 {"time_micros": 1790700791688819, "cf_name": "default", "job": 12, "event": "table_file_creation", "file_number": 46, "file_size": 33980, "file_checksum": "", "file_checksum_func_name": "Unknown", "smallest_seqno": 3450, "largest_seqno": 3656, "table_properties": {"data_size": 32227, "index_size": 190, "index_partitions": 0, "top_level_index_size": 0, "index_key_is_user_key": 1, "index_value_is_delta_encoded": 1, "filter_size": 261, "raw_key_size": 4512, "raw_average_key_size": 24, "raw_value_size": 48128, "raw_average_value_size": 256, "num_data_blocks": 14, "num_entries": 188, "num_filter_entries": 188, "num_deletions": 0, "num_merge_operands": 0, "num_range_deletions": 0, "format_version": 6, "fixed_key_len": 0, "filter_policy": "bloomfilter", "column_family_name": "default", "column_family_id": 0, "comparator": "leveldb.BytewiseComparator", "user_defined_timestamps_persisted": 1, "key_largest_seqno": 3656, "key_smallest_seqno": 3450, "merge_operator": "nullptr", "prefix_extractor_name": "nullptr", "property_collectors": "[]", "compression": "LZ4", "compression_options": "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; max_dict_buffer_bytes=0; use_zstd_dict_trainer=1; max_compressed_bytes_per_kb=896; checksum=0; _type=4; ", "creation_time": 1790700791, "oldest_key_time": 1790700791, "newest_key_time": 1790700791, "file_creation_time": 1790700791, "slow_compression_estimated_data_size": 0, "fast_compression_estimated_data_size": 0, "db_id": "48ae4f6b-53d3-48a2-9393-f1b69d6ca093", "db_session_id": "WG2NDWKR0IVSZ1F6IW7F", "orig_file_number": 46, "seqno_to_time_mapping": "N/A"}, "status": "OK"}
+2026/09/29-12:53:11.688867 1409029 [db/flush_job.cc:1167] [default] [JOB 12] Flush lasted 2870 microseconds, and 797 cpu microseconds.
+2026/09/29-12:53:11.690301 1409029 (Original Log Time 2026/09/29-12:53:11.688858) [db/flush_job.cc:1105] [default] [JOB 12] Level-0 flush table #46: 33980 bytes OK  
+2026/09/29-12:53:11.690305 1409029 (Original Log Time 2026/09/29-12:53:11.688870) [db/memtable_list.cc:670] [default] Level-0 commit flush result of table #46 started
+2026/09/29-12:53:11.690307 1409029 (Original Log Time 2026/09/29-12:53:11.689286) [db/memtable_list.cc:874] [default] Level-0 commit flush result of table #46: memtable #1 done
+2026/09/29-12:53:11.690309 1409029 (Original Log Time 2026/09/29-12:53:11.689296) EVENT_LOG_v1 {"time_micros": 1790700791689293, "job": 12, "event": "flush_finished", "output_compression": "LZ4", "lsm_state": [1, 0, 0, 3], "immutable_memtables": 0}
+2026/09/29-12:53:11.690311 1409029 (Original Log Time 2026/09/29-12:53:11.689308) [db/db_impl/db_impl_compaction_flush.cc:432] [default] Level summary: base level 3 level multiplier 10.00 max bytes base 262144 files[1 0 0 3] max score 0.25, estimated pending compaction bytes 0
+2026/09/29-12:53:11.690316 1409029 [db/db_impl/db_impl_files.cc:598] [JOB 12] Try to delete WAL files size 59616, prev total WAL file size 60480, number of live WAL files 2.
+2026/09/29-12:53:11.690898 1409029 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000040.log immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 209580, max_trash_db_ratio 0.250000
+2026/09/29-12:53:12.259516 1409126 [db/db_impl/db_impl_write.cc:3249] [default] New memtable created with log file: #47. Immutable memtables: 0.
+2026/09/29-12:53:12.259592 1409029 (Original Log Time 2026/09/29-12:53:12.259568) [db/db_impl/db_impl_compaction_flush.cc:3893] Calling FlushMemTableToOutputFile with column family [default], flush slots available 1, compaction slots available 1, flush slots scheduled 1, compaction slots scheduled 0
+2026/09/29-12:53:12.259618 1409029 [db/flush_job.cc:935] [default] [JOB 13] Flushing memtable id 9 with next log file: 47, marked_for_flush: 0
+2026/09/29-12:53:12.259641 1409029 EVENT_LOG_v1 {"time_micros": 1790700792259631, "job": 13, "event": "flush_started", "num_memtables": 1, "total_num_input_entries": 207, "num_deletes": 0, "total_data_size": 58581, "memory_usage": 66032, "num_range_deletes": 0, "flush_reason": "Write Buffer Full"}
+2026/09/29-12:53:12.259646 1409029 [db/flush_job.cc:994] [default] [JOB 13] Level-0 flush table #48: started
+2026/09/29-12:53:12.262483 1409029 EVENT_LOG_v1 {"time_micros": 1790700792262449, "cf_name": "default", "job": 13, "event": "table_file_creation", "file_number": 48, "file_size": 34526, "file_checksum": "", "file_checksum_func_name": "Unknown", "smallest_seqno": 3657, "largest_seqno": 3863, "table_properties": {"data_size": 32771, "index_size": 192, "index_partitions": 0, "top_level_index_size": 0, "index_key_is_user_key": 1, "index_value_is_delta_encoded": 1, "filter_size": 261, "raw_key_size": 4584, "raw_average_key_size": 24, "raw_value_size": 48896, "raw_average_value_size": 256, "num_data_blocks": 14, "num_entries": 191, "num_filter_entries": 191, "num_deletions": 0, "num_merge_operands": 0, "num_range_deletions": 0, "format_version": 6, "fixed_key_len": 0, "filter_policy": "bloomfilter", "column_family_name": "default", "column_family_id": 0, "comparator": "leveldb.BytewiseComparator", "user_defined_timestamps_persisted": 1, "key_largest_seqno": 3863, "key_smallest_seqno": 3657, "merge_operator": "nullptr", "prefix_extractor_name": "nullptr", "property_collectors": "[]", "compression": "LZ4", "compression_options": "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; max_dict_buffer_bytes=0; use_zstd_dict_trainer=1; max_compressed_bytes_per_kb=896; checksum=0; _type=4; ", "creation_time": 1790700791, "oldest_key_time": 1790700792, "newest_key_time": 1790700791, "file_creation_time": 1790700792, "slow_compression_estimated_data_size": 0, "fast_compression_estimated_data_size": 0, "db_id": "48ae4f6b-53d3-48a2-9393-f1b69d6ca093", "db_session_id": "WG2NDWKR0IVSZ1F6IW7F", "orig_file_number": 48, "seqno_to_time_mapping": "N/A"}, "status": "OK"}
+2026/09/29-12:53:12.262503 1409029 [db/flush_job.cc:1167] [default] [JOB 13] Flush lasted 2915 microseconds, and 918 cpu microseconds.
+2026/09/29-12:53:12.263836 1409029 (Original Log Time 2026/09/29-12:53:12.262493) [db/flush_job.cc:1105] [default] [JOB 13] Level-0 flush table #48: 34526 bytes OK  
+2026/09/29-12:53:12.263840 1409029 (Original Log Time 2026/09/29-12:53:12.262506) [db/memtable_list.cc:670] [default] Level-0 commit flush result of table #48 started
+2026/09/29-12:53:12.263843 1409029 (Original Log Time 2026/09/29-12:53:12.262851) [db/memtable_list.cc:874] [default] Level-0 commit flush result of table #48: memtable #1 done
+2026/09/29-12:53:12.263845 1409029 (Original Log Time 2026/09/29-12:53:12.262863) EVENT_LOG_v1 {"time_micros": 1790700792262859, "job": 13, "event": "flush_finished", "output_compression": "LZ4", "lsm_state": [2, 0, 0, 3], "immutable_memtables": 0}
+2026/09/29-12:53:12.263847 1409029 (Original Log Time 2026/09/29-12:53:12.262875) [db/db_impl/db_impl_compaction_flush.cc:432] [default] Level summary: base level 3 level multiplier 10.00 max bytes base 262144 files[2 0 0 3] max score 0.50, estimated pending compaction bytes 0
+2026/09/29-12:53:12.263852 1409029 [db/db_impl/db_impl_files.cc:598] [JOB 13] Try to delete WAL files size 59616, prev total WAL file size 60480, number of live WAL files 2.
+2026/09/29-12:53:12.264362 1409029 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000045.log immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 244106, max_trash_db_ratio 0.250000
+2026/09/29-12:53:12.788479 1409126 [db/db_impl/db_impl_write.cc:3249] [default] New memtable created with log file: #49. Immutable memtables: 0.
+2026/09/29-12:53:12.788513 1409029 (Original Log Time 2026/09/29-12:53:12.788502) [db/db_impl/db_impl_compaction_flush.cc:3893] Calling FlushMemTableToOutputFile with column family [default], flush slots available 1, compaction slots available 1, flush slots scheduled 1, compaction slots scheduled 0
+2026/09/29-12:53:12.788518 1409029 [db/flush_job.cc:935] [default] [JOB 14] Flushing memtable id 10 with next log file: 49, marked_for_flush: 0
+2026/09/29-12:53:12.788530 1409029 EVENT_LOG_v1 {"time_micros": 1790700792788525, "job": 14, "event": "flush_started", "num_memtables": 1, "total_num_input_entries": 207, "num_deletes": 0, "total_data_size": 58581, "memory_usage": 66000, "num_range_deletes": 0, "flush_reason": "Write Buffer Full"}
+2026/09/29-12:53:12.788532 1409029 [db/flush_job.cc:994] [default] [JOB 14] Level-0 flush table #50: started
+2026/09/29-12:53:12.790813 1409029 EVENT_LOG_v1 {"time_micros": 1790700792790784, "cf_name": "default", "job": 14, "event": "table_file_creation", "file_number": 50, "file_size": 35137, "file_checksum": "", "file_checksum_func_name": "Unknown", "smallest_seqno": 3864, "largest_seqno": 4070, "table_properties": {"data_size": 33386, "index_size": 188, "index_partitions": 0, "top_level_index_size": 0, "index_key_is_user_key": 1, "index_value_is_delta_encoded": 1, "filter_size": 261, "raw_key_size": 4680, "raw_average_key_size": 24, "raw_value_size": 49920, "raw_average_value_size": 256, "num_data_blocks": 14, "num_entries": 195, "num_filter_entries": 195, "num_deletions": 0, "num_merge_operands": 0, "num_range_deletions": 0, "format_version": 6, "fixed_key_len": 0, "filter_policy": "bloomfilter", "column_family_name": "default", "column_family_id": 0, "comparator": "leveldb.BytewiseComparator", "user_defined_timestamps_persisted": 1, "key_largest_seqno": 4070, "key_smallest_seqno": 3864, "merge_operator": "nullptr", "prefix_extractor_name": "nullptr", "property_collectors": "[]", "compression": "LZ4", "compression_options": "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; max_dict_buffer_bytes=0; use_zstd_dict_trainer=1; max_compressed_bytes_per_kb=896; checksum=0; _type=4; ", "creation_time": 1790700792, "oldest_key_time": 1790700792, "newest_key_time": 1790700792, "file_creation_time": 1790700792, "slow_compression_estimated_data_size": 0, "fast_compression_estimated_data_size": 0, "db_id": "48ae4f6b-53d3-48a2-9393-f1b69d6ca093", "db_session_id": "WG2NDWKR0IVSZ1F6IW7F", "orig_file_number": 50, "seqno_to_time_mapping": "N/A"}, "status": "OK"}
+2026/09/29-12:53:12.790834 1409029 [db/flush_job.cc:1167] [default] [JOB 14] Flush lasted 2323 microseconds, and 864 cpu microseconds.
+2026/09/29-12:53:12.791819 1409029 (Original Log Time 2026/09/29-12:53:12.790826) [db/flush_job.cc:1105] [default] [JOB 14] Level-0 flush table #50: 35137 bytes OK  
+2026/09/29-12:53:12.791827 1409029 (Original Log Time 2026/09/29-12:53:12.790838) [db/memtable_list.cc:670] [default] Level-0 commit flush result of table #50 started
+2026/09/29-12:53:12.791831 1409029 (Original Log Time 2026/09/29-12:53:12.791162) [db/memtable_list.cc:874] [default] Level-0 commit flush result of table #50: memtable #1 done
+2026/09/29-12:53:12.791834 1409029 (Original Log Time 2026/09/29-12:53:12.791172) EVENT_LOG_v1 {"time_micros": 1790700792791168, "job": 14, "event": "flush_finished", "output_compression": "LZ4", "lsm_state": [3, 0, 0, 3], "immutable_memtables": 0}
+2026/09/29-12:53:12.791839 1409029 (Original Log Time 2026/09/29-12:53:12.791184) [db/db_impl/db_impl_compaction_flush.cc:432] [default] Level summary: base level 3 level multiplier 10.00 max bytes base 262144 files[3 0 0 3] max score 0.75, estimated pending compaction bytes 0
+2026/09/29-12:53:12.791860 1409029 [db/db_impl/db_impl_files.cc:598] [JOB 14] Try to delete WAL files size 59616, prev total WAL file size 59904, number of live WAL files 2.
+2026/09/29-12:53:12.792132 1409029 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000047.log immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 279243, max_trash_db_ratio 0.250000
+2026/09/29-12:53:13.364850 1409126 [db/db_impl/db_impl_write.cc:3249] [default] New memtable created with log file: #51. Immutable memtables: 0.
+2026/09/29-12:53:13.364916 1409029 (Original Log Time 2026/09/29-12:53:13.364894) [db/db_impl/db_impl_compaction_flush.cc:3893] Calling FlushMemTableToOutputFile with column family [default], flush slots available 1, compaction slots available 1, flush slots scheduled 1, compaction slots scheduled 0
+2026/09/29-12:53:13.364926 1409029 [db/flush_job.cc:935] [default] [JOB 15] Flushing memtable id 11 with next log file: 51, marked_for_flush: 0
+2026/09/29-12:53:13.364949 1409029 EVENT_LOG_v1 {"time_micros": 1790700793364939, "job": 15, "event": "flush_started", "num_memtables": 1, "total_num_input_entries": 207, "num_deletes": 0, "total_data_size": 58581, "memory_usage": 65960, "num_range_deletes": 0, "flush_reason": "Write Buffer Full"}
+2026/09/29-12:53:13.364954 1409029 [db/flush_job.cc:994] [default] [JOB 15] Level-0 flush table #52: started
+2026/09/29-12:53:13.367790 1409029 EVENT_LOG_v1 {"time_micros": 1790700793367759, "cf_name": "default", "job": 15, "event": "table_file_creation", "file_number": 52, "file_size": 34198, "file_checksum": "", "file_checksum_func_name": "Unknown", "smallest_seqno": 4071, "largest_seqno": 4277, "table_properties": {"data_size": 32448, "index_size": 187, "index_partitions": 0, "top_level_index_size": 0, "index_key_is_user_key": 1, "index_value_is_delta_encoded": 1, "filter_size": 261, "raw_key_size": 4536, "raw_average_key_size": 24, "raw_value_size": 48384, "raw_average_value_size": 256, "num_data_blocks": 14, "num_entries": 189, "num_filter_entries": 189, "num_deletions": 0, "num_merge_operands": 0, "num_range_deletions": 0, "format_version": 6, "fixed_key_len": 0, "filter_policy": "bloomfilter", "column_family_name": "default", "column_family_id": 0, "comparator": "leveldb.BytewiseComparator", "user_defined_timestamps_persisted": 1, "key_largest_seqno": 4277, "key_smallest_seqno": 4071, "merge_operator": "nullptr", "prefix_extractor_name": "nullptr", "property_collectors": "[]", "compression": "LZ4", "compression_options": "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; max_dict_buffer_bytes=0; use_zstd_dict_trainer=1; max_compressed_bytes_per_kb=896; checksum=0; _type=4; ", "creation_time": 1790700792, "oldest_key_time": 1790700793, "newest_key_time": 1790700792, "file_creation_time": 1790700793, "slow_compression_estimated_data_size": 0, "fast_compression_estimated_data_size": 0, "db_id": "48ae4f6b-53d3-48a2-9393-f1b69d6ca093", "db_session_id": "WG2NDWKR0IVSZ1F6IW7F", "orig_file_number": 52, "seqno_to_time_mapping": "N/A"}, "status": "OK"}
+2026/09/29-12:53:13.367812 1409029 [db/flush_job.cc:1167] [default] [JOB 15] Flush lasted 2901 microseconds, and 879 cpu microseconds.
+2026/09/29-12:53:13.368602 1409028 [db/compaction/compaction_job.cc:2850] [default] [JOB 16] Compacting 4@0 + 3@3 files to L3, score 1.00
+2026/09/29-12:53:13.368612 1409028 [db/compaction/compaction_job.cc:2856] [default]: Compaction start summary: Base version 15 Base level 0, inputs: [52(33KB) 50(34KB) 48(33KB) 46(33KB)], [42(67KB) 43(67KB) 44(37KB)]
+2026/09/29-12:53:13.368627 1409028 EVENT_LOG_v1 {"time_micros": 1790700793368618, "job": 16, "event": "compaction_started", "cf_name": "default", "compaction_reason": "LevelL0FilesNum", "files_L0": [52, 50, 48, 46], "files_L3": [42, 43, 44], "score": 1, "input_data_size": 313441, "oldest_snapshot_seqno": -1}
+2026/09/29-12:53:13.369035 1409029 (Original Log Time 2026/09/29-12:53:13.367803) [db/flush_job.cc:1105] [default] [JOB 15] Level-0 flush table #52: 34198 bytes OK  
+2026/09/29-12:53:13.369039 1409029 (Original Log Time 2026/09/29-12:53:13.367816) [db/memtable_list.cc:670] [default] Level-0 commit flush result of table #52 started
+2026/09/29-12:53:13.369042 1409029 (Original Log Time 2026/09/29-12:53:13.368226) [db/memtable_list.cc:874] [default] Level-0 commit flush result of table #52: memtable #1 done
+2026/09/29-12:53:13.369044 1409029 (Original Log Time 2026/09/29-12:53:13.368237) EVENT_LOG_v1 {"time_micros": 1790700793368233, "job": 15, "event": "flush_finished", "output_compression": "LZ4", "lsm_state": [4, 0, 0, 3], "immutable_memtables": 0}
+2026/09/29-12:53:13.369046 1409029 (Original Log Time 2026/09/29-12:53:13.368251) [db/db_impl/db_impl_compaction_flush.cc:432] [default] Level summary: base level 3 level multiplier 10.00 max bytes base 262144 files[4 0 0 3] max score 1.00, estimated pending compaction bytes 137841
+2026/09/29-12:53:13.369050 1409029 [db/db_impl/db_impl_files.cc:598] [JOB 15] Try to delete WAL files size 59616, prev total WAL file size 60192, number of live WAL files 2.
+2026/09/29-12:53:13.369719 1409029 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000049.log immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 313441, max_trash_db_ratio 0.250000
+2026/09/29-12:53:13.372594 1409028 [db/compaction/compaction_job.cc:2196] [default] [JOB 16] Generated table #53: 393 keys, 68773 bytes, temperature: kUnknown
+2026/09/29-12:53:13.372674 1409028 EVENT_LOG_v1 {"time_micros": 1790700793372615, "cf_name": "default", "job": 16, "event": "table_file_creation", "file_number": 53, "file_size": 68773, "file_checksum": "", "file_checksum_func_name": "Unknown", "smallest_seqno": 0, "largest_seqno": 0, "table_properties": {"data_size": 66577, "index_size": 383, "index_partitions": 0, "top_level_index_size": 0, "index_key_is_user_key": 1, "index_value_is_delta_encoded": 1, "filter_size": 517, "raw_key_size": 9432, "raw_average_key_size": 24, "raw_value_size": 100608, "raw_average_value_size": 256, "num_data_blocks": 29, "num_entries": 393, "num_filter_entries": 393, "num_deletions": 0, "num_merge_operands": 0, "num_range_deletions": 0, "format_version": 6, "fixed_key_len": 0, "filter_policy": "bloomfilter", "column_family_name": "default", "column_family_id": 0, "comparator": "leveldb.BytewiseComparator", "user_defined_timestamps_persisted": 1, "key_largest_seqno": 0, "key_smallest_seqno": 0, "merge_operator": "nullptr", "prefix_extractor_name": "nullptr", "property_collectors": "[]", "compression": "LZ4", "compression_options": "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; max_dict_buffer_bytes=0; use_zstd_dict_trainer=1; max_compressed_bytes_per_kb=896; checksum=0; _type=4; ", "creation_time": 1790700786, "oldest_key_time": 1790700793, "newest_key_time": 0, "file_creation_time": 1790700793, "slow_compression_estimated_data_size": 0, "fast_compression_estimated_data_size": 0, "db_id": "48ae4f6b-53d3-48a2-9393-f1b69d6ca093", "db_session_id": "WG2NDWKR0IVSZ1F6IW7F", "orig_file_number": 53, "seqno_to_time_mapping": "N/A"}, "status": "OK"}
+2026/09/29-12:53:13.376565 1409028 [db/compaction/compaction_job.cc:2196] [default] [JOB 16] Generated table #54: 393 keys, 68743 bytes, temperature: kUnknown
+2026/09/29-12:53:13.376604 1409028 EVENT_LOG_v1 {"time_micros": 1790700793376576, "cf_name": "default", "job": 16, "event": "table_file_creation", "file_number": 54, "file_size": 68743, "file_checksum": "", "file_checksum_func_name": "Unknown", "smallest_seqno": 0, "largest_seqno": 0, "table_properties": {"data_size": 66546, "index_size": 384, "index_partitions": 0, "top_level_index_size": 0, "index_key_is_user_key": 1, "index_value_is_delta_encoded": 1, "filter_size": 517, "raw_key_size": 9432, "raw_average_key_size": 24, "raw_value_size": 100608, "raw_average_value_size": 256, "num_data_blocks": 29, "num_entries": 393, "num_filter_entries": 393, "num_deletions": 0, "num_merge_operands": 0, "num_range_deletions": 0, "format_version": 6, "fixed_key_len": 0, "filter_policy": "bloomfilter", "column_family_name": "default", "column_family_id": 0, "comparator": "leveldb.BytewiseComparator", "user_defined_timestamps_persisted": 1, "key_largest_seqno": 0, "key_smallest_seqno": 0, "merge_operator": "nullptr", "prefix_extractor_name": "nullptr", "property_collectors": "[]", "compression": "LZ4", "compression_options": "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; max_dict_buffer_bytes=0; use_zstd_dict_trainer=1; max_compressed_bytes_per_kb=896; checksum=0; _type=4; ", "creation_time": 1790700786, "oldest_key_time": 1790700793, "newest_key_time": 0, "file_creation_time": 1790700793, "slow_compression_estimated_data_size": 0, "fast_compression_estimated_data_size": 0, "db_id": "48ae4f6b-53d3-48a2-9393-f1b69d6ca093", "db_session_id": "WG2NDWKR0IVSZ1F6IW7F", "orig_file_number": 54, "seqno_to_time_mapping": "N/A"}, "status": "OK"}
+2026/09/29-12:53:13.379532 1409028 [db/compaction/compaction_job.cc:2196] [default] [JOB 16] Generated table #55: 214 keys, 38108 bytes, temperature: kUnknown
+2026/09/29-12:53:13.379568 1409028 EVENT_LOG_v1 {"time_micros": 1790700793379542, "cf_name": "default", "job": 16, "event": "table_file_creation", "file_number": 55, "file_size": 38108, "file_checksum": "", "file_checksum_func_name": "Unknown", "smallest_seqno": 0, "largest_seqno": 0, "table_properties": {"data_size": 36267, "index_size": 220, "index_partitions": 0, "top_level_index_size": 0, "index_key_is_user_key": 1, "index_value_is_delta_encoded": 1, "filter_size": 325, "raw_key_size": 5136, "raw_average_key_size": 24, "raw_value_size": 54784, "raw_average_value_size": 256, "num_data_blocks": 16, "num_entries": 214, "num_filter_entries": 214, "num_deletions": 0, "num_merge_operands": 0, "num_range_deletions": 0, "format_version": 6, "fixed_key_len": 0, "filter_policy": "bloomfilter", "column_family_name": "default", "column_family_id": 0, "comparator": "leveldb.BytewiseComparator", "user_defined_timestamps_persisted": 1, "key_largest_seqno": 0, "key_smallest_seqno": 0, "merge_operator": "nullptr", "prefix_extractor_name": "nullptr", "property_collectors": "[]", "compression": "LZ4", "compression_options": "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; max_dict_buffer_bytes=0; use_zstd_dict_trainer=1; max_compressed_bytes_per_kb=896; checksum=0; _type=4; ", "creation_time": 1790700786, "oldest_key_time": 1790700793, "newest_key_time": 0, "file_creation_time": 1790700793, "slow_compression_estimated_data_size": 0, "fast_compression_estimated_data_size": 0, "db_id": "48ae4f6b-53d3-48a2-9393-f1b69d6ca093", "db_session_id": "WG2NDWKR0IVSZ1F6IW7F", "orig_file_number": 55, "seqno_to_time_mapping": "N/A"}, "status": "OK"}
+2026/09/29-12:53:13.381744 1409028 (Original Log Time 2026/09/29-12:53:13.381318) [db/compaction/compaction_job.cc:2360] [default] [JOB 16] Compacted 4@0 + 3@3 files to L3 => 175624 bytes
+2026/09/29-12:53:13.381755 1409028 (Original Log Time 2026/09/29-12:53:13.381705) [db/compaction/compaction_job.cc:1238] [default] compacted to: base level 3 level multiplier 10.00 max bytes base 262144 files[0 0 0 3] max score 0.00, estimated pending compaction bytes 0, MB/sec: 28.6 rd, 16.0 wr, level 3, files in(4, 3) filtered(0, 0) out(3 +0 blob) MB in(0.1, 0.2 +0.0 blob) filtered(0.0, 0.0) out(0.2 +0.0 blob), read-write-amplify(3.5) write-amplify(1.3) OK, records in: 1763, records dropped: 763 output_compression: LZ4
+2026/09/29-12:53:13.381760 1409028 (Original Log Time 2026/09/29-12:53:13.381724) EVENT_LOG_v1 {"time_micros": 1790700793381714, "job": 16, "event": "compaction_finished", "compaction_time_micros": 10964, "compaction_time_cpu_micros": 3131, "output_level": 3, "num_output_files": 3, "total_output_size": 175624, "num_input_records": 1763, "num_output_records": 1000, "num_subcompactions": 1, "output_compression": "LZ4", "num_single_delete_mismatches": 0, "num_single_delete_fallthrough": 0, "lsm_state": [0, 0, 0, 3]}
+2026/09/29-12:53:13.384183 1409028 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000042.sst immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 489065, max_trash_db_ratio 0.250000
+2026/09/29-12:53:13.384193 1409028 EVENT_LOG_v1 {"time_micros": 1790700793384191, "job": 16, "event": "table_file_deletion", "file_number": 42, "status": "OK"}
+2026/09/29-12:53:13.384882 1409028 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000043.sst immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 420274, max_trash_db_ratio 0.250000
+2026/09/29-12:53:13.384888 1409028 EVENT_LOG_v1 {"time_micros": 1790700793384887, "job": 16, "event": "table_file_deletion", "file_number": 43, "status": "OK"}
+2026/09/29-12:53:13.385467 1409028 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000044.sst immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 351567, max_trash_db_ratio 0.250000
+2026/09/29-12:53:13.385473 1409028 EVENT_LOG_v1 {"time_micros": 1790700793385472, "job": 16, "event": "table_file_deletion", "file_number": 44, "status": "OK"}
+2026/09/29-12:53:13.385926 1409028 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000046.sst immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 313465, max_trash_db_ratio 0.250000
+2026/09/29-12:53:13.385938 1409028 EVENT_LOG_v1 {"time_micros": 1790700793385935, "job": 16, "event": "table_file_deletion", "file_number": 46, "status": "OK"}
+2026/09/29-12:53:13.386363 1409028 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000048.sst immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 279485, max_trash_db_ratio 0.250000
+2026/09/29-12:53:13.386368 1409028 EVENT_LOG_v1 {"time_micros": 1790700793386367, "job": 16, "event": "table_file_deletion", "file_number": 48, "status": "OK"}
+2026/09/29-12:53:13.386825 1409028 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000050.sst immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 244959, max_trash_db_ratio 0.250000
+2026/09/29-12:53:13.386830 1409028 EVENT_LOG_v1 {"time_micros": 1790700793386829, "job": 16, "event": "table_file_deletion", "file_number": 50, "status": "OK"}
+2026/09/29-12:53:13.387282 1409028 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000052.sst immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 209822, max_trash_db_ratio 0.250000
+2026/09/29-12:53:13.387293 1409028 EVENT_LOG_v1 {"time_micros": 1790700793387290, "job": 16, "event": "table_file_deletion", "file_number": 52, "status": "OK"}
+2026/09/29-12:53:13.916671 1409126 [db/db_impl/db_impl_write.cc:3249] [default] New memtable created with log file: #56. Immutable memtables: 0.
+2026/09/29-12:53:13.916707 1409029 (Original Log Time 2026/09/29-12:53:13.916695) [db/db_impl/db_impl_compaction_flush.cc:3893] Calling FlushMemTableToOutputFile with column family [default], flush slots available 1, compaction slots available 1, flush slots scheduled 1, compaction slots scheduled 0
+2026/09/29-12:53:13.916712 1409029 [db/flush_job.cc:935] [default] [JOB 17] Flushing memtable id 12 with next log file: 56, marked_for_flush: 0
+2026/09/29-12:53:13.916724 1409029 EVENT_LOG_v1 {"time_micros": 1790700793916720, "job": 17, "event": "flush_started", "num_memtables": 1, "total_num_input_entries": 207, "num_deletes": 0, "total_data_size": 58581, "memory_usage": 65992, "num_range_deletes": 0, "flush_reason": "Write Buffer Full"}
+2026/09/29-12:53:13.916726 1409029 [db/flush_job.cc:994] [default] [JOB 17] Level-0 flush table #57: started
+2026/09/29-12:53:13.919541 1409029 EVENT_LOG_v1 {"time_micros": 1790700793919512, "cf_name": "default", "job": 17, "event": "table_file_creation", "file_number": 57, "file_size": 33825, "file_checksum": "", "file_checksum_func_name": "Unknown", "smallest_seqno": 4278, "largest_seqno": 4484, "table_properties": {"data_size": 32073, "index_size": 189, "index_partitions": 0, "top_level_index_size": 0, "index_key_is_user_key": 1, "index_value_is_delta_encoded": 1, "filter_size": 261, "raw_key_size": 4488, "raw_average_key_size": 24, "raw_value_size": 47872, "raw_average_value_size": 256, "num_data_blocks": 14, "num_entries": 187, "num_filter_entries": 187, "num_deletions": 0, "num_merge_operands": 0, "num_range_deletions": 0, "format_version": 6, "fixed_key_len": 0, "filter_policy": "bloomfilter", "column_family_name": "default", "column_family_id": 0, "comparator": "leveldb.BytewiseComparator", "user_defined_timestamps_persisted": 1, "key_largest_seqno": 4484, "key_smallest_seqno": 4278, "merge_operator": "nullptr", "prefix_extractor_name": "nullptr", "property_collectors": "[]", "compression": "LZ4", "compression_options": "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; max_dict_buffer_bytes=0; use_zstd_dict_trainer=1; max_compressed_bytes_per_kb=896; checksum=0; _type=4; ", "creation_time": 1790700793, "oldest_key_time": 1790700793, "newest_key_time": 1790700793, "file_creation_time": 1790700793, "slow_compression_estimated_data_size": 0, "fast_compression_estimated_data_size": 0, "db_id": "48ae4f6b-53d3-48a2-9393-f1b69d6ca093", "db_session_id": "WG2NDWKR0IVSZ1F6IW7F", "orig_file_number": 57, "seqno_to_time_mapping": "N/A"}, "status": "OK"}
+2026/09/29-12:53:13.919560 1409029 [db/flush_job.cc:1167] [default] [JOB 17] Flush lasted 2854 microseconds, and 854 cpu microseconds.
+2026/09/29-12:53:13.920896 1409029 (Original Log Time 2026/09/29-12:53:13.919551) [db/flush_job.cc:1105] [default] [JOB 17] Level-0 flush table #57: 33825 bytes OK  
+2026/09/29-12:53:13.920903 1409029 (Original Log Time 2026/09/29-12:53:13.919563) [db/memtable_list.cc:670] [default] Level-0 commit flush result of table #57 started
+2026/09/29-12:53:13.920905 1409029 (Original Log Time 2026/09/29-12:53:13.920027) [db/memtable_list.cc:874] [default] Level-0 commit flush result of table #57: memtable #1 done
+2026/09/29-12:53:13.920908 1409029 (Original Log Time 2026/09/29-12:53:13.920038) EVENT_LOG_v1 {"time_micros": 1790700793920034, "job": 17, "event": "flush_finished", "output_compression": "LZ4", "lsm_state": [1, 0, 0, 3], "immutable_memtables": 0}
+2026/09/29-12:53:13.920910 1409029 (Original Log Time 2026/09/29-12:53:13.920049) [db/db_impl/db_impl_compaction_flush.cc:432] [default] Level summary: base level 3 level multiplier 10.00 max bytes base 262144 files[1 0 0 3] max score 0.25, estimated pending compaction bytes 0
+2026/09/29-12:53:13.920915 1409029 [db/db_impl/db_impl_files.cc:598] [JOB 17] Try to delete WAL files size 59616, prev total WAL file size 60480, number of live WAL files 2.
+2026/09/29-12:53:13.921316 1409029 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000051.log immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 209449, max_trash_db_ratio 0.250000
+2026/09/29-12:53:14.439420 1409131 [db/db_impl/db_impl_write.cc:3249] [default] New memtable created with log file: #58. Immutable memtables: 0.
+2026/09/29-12:53:14.439498 1409029 (Original Log Time 2026/09/29-12:53:14.439475) [db/db_impl/db_impl_compaction_flush.cc:3893] Calling FlushMemTableToOutputFile with column family [default], flush slots available 1, compaction slots available 1, flush slots scheduled 1, compaction slots scheduled 0
+2026/09/29-12:53:14.439508 1409029 [db/flush_job.cc:935] [default] [JOB 18] Flushing memtable id 13 with next log file: 58, marked_for_flush: 0
+2026/09/29-12:53:14.439531 1409029 EVENT_LOG_v1 {"time_micros": 1790700794439522, "job": 18, "event": "flush_started", "num_memtables": 1, "total_num_input_entries": 207, "num_deletes": 0, "total_data_size": 58581, "memory_usage": 65992, "num_range_deletes": 0, "flush_reason": "Write Buffer Full"}
+2026/09/29-12:53:14.439536 1409029 [db/flush_job.cc:994] [default] [JOB 18] Level-0 flush table #59: started
+2026/09/29-12:53:14.442571 1409029 EVENT_LOG_v1 {"time_micros": 1790700794442538, "cf_name": "default", "job": 18, "event": "table_file_creation", "file_number": 59, "file_size": 33821, "file_checksum": "", "file_checksum_func_name": "Unknown", "smallest_seqno": 4485, "largest_seqno": 4691, "table_properties": {"data_size": 32071, "index_size": 187, "index_partitions": 0, "top_level_index_size": 0, "index_key_is_user_key": 1, "index_value_is_delta_encoded": 1, "filter_size": 261, "raw_key_size": 4488, "raw_average_key_size": 24, "raw_value_size": 47872, "raw_average_value_size": 256, "num_data_blocks": 14, "num_entries": 187, "num_filter_entries": 187, "num_deletions": 0, "num_merge_operands": 0, "num_range_deletions": 0, "format_version": 6, "fixed_key_len": 0, "filter_policy": "bloomfilter", "column_family_name": "default", "column_family_id": 0, "comparator": "leveldb.BytewiseComparator", "user_defined_timestamps_persisted": 1, "key_largest_seqno": 4691, "key_smallest_seqno": 4485, "merge_operator": "nullptr", "prefix_extractor_name": "nullptr", "property_collectors": "[]", "compression": "LZ4", "compression_options": "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; max_dict_buffer_bytes=0; use_zstd_dict_trainer=1; max_compressed_bytes_per_kb=896; checksum=0; _type=4; ", "creation_time": 1790700793, "oldest_key_time": 1790700794, "newest_key_time": 1790700793, "file_creation_time": 1790700794, "slow_compression_estimated_data_size": 0, "fast_compression_estimated_data_size": 0, "db_id": "48ae4f6b-53d3-48a2-9393-f1b69d6ca093", "db_session_id": "WG2NDWKR0IVSZ1F6IW7F", "orig_file_number": 59, "seqno_to_time_mapping": "N/A"}, "status": "OK"}
+2026/09/29-12:53:14.442589 1409029 [db/flush_job.cc:1167] [default] [JOB 18] Flush lasted 3097 microseconds, and 818 cpu microseconds.
+2026/09/29-12:53:14.444000 1409029 (Original Log Time 2026/09/29-12:53:14.442581) [db/flush_job.cc:1105] [default] [JOB 18] Level-0 flush table #59: 33821 bytes OK  
+2026/09/29-12:53:14.444004 1409029 (Original Log Time 2026/09/29-12:53:14.442593) [db/memtable_list.cc:670] [default] Level-0 commit flush result of table #59 started
+2026/09/29-12:53:14.444006 1409029 (Original Log Time 2026/09/29-12:53:14.442979) [db/memtable_list.cc:874] [default] Level-0 commit flush result of table #59: memtable #1 done
+2026/09/29-12:53:14.444008 1409029 (Original Log Time 2026/09/29-12:53:14.443012) EVENT_LOG_v1 {"time_micros": 1790700794442993, "job": 18, "event": "flush_finished", "output_compression": "LZ4", "lsm_state": [2, 0, 0, 3], "immutable_memtables": 0}
+2026/09/29-12:53:14.444010 1409029 (Original Log Time 2026/09/29-12:53:14.443024) [db/db_impl/db_impl_compaction_flush.cc:432] [default] Level summary: base level 3 level multiplier 10.00 max bytes base 262144 files[2 0 0 3] max score 0.50, estimated pending compaction bytes 0
+2026/09/29-12:53:14.444015 1409029 [db/db_impl/db_impl_files.cc:598] [JOB 18] Try to delete WAL files size 59616, prev total WAL file size 60768, number of live WAL files 2.
+2026/09/29-12:53:14.444714 1409029 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000056.log immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 243270, max_trash_db_ratio 0.250000
+2026/09/29-12:53:15.028571 1409131 [db/db_impl/db_impl_write.cc:3249] [default] New memtable created with log file: #60. Immutable memtables: 0.
+2026/09/29-12:53:15.028608 1409029 (Original Log Time 2026/09/29-12:53:15.028596) [db/db_impl/db_impl_compaction_flush.cc:3893] Calling FlushMemTableToOutputFile with column family [default], flush slots available 1, compaction slots available 1, flush slots scheduled 1, compaction slots scheduled 0
+2026/09/29-12:53:15.028613 1409029 [db/flush_job.cc:935] [default] [JOB 19] Flushing memtable id 14 with next log file: 60, marked_for_flush: 0
+2026/09/29-12:53:15.028625 1409029 EVENT_LOG_v1 {"time_micros": 1790700795028621, "job": 19, "event": "flush_started", "num_memtables": 1, "total_num_input_entries": 207, "num_deletes": 0, "total_data_size": 58581, "memory_usage": 65960, "num_range_deletes": 0, "flush_reason": "Write Buffer Full"}
+2026/09/29-12:53:15.028628 1409029 [db/flush_job.cc:994] [default] [JOB 19] Level-0 flush table #61: started
+2026/09/29-12:53:15.031395 1409029 EVENT_LOG_v1 {"time_micros": 1790700795031366, "cf_name": "default", "job": 19, "event": "table_file_creation", "file_number": 61, "file_size": 33510, "file_checksum": "", "file_checksum_func_name": "Unknown", "smallest_seqno": 4693, "largest_seqno": 4898, "table_properties": {"data_size": 31762, "index_size": 185, "index_partitions": 0, "top_level_index_size": 0, "index_key_is_user_key": 1, "index_value_is_delta_encoded": 1, "filter_size": 261, "raw_key_size": 4440, "raw_average_key_size": 24, "raw_value_size": 47360, "raw_average_value_size": 256, "num_data_blocks": 14, "num_entries": 185, "num_filter_entries": 185, "num_deletions": 0, "num_merge_operands": 0, "num_range_deletions": 0, "format_version": 6, "fixed_key_len": 0, "filter_policy": "bloomfilter", "column_family_name": "default", "column_family_id": 0, "comparator": "leveldb.BytewiseComparator", "user_defined_timestamps_persisted": 1, "key_largest_seqno": 4898, "key_smallest_seqno": 4693, "merge_operator": "nullptr", "prefix_extractor_name": "nullptr", "property_collectors": "[]", "compression": "LZ4", "compression_options": "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; max_dict_buffer_bytes=0; use_zstd_dict_trainer=1; max_compressed_bytes_per_kb=896; checksum=0; _type=4; ", "creation_time": 1790700794, "oldest_key_time": 1790700795, "newest_key_time": 1790700794, "file_creation_time": 1790700795, "slow_compression_estimated_data_size": 0, "fast_compression_estimated_data_size": 0, "db_id": "48ae4f6b-53d3-48a2-9393-f1b69d6ca093", "db_session_id": "WG2NDWKR0IVSZ1F6IW7F", "orig_file_number": 61, "seqno_to_time_mapping": "N/A"}, "status": "OK"}
+2026/09/29-12:53:15.031414 1409029 [db/flush_job.cc:1167] [default] [JOB 19] Flush lasted 2808 microseconds, and 773 cpu microseconds.
+2026/09/29-12:53:15.032834 1409029 (Original Log Time 2026/09/29-12:53:15.031405) [db/flush_job.cc:1105] [default] [JOB 19] Level-0 flush table #61: 33510 bytes OK  
+2026/09/29-12:53:15.032838 1409029 (Original Log Time 2026/09/29-12:53:15.031417) [db/memtable_list.cc:670] [default] Level-0 commit flush result of table #61 started
+2026/09/29-12:53:15.032840 1409029 (Original Log Time 2026/09/29-12:53:15.031867) [db/memtable_list.cc:874] [default] Level-0 commit flush result of table #61: memtable #1 done
+2026/09/29-12:53:15.032843 1409029 (Original Log Time 2026/09/29-12:53:15.031878) EVENT_LOG_v1 {"time_micros": 1790700795031874, "job": 19, "event": "flush_finished", "output_compression": "LZ4", "lsm_state": [3, 0, 0, 3], "immutable_memtables": 0}
+2026/09/29-12:53:15.032845 1409029 (Original Log Time 2026/09/29-12:53:15.031890) [db/db_impl/db_impl_compaction_flush.cc:432] [default] Level summary: base level 3 level multiplier 10.00 max bytes base 262144 files[3 0 0 3] max score 0.75, estimated pending compaction bytes 0
+2026/09/29-12:53:15.032849 1409029 [db/db_impl/db_impl_files.cc:598] [JOB 19] Try to delete WAL files size 59616, prev total WAL file size 60192, number of live WAL files 2.
+2026/09/29-12:53:15.033351 1409029 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000058.log immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 276780, max_trash_db_ratio 0.250000
+2026/09/29-12:53:15.588838 1409131 [db/db_impl/db_impl_write.cc:3249] [default] New memtable created with log file: #62. Immutable memtables: 0.
+2026/09/29-12:53:15.588876 1409029 (Original Log Time 2026/09/29-12:53:15.588865) [db/db_impl/db_impl_compaction_flush.cc:3893] Calling FlushMemTableToOutputFile with column family [default], flush slots available 1, compaction slots available 1, flush slots scheduled 1, compaction slots scheduled 0
+2026/09/29-12:53:15.588882 1409029 [db/flush_job.cc:935] [default] [JOB 20] Flushing memtable id 15 with next log file: 62, marked_for_flush: 0
+2026/09/29-12:53:15.588893 1409029 EVENT_LOG_v1 {"time_micros": 1790700795588889, "job": 20, "event": "flush_started", "num_memtables": 1, "total_num_input_entries": 207, "num_deletes": 0, "total_data_size": 58581, "memory_usage": 66000, "num_range_deletes": 0, "flush_reason": "Write Buffer Full"}
+2026/09/29-12:53:15.588896 1409029 [db/flush_job.cc:994] [default] [JOB 20] Level-0 flush table #63: started
+2026/09/29-12:53:15.591671 1409029 EVENT_LOG_v1 {"time_micros": 1790700795591633, "cf_name": "default", "job": 20, "event": "table_file_creation", "file_number": 63, "file_size": 33609, "file_checksum": "", "file_checksum_func_name": "Unknown", "smallest_seqno": 4899, "largest_seqno": 5105, "table_properties": {"data_size": 31858, "index_size": 188, "index_partitions": 0, "top_level_index_size": 0, "index_key_is_user_key": 1, "index_value_is_delta_encoded": 1, "filter_size": 261, "raw_key_size": 4464, "raw_average_key_size": 24, "raw_value_size": 47616, "raw_average_value_size": 256, "num_data_blocks": 14, "num_entries": 186, "num_filter_entries": 186, "num_deletions": 0, "num_merge_operands": 0, "num_range_deletions": 0, "format_version": 6, "fixed_key_len": 0, "filter_policy": "bloomfilter", "column_family_name": "default", "column_family_id": 0, "comparator": "leveldb.BytewiseComparator", "user_defined_timestamps_persisted": 1, "key_largest_seqno": 5105, "key_smallest_seqno": 4899, "merge_operator": "nullptr", "prefix_extractor_name": "nullptr", "property_collectors": "[]", "compression": "LZ4", "compression_options": "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; max_dict_buffer_bytes=0; use_zstd_dict_trainer=1; max_compressed_bytes_per_kb=896; checksum=0; _type=4; ", "creation_time": 1790700795, "oldest_key_time": 1790700795, "newest_key_time": 1790700795, "file_creation_time": 1790700795, "slow_compression_estimated_data_size": 0, "fast_compression_estimated_data_size": 0, "db_id": "48ae4f6b-53d3-48a2-9393-f1b69d6ca093", "db_session_id": "WG2NDWKR0IVSZ1F6IW7F", "orig_file_number": 63, "seqno_to_time_mapping": "N/A"}, "status": "OK"}
+2026/09/29-12:53:15.591689 1409029 [db/flush_job.cc:1167] [default] [JOB 20] Flush lasted 2815 microseconds, and 820 cpu microseconds.
+2026/09/29-12:53:15.592505 1409028 [db/compaction/compaction_job.cc:2850] [default] [JOB 21] Compacting 4@0 + 3@3 files to L3, score 1.00
+2026/09/29-12:53:15.592515 1409028 [db/compaction/compaction_job.cc:2856] [default]: Compaction start summary: Base version 20 Base level 0, inputs: [63(32KB) 61(32KB) 59(33KB) 57(33KB)], [53(67KB) 54(67KB) 55(37KB)]
+2026/09/29-12:53:15.592529 1409028 EVENT_LOG_v1 {"time_micros": 1790700795592520, "job": 21, "event": "compaction_started", "cf_name": "default", "compaction_reason": "LevelL0FilesNum", "files_L0": [63, 61, 59, 57], "files_L3": [53, 54, 55], "score": 1, "input_data_size": 310389, "oldest_snapshot_seqno": -1}
+2026/09/29-12:53:15.592976 1409029 (Original Log Time 2026/09/29-12:53:15.591680) [db/flush_job.cc:1105] [default] [JOB 20] Level-0 flush table #63: 33609 bytes OK  
+2026/09/29-12:53:15.592980 1409029 (Original Log Time 2026/09/29-12:53:15.591692) [db/memtable_list.cc:670] [default] Level-0 commit flush result of table #63 started
+2026/09/29-12:53:15.592983 1409029 (Original Log Time 2026/09/29-12:53:15.592085) [db/memtable_list.cc:874] [default] Level-0 commit flush result of table #63: memtable #1 done
+2026/09/29-12:53:15.592985 1409029 (Original Log Time 2026/09/29-12:53:15.592097) EVENT_LOG_v1 {"time_micros": 1790700795592092, "job": 20, "event": "flush_finished", "output_compression": "LZ4", "lsm_state": [4, 0, 0, 3], "immutable_memtables": 0}
+2026/09/29-12:53:15.592987 1409029 (Original Log Time 2026/09/29-12:53:15.592110) [db/db_impl/db_impl_compaction_flush.cc:432] [default] Level summary: base level 3 level multiplier 10.00 max bytes base 262144 files[4 0 0 3] max score 1.00, estimated pending compaction bytes 134765
+2026/09/29-12:53:15.592991 1409029 [db/db_impl/db_impl_files.cc:598] [JOB 20] Try to delete WAL files size 59616, prev total WAL file size 60480, number of live WAL files 2.
+2026/09/29-12:53:15.593496 1409029 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000060.log immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 310389, max_trash_db_ratio 0.250000
+2026/09/29-12:53:15.596294 1409028 [db/compaction/compaction_job.cc:2196] [default] [JOB 21] Generated table #64: 393 keys, 68796 bytes, temperature: kUnknown
+2026/09/29-12:53:15.596332 1409028 EVENT_LOG_v1 {"time_micros": 1790700795596305, "cf_name": "default", "job": 21, "event": "table_file_creation", "file_number": 64, "file_size": 68796, "file_checksum": "", "file_checksum_func_name": "Unknown", "smallest_seqno": 0, "largest_seqno": 0, "table_properties": {"data_size": 66600, "index_size": 383, "index_partitions": 0, "top_level_index_size": 0, "index_key_is_user_key": 1, "index_value_is_delta_encoded": 1, "filter_size": 517, "raw_key_size": 9432, "raw_average_key_size": 24, "raw_value_size": 100608, "raw_average_value_size": 256, "num_data_blocks": 29, "num_entries": 393, "num_filter_entries": 393, "num_deletions": 0, "num_merge_operands": 0, "num_range_deletions": 0, "format_version": 6, "fixed_key_len": 0, "filter_policy": "bloomfilter", "column_family_name": "default", "column_family_id": 0, "comparator": "leveldb.BytewiseComparator", "user_defined_timestamps_persisted": 1, "key_largest_seqno": 0, "key_smallest_seqno": 0, "merge_operator": "nullptr", "prefix_extractor_name": "nullptr", "property_collectors": "[]", "compression": "LZ4", "compression_options": "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; max_dict_buffer_bytes=0; use_zstd_dict_trainer=1; max_compressed_bytes_per_kb=896; checksum=0; _type=4; ", "creation_time": 1790700786, "oldest_key_time": 1790700795, "newest_key_time": 0, "file_creation_time": 1790700795, "slow_compression_estimated_data_size": 0, "fast_compression_estimated_data_size": 0, "db_id": "48ae4f6b-53d3-48a2-9393-f1b69d6ca093", "db_session_id": "WG2NDWKR0IVSZ1F6IW7F", "orig_file_number": 64, "seqno_to_time_mapping": "N/A"}, "status": "OK"}
+2026/09/29-12:53:15.600019 1409028 [db/compaction/compaction_job.cc:2196] [default] [JOB 21] Generated table #65: 393 keys, 68744 bytes, temperature: kUnknown
+2026/09/29-12:53:15.600059 1409028 EVENT_LOG_v1 {"time_micros": 1790700795600031, "cf_name": "default", "job": 21, "event": "table_file_creation", "file_number": 65, "file_size": 68744, "file_checksum": "", "file_checksum_func_name": "Unknown", "smallest_seqno": 0, "largest_seqno": 0, "table_properties": {"data_size": 66547, "index_size": 384, "index_partitions": 0, "top_level_index_size": 0, "index_key_is_user_key": 1, "index_value_is_delta_encoded": 1, "filter_size": 517, "raw_key_size": 9432, "raw_average_key_size": 24, "raw_value_size": 100608, "raw_average_value_size": 256, "num_data_blocks": 29, "num_entries": 393, "num_filter_entries": 393, "num_deletions": 0, "num_merge_operands": 0, "num_range_deletions": 0, "format_version": 6, "fixed_key_len": 0, "filter_policy": "bloomfilter", "column_family_name": "default", "column_family_id": 0, "comparator": "leveldb.BytewiseComparator", "user_defined_timestamps_persisted": 1, "key_largest_seqno": 0, "key_smallest_seqno": 0, "merge_operator": "nullptr", "prefix_extractor_name": "nullptr", "property_collectors": "[]", "compression": "LZ4", "compression_options": "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; max_dict_buffer_bytes=0; use_zstd_dict_trainer=1; max_compressed_bytes_per_kb=896; checksum=0; _type=4; ", "creation_time": 1790700786, "oldest_key_time": 1790700795, "newest_key_time": 0, "file_creation_time": 1790700795, "slow_compression_estimated_data_size": 0, "fast_compression_estimated_data_size": 0, "db_id": "48ae4f6b-53d3-48a2-9393-f1b69d6ca093", "db_session_id": "WG2NDWKR0IVSZ1F6IW7F", "orig_file_number": 65, "seqno_to_time_mapping": "N/A"}, "status": "OK"}
+2026/09/29-12:53:15.603568 1409028 [db/compaction/compaction_job.cc:2196] [default] [JOB 21] Generated table #66: 214 keys, 38132 bytes, temperature: kUnknown
+2026/09/29-12:53:15.603664 1409028 EVENT_LOG_v1 {"time_micros": 1790700795603588, "cf_name": "default", "job": 21, "event": "table_file_creation", "file_number": 66, "file_size": 38132, "file_checksum": "", "file_checksum_func_name": "Unknown", "smallest_seqno": 0, "largest_seqno": 0, "table_properties": {"data_size": 36291, "index_size": 220, "index_partitions": 0, "top_level_index_size": 0, "index_key_is_user_key": 1, "index_value_is_delta_encoded": 1, "filter_size": 325, "raw_key_size": 5136, "raw_average_key_size": 24, "raw_value_size": 54784, "raw_average_value_size": 256, "num_data_blocks": 16, "num_entries": 214, "num_filter_entries": 214, "num_deletions": 0, "num_merge_operands": 0, "num_range_deletions": 0, "format_version": 6, "fixed_key_len": 0, "filter_policy": "bloomfilter", "column_family_name": "default", "column_family_id": 0, "comparator": "leveldb.BytewiseComparator", "user_defined_timestamps_persisted": 1, "key_largest_seqno": 0, "key_smallest_seqno": 0, "merge_operator": "nullptr", "prefix_extractor_name": "nullptr", "property_collectors": "[]", "compression": "LZ4", "compression_options": "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; max_dict_buffer_bytes=0; use_zstd_dict_trainer=1; max_compressed_bytes_per_kb=896; checksum=0; _type=4; ", "creation_time": 1790700786, "oldest_key_time": 1790700795, "newest_key_time": 0, "file_creation_time": 1790700795, "slow_compression_estimated_data_size": 0, "fast_compression_estimated_data_size": 0, "db_id": "48ae4f6b-53d3-48a2-9393-f1b69d6ca093", "db_session_id": "WG2NDWKR0IVSZ1F6IW7F", "orig_file_number": 66, "seqno_to_time_mapping": "N/A"}, "status": "OK"}
+2026/09/29-12:53:15.607398 1409028 (Original Log Time 2026/09/29-12:53:15.606906) [db/compaction/compaction_job.cc:2360] [default] [JOB 21] Compacted 4@0 + 3@3 files to L3 => 175672 bytes
+2026/09/29-12:53:15.607409 1409028 (Original Log Time 2026/09/29-12:53:15.607357) [db/compaction/compaction_job.cc:1238] [default] compacted to: base level 3 level multiplier 10.00 max bytes base 262144 files[0 0 0 3] max score 0.00, estimated pending compaction bytes 0, MB/sec: 27.8 rd, 15.7 wr, level 3, files in(4, 3) filtered(0, 0) out(3 +0 blob) MB in(0.1, 0.2 +0.0 blob) filtered(0.0, 0.0) out(0.2 +0.0 blob), read-write-amplify(3.6) write-amplify(1.3) OK, records in: 1745, records dropped: 745 output_compression: LZ4
+2026/09/29-12:53:15.607413 1409028 (Original Log Time 2026/09/29-12:53:15.607376) EVENT_LOG_v1 {"time_micros": 1790700795607366, "job": 21, "event": "compaction_finished", "compaction_time_micros": 11157, "compaction_time_cpu_micros": 3191, "output_level": 3, "num_output_files": 3, "total_output_size": 175672, "num_input_records": 1745, "num_output_records": 1000, "num_subcompactions": 1, "output_compression": "LZ4", "num_single_delete_mismatches": 0, "num_single_delete_fallthrough": 0, "lsm_state": [0, 0, 0, 3]}
+2026/09/29-12:53:15.610339 1409028 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000053.sst immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 486061, max_trash_db_ratio 0.250000
+2026/09/29-12:53:15.610350 1409028 EVENT_LOG_v1 {"time_micros": 1790700795610347, "job": 21, "event": "table_file_deletion", "file_number": 53, "status": "OK"}
+2026/09/29-12:53:15.611058 1409028 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000054.sst immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 417288, max_trash_db_ratio 0.250000
+2026/09/29-12:53:15.611073 1409028 EVENT_LOG_v1 {"time_micros": 1790700795611069, "job": 21, "event": "table_file_deletion", "file_number": 54, "status": "OK"}
+2026/09/29-12:53:15.611544 1409028 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000055.sst immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 348545, max_trash_db_ratio 0.250000
+2026/09/29-12:53:15.611556 1409028 EVENT_LOG_v1 {"time_micros": 1790700795611553, "job": 21, "event": "table_file_deletion", "file_number": 55, "status": "OK"}
+2026/09/29-12:53:15.612031 1409028 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000057.sst immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 310437, max_trash_db_ratio 0.250000
+2026/09/29-12:53:15.612037 1409028 EVENT_LOG_v1 {"time_micros": 1790700795612036, "job": 21, "event": "table_file_deletion", "file_number": 57, "status": "OK"}
+2026/09/29-12:53:15.612540 1409028 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000059.sst immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 276612, max_trash_db_ratio 0.250000
+2026/09/29-12:53:15.612552 1409028 EVENT_LOG_v1 {"time_micros": 1790700795612549, "job": 21, "event": "table_file_deletion", "file_number": 59, "status": "OK"}
+2026/09/29-12:53:15.613047 1409028 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000061.sst immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 242791, max_trash_db_ratio 0.250000
+2026/09/29-12:53:15.613052 1409028 EVENT_LOG_v1 {"time_micros": 1790700795613051, "job": 21, "event": "table_file_deletion", "file_number": 61, "status": "OK"}
+2026/09/29-12:53:15.613547 1409028 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000063.sst immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 209281, max_trash_db_ratio 0.250000
+2026/09/29-12:53:15.613559 1409028 EVENT_LOG_v1 {"time_micros": 1790700795613556, "job": 21, "event": "table_file_deletion", "file_number": 63, "status": "OK"}
+2026/09/29-12:53:16.118176 1409131 [db/db_impl/db_impl_write.cc:3249] [default] New memtable created with log file: #67. Immutable memtables: 0.
+2026/09/29-12:53:16.118212 1409029 (Original Log Time 2026/09/29-12:53:16.118201) [db/db_impl/db_impl_compaction_flush.cc:3893] Calling FlushMemTableToOutputFile with column family [default], flush slots available 1, compaction slots available 1, flush slots scheduled 1, compaction slots scheduled 0
+2026/09/29-12:53:16.118217 1409029 [db/flush_job.cc:935] [default] [JOB 22] Flushing memtable id 16 with next log file: 67, marked_for_flush: 0
+2026/09/29-12:53:16.118229 1409029 EVENT_LOG_v1 {"time_micros": 1790700796118224, "job": 22, "event": "flush_started", "num_memtables": 1, "total_num_input_entries": 207, "num_deletes": 0, "total_data_size": 58581, "memory_usage": 65984, "num_range_deletes": 0, "flush_reason": "Write Buffer Full"}
+2026/09/29-12:53:16.118232 1409029 [db/flush_job.cc:994] [default] [JOB 22] Level-0 flush table #68: started
+2026/09/29-12:53:16.121295 1409029 EVENT_LOG_v1 {"time_micros": 1790700796121265, "cf_name": "default", "job": 22, "event": "table_file_creation", "file_number": 68, "file_size": 32593, "file_checksum": "", "file_checksum_func_name": "Unknown", "smallest_seqno": 5106, "largest_seqno": 5312, "table_properties": {"data_size": 30855, "index_size": 175, "index_partitions": 0, "top_level_index_size": 0, "index_key_is_user_key": 1, "index_value_is_delta_encoded": 1, "filter_size": 261, "raw_key_size": 4320, "raw_average_key_size": 24, "raw_value_size": 46080, "raw_average_value_size": 256, "num_data_blocks": 13, "num_entries": 180, "num_filter_entries": 180, "num_deletions": 0, "num_merge_operands": 0, "num_range_deletions": 0, "format_version": 6, "fixed_key_len": 0, "filter_policy": "bloomfilter", "column_family_name": "default", "column_family_id": 0, "comparator": "leveldb.BytewiseComparator", "user_defined_timestamps_persisted": 1, "key_largest_seqno": 5312, "key_smallest_seqno": 5106, "merge_operator": "nullptr", "prefix_extractor_name": "nullptr", "property_collectors": "[]", "compression": "LZ4", "compression_options": "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; max_dict_buffer_bytes=0; use_zstd_dict_trainer=1; max_compressed_bytes_per_kb=896; checksum=0; _type=4; ", "creation_time": 1790700795, "oldest_key_time": 1790700796, "newest_key_time": 1790700795, "file_creation_time": 1790700796, "slow_compression_estimated_data_size": 0, "fast_compression_estimated_data_size": 0, "db_id": "48ae4f6b-53d3-48a2-9393-f1b69d6ca093", "db_session_id": "WG2NDWKR0IVSZ1F6IW7F", "orig_file_number": 68, "seqno_to_time_mapping": "N/A"}, "status": "OK"}
+2026/09/29-12:53:16.121321 1409029 [db/flush_job.cc:1167] [default] [JOB 22] Flush lasted 3110 microseconds, and 984 cpu microseconds.
+2026/09/29-12:53:16.122597 1409029 (Original Log Time 2026/09/29-12:53:16.121311) [db/flush_job.cc:1105] [default] [JOB 22] Level-0 flush table #68: 32593 bytes OK  
+2026/09/29-12:53:16.122601 1409029 (Original Log Time 2026/09/29-12:53:16.121324) [db/memtable_list.cc:670] [default] Level-0 commit flush result of table #68 started
+2026/09/29-12:53:16.122604 1409029 (Original Log Time 2026/09/29-12:53:16.121739) [db/memtable_list.cc:874] [default] Level-0 commit flush result of table #68: memtable #1 done
+2026/09/29-12:53:16.122605 1409029 (Original Log Time 2026/09/29-12:53:16.121754) EVENT_LOG_v1 {"time_micros": 1790700796121749, "job": 22, "event": "flush_finished", "output_compression": "LZ4", "lsm_state": [1, 0, 0, 3], "immutable_memtables": 0}
+2026/09/29-12:53:16.122607 1409029 (Original Log Time 2026/09/29-12:53:16.121766) [db/db_impl/db_impl_compaction_flush.cc:432] [default] Level summary: base level 3 level multiplier 10.00 max bytes base 262144 files[1 0 0 3] max score 0.25, estimated pending compaction bytes 0
+2026/09/29-12:53:16.122611 1409029 [db/db_impl/db_impl_files.cc:598] [JOB 22] Try to delete WAL files size 59616, prev total WAL file size 60480, number of live WAL files 2.
+2026/09/29-12:53:16.123094 1409029 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000062.log immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 208265, max_trash_db_ratio 0.250000
+2026/09/29-12:53:16.415071 1409131 [db/db_impl/db_impl_compaction_flush.cc:2360] [default] Manual flush start.
+2026/09/29-12:53:16.416050 1409131 [db/db_impl/db_impl_write.cc:3249] [default] New memtable created with log file: #69. Immutable memtables: 0.
+2026/09/29-12:53:16.416088 1409029 (Original Log Time 2026/09/29-12:53:16.416076) [db/db_impl/db_impl_compaction_flush.cc:3893] Calling FlushMemTableToOutputFile with column family [default], flush slots available 1, compaction slots available 1, flush slots scheduled 1, compaction slots scheduled 0
+2026/09/29-12:53:16.416094 1409029 [db/flush_job.cc:935] [default] [JOB 23] Flushing memtable id 17 with next log file: 69, marked_for_flush: 0
+2026/09/29-12:53:16.416106 1409029 EVENT_LOG_v1 {"time_micros": 1790700796416101, "job": 23, "event": "flush_started", "num_memtables": 1, "total_num_input_entries": 106, "num_deletes": 0, "total_data_size": 29998, "memory_usage": 34072, "num_range_deletes": 0, "flush_reason": "Manual Flush"}
+2026/09/29-12:53:16.416108 1409029 [db/flush_job.cc:994] [default] [JOB 23] Level-0 flush table #70: started
+2026/09/29-12:53:16.418882 1409029 EVENT_LOG_v1 {"time_micros": 1790700796418850, "cf_name": "default", "job": 23, "event": "table_file_creation", "file_number": 70, "file_size": 18363, "file_checksum": "", "file_checksum_func_name": "Unknown", "smallest_seqno": 5313, "largest_seqno": 5418, "table_properties": {"data_size": 16830, "index_size": 102, "index_partitions": 0, "top_level_index_size": 0, "index_key_is_user_key": 1, "index_value_is_delta_encoded": 1, "filter_size": 133, "raw_key_size": 2352, "raw_average_key_size": 24, "raw_value_size": 25088, "raw_average_value_size": 256, "num_data_blocks": 7, "num_entries": 98, "num_filter_entries": 98, "num_deletions": 0, "num_merge_operands": 0, "num_range_deletions": 0, "format_version": 6, "fixed_key_len": 0, "filter_policy": "bloomfilter", "column_family_name": "default", "column_family_id": 0, "comparator": "leveldb.BytewiseComparator", "user_defined_timestamps_persisted": 1, "key_largest_seqno": 5418, "key_smallest_seqno": 5313, "merge_operator": "nullptr", "prefix_extractor_name": "nullptr", "property_collectors": "[]", "compression": "LZ4", "compression_options": "window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; max_dict_buffer_bytes=0; use_zstd_dict_trainer=1; max_compressed_bytes_per_kb=896; checksum=0; _type=4; ", "creation_time": 1790700796, "oldest_key_time": 1790700796, "newest_key_time": 1790700796, "file_creation_time": 1790700796, "slow_compression_estimated_data_size": 0, "fast_compression_estimated_data_size": 0, "db_id": "48ae4f6b-53d3-48a2-9393-f1b69d6ca093", "db_session_id": "WG2NDWKR0IVSZ1F6IW7F", "orig_file_number": 70, "seqno_to_time_mapping": "N/A"}, "status": "OK"}
+2026/09/29-12:53:16.418904 1409029 [db/flush_job.cc:1167] [default] [JOB 23] Flush lasted 2817 microseconds, and 660 cpu microseconds.
+2026/09/29-12:53:16.420314 1409029 (Original Log Time 2026/09/29-12:53:16.418895) [db/flush_job.cc:1105] [default] [JOB 23] Level-0 flush table #70: 18363 bytes OK  
+2026/09/29-12:53:16.420318 1409029 (Original Log Time 2026/09/29-12:53:16.418907) [db/memtable_list.cc:670] [default] Level-0 commit flush result of table #70 started
+2026/09/29-12:53:16.420321 1409029 (Original Log Time 2026/09/29-12:53:16.419404) [db/memtable_list.cc:874] [default] Level-0 commit flush result of table #70: memtable #1 done
+2026/09/29-12:53:16.420323 1409029 (Original Log Time 2026/09/29-12:53:16.419432) EVENT_LOG_v1 {"time_micros": 1790700796419418, "job": 23, "event": "flush_finished", "output_compression": "LZ4", "lsm_state": [2, 0, 0, 3], "immutable_memtables": 0}
+2026/09/29-12:53:16.420325 1409029 (Original Log Time 2026/09/29-12:53:16.419455) [db/db_impl/db_impl_compaction_flush.cc:432] [default] Level summary: base level 3 level multiplier 10.00 max bytes base 262144 files[2 0 0 3] max score 0.50, estimated pending compaction bytes 0
+2026/09/29-12:53:16.420330 1409029 [db/db_impl/db_impl_files.cc:598] [JOB 23] Try to delete WAL files size 30528, prev total WAL file size 30528, number of live WAL files 2.
+2026/09/29-12:53:16.420786 1409029 [file/delete_scheduler.cc:71] Deleted file /home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000067.log immediately, rate_bytes_per_sec 0, total_trash_size 0, total_size 226628, max_trash_db_ratio 0.250000
+2026/09/29-12:53:16.420818 1409131 [db/db_impl/db_impl_compaction_flush.cc:2370] [default] Manual flush finished, status: OK
+2026/09/29-12:53:16.421299 1409131 [WARN] [table/block_based/block_based_table_reader.cc:1098] [/home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000070.sst] Tail prefetch size 1841 is calculated based on TailPrefetchStats.
+2026/09/29-12:53:16.421365 1409131 [WARN] [table/block_based/block_based_table_reader.cc:970] At least one SST file opened without unique ID to verify: 0.sst
+2026/09/29-12:53:16.421785 1409131 [WARN] [table/block_based/block_based_table_reader.cc:1098] [/home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000068.sst] Tail prefetch size 1841 is calculated based on TailPrefetchStats.
+2026/09/29-12:53:16.421966 1409131 [WARN] [table/block_based/block_based_table_reader.cc:1098] [/home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000064.sst] Tail prefetch size 1841 is calculated based on TailPrefetchStats.
+2026/09/29-12:53:16.422653 1409131 [WARN] [table/block_based/block_based_table_reader.cc:1098] [/home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000065.sst] Tail prefetch size 1841 is calculated based on TailPrefetchStats.
+2026/09/29-12:53:16.422886 1409131 [WARN] [table/block_based/block_based_table_reader.cc:1098] [/home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000066.sst] Tail prefetch size 1841 is calculated based on TailPrefetchStats.
+2026/09/29-12:53:16.476418 1409026 [db/db_impl/db_impl_compaction_flush.cc:2360] [default] Manual flush start.
+2026/09/29-12:53:16.476425 1409026 [db/db_impl/db_impl_compaction_flush.cc:2370] [default] Manual flush finished, status: OK
+2026/09/29-12:53:16.476501 1409026 [WARN] [table/block_based/block_based_table_reader.cc:1098] [/home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000070.sst] Tail prefetch size 1841 is calculated based on TailPrefetchStats.
+2026/09/29-12:53:16.476701 1409026 [WARN] [table/block_based/block_based_table_reader.cc:1098] [/home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000068.sst] Tail prefetch size 1841 is calculated based on TailPrefetchStats.
+2026/09/29-12:53:16.476880 1409026 [WARN] [table/block_based/block_based_table_reader.cc:1098] [/home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000064.sst] Tail prefetch size 1841 is calculated based on TailPrefetchStats.
+2026/09/29-12:53:16.477112 1409026 [WARN] [table/block_based/block_based_table_reader.cc:1098] [/home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000065.sst] Tail prefetch size 1841 is calculated based on TailPrefetchStats.
+2026/09/29-12:53:16.477328 1409026 [WARN] [table/block_based/block_based_table_reader.cc:1098] [/home/sa29ali/lsm-tree/artifacts/remote-zyra-cuda-20260929-run/shared/trial-0000/db/000066.sst] Tail prefetch size 1841 is calculated based on TailPrefetchStats.
+2026/09/29-12:53:16.477499 1409026 [db/db_impl/db_impl.cc:543] Shutdown: canceling all background work
+2026/09/29-12:53:16.481202 1409026 [db/db_impl/db_impl.cc:1026] Shutdown complete

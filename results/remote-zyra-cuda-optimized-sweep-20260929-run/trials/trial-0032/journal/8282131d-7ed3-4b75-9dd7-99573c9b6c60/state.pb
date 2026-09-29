@@ -1,0 +1,3 @@
+‡
+_
+cuda-rate-sweep-trial-0032$57cae8af-ad27-4ca2-a2b3-b6940fe5100e77ZM6IQ8MN20CMISKALX(€€€€°$8282131d-7ed3-4b75-9dd7-99573c9b6c60$e47f1ef7-2323-49c2-acad-0b77e22a2465 (2 ñ[L—úÈ¨dÖKµ¡Ñz[ÊY3{†…¹¶âÃFœ.Ñ#4B1.lsm-staging/8282131d-7ed3-4b75-9dd7-99573c9b6c60XÏ³`hÜ‘rcuda_batchedzÍ{"backend":"cuda_batched","batches":7,"blocks":129,"device":"NVIDIA RTX A6000; nvCOMP=5.3.0.16; CUDA=12030","dispatches":14,"input_bytes":297180,"kernel_ns":1968316,"output_bytes":495711,"wall_ns":3378218}

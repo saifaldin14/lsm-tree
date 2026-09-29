@@ -1,0 +1,141 @@
+{
+  "artifact_upper_bound": 238911488,
+  "config": {
+    "dataset_spec": "configs/local-compaction-smoke.json",
+    "deadline_ms": 5000,
+    "max_artifact_bytes": 268435456,
+    "max_logical_write_bytes": 67108864,
+    "max_wall_seconds": 300,
+    "measurement_seconds": 8,
+    "modes": [
+      "native_cpu",
+      "cpu_native",
+      "cpu_batched",
+      "cuda_batched"
+    ],
+    "name": "remote-zyra-cuda-pilot",
+    "queue_capacity": 256,
+    "rates": [
+      750
+    ],
+    "read_percent": 50,
+    "read_slo_ms": 10,
+    "repetitions": 2,
+    "schema_version": 1,
+    "seed": 53,
+    "threads": 4,
+    "warmup_seconds": 1,
+    "write_slo_ms": 10
+  },
+  "dataset": {
+    "dataset": {
+      "key_bytes": 16,
+      "overwrite_rounds": 1,
+      "records": 1000,
+      "seed": 1,
+      "value_bytes": 256
+    },
+    "engine": {
+      "background_jobs": 2,
+      "block_bytes": 4096,
+      "block_cache_bytes": 4194304,
+      "compression": "lz4",
+      "levels": 4,
+      "target_file_bytes": 65536,
+      "write_buffer_bytes": 65536
+    },
+    "limits": {
+      "logical_write_bytes": 67108864,
+      "minimum_free_disk_bytes": 268435456
+    },
+    "schema_version": 1
+  },
+  "logical_write_upper_bound": 15232000,
+  "owner": "lsm-lab",
+  "plan_sha256": "92f9cf8bb463d4deca202d4f163069cb0091edebbc90b98ed0b8f5ac2247bc7f",
+  "resource_artifact_upper_bound": 128319488,
+  "schema_version": 1,
+  "telemetry": {
+    "host_budget_bytes": 11665408,
+    "host_collection": "once_per_physical_host",
+    "includes_background_activity": true,
+    "interval_ms": 1000,
+    "process_budget_bytes": 1458176,
+    "schema_version": 1
+  },
+  "topology": "local_process",
+  "trials": [
+    {
+      "id": "trial-0000",
+      "mode": "native_cpu",
+      "rate": 750,
+      "repetition": 0,
+      "requests": 6000,
+      "seed": 15738872762233322452,
+      "warmup_requests": 750
+    },
+    {
+      "id": "trial-0001",
+      "mode": "cpu_batched",
+      "rate": 750,
+      "repetition": 0,
+      "requests": 6000,
+      "seed": 15738872762233322452,
+      "warmup_requests": 750
+    },
+    {
+      "id": "trial-0002",
+      "mode": "cuda_batched",
+      "rate": 750,
+      "repetition": 0,
+      "requests": 6000,
+      "seed": 15738872762233322452,
+      "warmup_requests": 750
+    },
+    {
+      "id": "trial-0003",
+      "mode": "cpu_native",
+      "rate": 750,
+      "repetition": 0,
+      "requests": 6000,
+      "seed": 15738872762233322452,
+      "warmup_requests": 750
+    },
+    {
+      "id": "trial-0004",
+      "mode": "native_cpu",
+      "rate": 750,
+      "repetition": 1,
+      "requests": 6000,
+      "seed": 13243012528543236534,
+      "warmup_requests": 750
+    },
+    {
+      "id": "trial-0005",
+      "mode": "cpu_native",
+      "rate": 750,
+      "repetition": 1,
+      "requests": 6000,
+      "seed": 13243012528543236534,
+      "warmup_requests": 750
+    },
+    {
+      "id": "trial-0006",
+      "mode": "cuda_batched",
+      "rate": 750,
+      "repetition": 1,
+      "requests": 6000,
+      "seed": 13243012528543236534,
+      "warmup_requests": 750
+    },
+    {
+      "id": "trial-0007",
+      "mode": "cpu_batched",
+      "rate": 750,
+      "repetition": 1,
+      "requests": 6000,
+      "seed": 13243012528543236534,
+      "warmup_requests": 750
+    }
+  ]
+}

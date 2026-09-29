@@ -299,9 +299,13 @@ namespace lsm_lab
             EXPECT_GT(report.at("committed").get<std::uint64_t>(), 0U);
             EXPECT_EQ(report.at("local_fallback"), 0);
             if (GetParam() != "cpu_native")
+            {
                 EXPECT_GT(report.at("transformed_blocks").get<std::uint64_t>(), 0U);
+            }
             if (GetParam() == "metal_batched" || GetParam() == "cuda_batched")
+            {
                 EXPECT_GT(report.at("gpu_blocks").get<std::uint64_t>(), 0U);
+            }
             std::istringstream log(read_file(root / "events.jsonl"));
             std::map<std::string, std::vector<std::string>> phases;
             for (std::string line; std::getline(log, line);)
@@ -372,7 +376,9 @@ namespace lsm_lab
             ASSERT_EQ(metrics.at("healthy"), true);
             EXPECT_GT(metrics.at("committed").get<std::uint64_t>(), 0U);
             if (GetParam() != "cpu_native")
+            {
                 EXPECT_GT(metrics.at("transformed_blocks").get<std::uint64_t>(), 32U);
+            }
             check(rocksdb::DB::OpenForReadOnly(engine_options(large), remote_options.database.string(), &database));
             for (std::uint64_t index = 0; index < large.dataset.records; ++index)
             {
@@ -391,7 +397,11 @@ namespace lsm_lab
                             "--listen", "127.0.0.1:0", "--ready-file", (root / "worker.ready").string()},
                            root / "worker.log");
             const auto worker_endpoint = worker.ready(root / "worker.ready");
-            for (const std::string mode : {"native_cpu", "remote_worker"})
+            std::vector<std::string> modes{"native_cpu", "remote_worker"};
+#ifdef LSM_HAVE_CUDA
+            modes.push_back("cuda_local");
+#endif
+            for (const auto &mode : modes)
             {
                 const auto trial = root / "shared" / mode;
                 clone_dataset(root / "shared" / "dataset", trial);
@@ -433,13 +443,23 @@ namespace lsm_lab
                 const auto drain_status = stub->Maintain(&drain_context, maintenance, &drained);
                 ASSERT_TRUE(drain_status.ok()) << drain_status.error_message();
                 EXPECT_TRUE(drained.checksums_verified());
-                const auto properties = nlohmann::json::parse(drained.statistics_json()).at("properties");
+                const auto statistics = nlohmann::json::parse(drained.statistics_json());
+                const auto properties = statistics.at("properties");
                 EXPECT_TRUE(properties.at("rocksdb.num-files-at-level0").is_number_unsigned());
+                EXPECT_GT(statistics.at("compactions").at("successful_jobs").get<std::uint64_t>(), 0U);
+                EXPECT_GT(statistics.at("compactions").at("elapsed_micros_total").get<std::uint64_t>(), 0U);
                 if (mode == "remote_worker")
                 {
-                    const auto stats = nlohmann::json::parse(drained.statistics_json());
-                    EXPECT_EQ(stats.at("remote").at("healthy"), true);
-                    EXPECT_GT(stats.at("remote").at("committed").get<std::uint64_t>(), 0U);
+                    EXPECT_EQ(statistics.at("remote").at("healthy"), true);
+                    EXPECT_GT(statistics.at("remote").at("committed").get<std::uint64_t>(), 0U);
+                }
+                if (mode == "cuda_local")
+                {
+                    const auto &local = statistics.at("local_transform");
+                    EXPECT_GT(local.at("blocks").get<std::uint64_t>(), 0U);
+                    EXPECT_GT(local.at("batches").get<std::uint64_t>(), 0U);
+                    EXPECT_LE(local.at("batches").get<std::uint64_t>(),
+                              local.at("compaction_sessions").get<std::uint64_t>() * 2);
                 }
                 EXPECT_EQ(primary.stop(), 0);
                 std::unique_ptr<rocksdb::DB> reopened;

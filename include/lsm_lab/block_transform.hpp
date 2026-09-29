@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <nlohmann/json.hpp>
@@ -24,6 +25,12 @@ namespace lsm_lab
     public:
         rocksdb::Status Transform(const std::vector<rocksdb::CompactionBlockInput> &input,
                                   std::vector<std::string> *output) noexcept final;
+        rocksdb::Status BuildOutput(const std::vector<rocksdb::Slice> &input,
+                                    std::vector<rocksdb::CompactionOutputBlock> *output) noexcept final;
+        rocksdb::Status SubmitOutput(
+            std::vector<std::string> input,
+            std::unique_ptr<rocksdb::CompactionOutputSubmission> *submission) noexcept final;
+        std::shared_ptr<rocksdb::CompactionBlockSession> CreateSession() final;
         nlohmann::json statistics() const;
         virtual std::string name() const = 0;
         virtual std::string device() const { return "host_cpu"; }
@@ -31,8 +38,20 @@ namespace lsm_lab
     protected:
         virtual rocksdb::Status execute(const std::string &input, const std::vector<BlockDescriptor> &blocks,
                                         std::vector<std::string> *output) = 0;
-        std::uint64_t kernel_ns_ = 0;
-        std::uint64_t dispatches_ = 0;
+        virtual rocksdb::Status execute_output(const std::vector<rocksdb::Slice> &input,
+                                               std::vector<rocksdb::CompactionOutputBlock> *output);
+        virtual rocksdb::Status submit_output(
+            std::vector<std::string> input,
+            std::unique_ptr<rocksdb::CompactionOutputSubmission> *submission);
+        std::atomic<std::uint64_t> kernel_ns_{0};
+        std::atomic<std::uint64_t> dispatches_{0};
+        std::atomic<std::uint64_t> cpu_fallback_batches_{0};
+        std::atomic<std::uint64_t> cpu_fallback_blocks_{0};
+        std::atomic<std::uint64_t> cpu_fallback_bytes_{0};
+        std::atomic<std::uint64_t> compaction_sessions_{0};
+        std::atomic<std::uint64_t> output_batches_{0};
+        std::atomic<std::uint64_t> output_blocks_{0};
+        std::atomic<std::uint64_t> output_gpu_batches_{0};
 
     private:
         mutable std::mutex mutex_;
@@ -40,6 +59,10 @@ namespace lsm_lab
     };
 
     std::shared_ptr<BatchTransform> make_cpu_transform();
+    rocksdb::Status execute_cpu_batch(const std::string &input, const std::vector<BlockDescriptor> &blocks,
+                                      std::vector<std::string> *output);
+    rocksdb::Status execute_cpu_output(const std::vector<rocksdb::Slice> &input,
+                                       std::vector<rocksdb::CompactionOutputBlock> *output);
     std::shared_ptr<BatchTransform> make_transform(const std::string &name);
     std::vector<std::string> available_transforms();
     std::vector<std::string> compiled_transforms();
@@ -50,5 +73,6 @@ namespace lsm_lab
 #ifdef LSM_HAVE_CUDA
     bool cuda_available();
     std::shared_ptr<BatchTransform> make_cuda_transform();
+    std::shared_ptr<BatchTransform> make_cuda_hybrid_transform();
 #endif
 }

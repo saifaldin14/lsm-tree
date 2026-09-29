@@ -1,0 +1,81 @@
+{
+  "dataset_id": "4019edc4-6f71-4bd7-8042-b935d7d104b4",
+  "files": [
+    {
+      "bytes": 0,
+      "name": "000014.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 68814,
+      "name": "000015.sst",
+      "sha256": "b9a56283196f216e8b249e2128a5bb34570af84e16cb578f521f210dead23048"
+    },
+    {
+      "bytes": 9965,
+      "name": "000016.sst",
+      "sha256": "5ee494fd86e22b82a9ab716a1043fbb934f092f27e04b420ba66bc34bff10836"
+    },
+    {
+      "bytes": 68740,
+      "name": "000017.sst",
+      "sha256": "cc59299d5a15b52ce1659d1ad7a0396c9b85cf5c6250e8484a5790f09e41de94"
+    },
+    {
+      "bytes": 38114,
+      "name": "000018.sst",
+      "sha256": "7e8fb2d5efe69903d658193c9ebb6068510770a692aac458fabec014df22f956"
+    },
+    {
+      "bytes": 16,
+      "name": "CURRENT",
+      "sha256": "9c283f6e81028b9eb0760d918ee4bc0aa256ed3b926393c1734c760c4bd724fd"
+    },
+    {
+      "bytes": 36,
+      "name": "IDENTITY",
+      "sha256": "bb7305163b4abb032eddd2bc651363b30397a17f1bd49872b13cd96009b822a2"
+    },
+    {
+      "bytes": 969,
+      "name": "MANIFEST-000005",
+      "sha256": "afae85db2fa1651a9778bf503c7c6293bcdd9cd58b73941601d1d3085ef974be"
+    },
+    {
+      "bytes": 8984,
+      "name": "OPTIONS-000007",
+      "sha256": "636f2d44d0bc724a56f34ae2ea9c653f5f292488d42d5ca7d08cb0f34cbc9864"
+    }
+  ],
+  "generator": "splitmix64-record-v1",
+  "logical_write_bytes": 544000,
+  "owner": "lsm-lab",
+  "parent_id": "846a86c3-8db7-41e3-bcd7-b5b5aa722b1d",
+  "rocksdb_version": "11.8.1",
+  "schema_version": 1,
+  "spec": {
+    "dataset": {
+      "key_bytes": 16,
+      "overwrite_rounds": 1,
+      "records": 1000,
+      "seed": 1,
+      "value_bytes": 256
+    },
+    "engine": {
+      "background_jobs": 2,
+      "block_bytes": 4096,
+      "block_cache_bytes": 4194304,
+      "compression": "lz4",
+      "levels": 4,
+      "target_file_bytes": 65536,
+      "write_buffer_bytes": 65536
+    },
+    "limits": {
+      "logical_write_bytes": 67108864,
+      "minimum_free_disk_bytes": 268435456
+    },
+    "schema_version": 1
+  },
+  "spec_sha256": "1281571d664c660110101b58e84e4b78e008eb52f8eb187c0bd6c3e7a9e84d95",
+  "state": "ready"
+}

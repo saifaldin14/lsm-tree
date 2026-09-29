@@ -1,0 +1,151 @@
+{
+  "checksums_verified": true,
+  "database_drain_ns": 9600320,
+  "database_statistics": {
+    "db_session_id": "L6TZR8CR3P2N47QBKV1Z",
+    "deletes": 0,
+    "mode": "remote_worker",
+    "process": {
+      "block_input_operations": 6344,
+      "block_output_operations": 132096,
+      "peak_rss_bytes": 48885760,
+      "system_cpu_us": 2414722,
+      "user_cpu_us": 2544198
+    },
+    "properties": {
+      "rocksdb.cur-size-all-mem-tables": 2048,
+      "rocksdb.estimate-pending-compaction-bytes": 0,
+      "rocksdb.live-sst-files-size": 221578,
+      "rocksdb.num-files-at-level0": 2
+    },
+    "reads": 15035,
+    "remote": {
+      "committed": 18,
+      "gpu_blocks": 2323,
+      "gpu_input_bytes": 5338088,
+      "healthy": true,
+      "local_fallback": 0,
+      "submitted": 18,
+      "transformed_blocks": 2323
+    },
+    "run_id": "cuda-rate-sweep-trial-0023",
+    "schema_version": 1,
+    "writes": 14965
+  },
+  "drain_status": "",
+  "generator_lag": {
+    "count": 24000,
+    "maximum": 85887,
+    "p50": 53919,
+    "p95": 58495,
+    "p99": 68159,
+    "significant_digits": 3,
+    "unit": "nanoseconds"
+  },
+  "latency_scope": "intended arrival to response, including generator and client queue delay",
+  "load_and_queue_drain_ns": 10056305880,
+  "load_process": {
+    "block_input_operations": 0,
+    "block_output_operations": 17440,
+    "peak_rss_bytes": 25886720,
+    "system_cpu_us": 2143159,
+    "user_cpu_us": 2050887
+  },
+  "measurement": {
+    "blocked_by_indeterminate_write": 0,
+    "completed": 24000,
+    "completed_in_window": 23999,
+    "expired_before_send": 0,
+    "failed": 0,
+    "indeterminate_writes": 0,
+    "offered": 24000,
+    "payload_mismatches": 0,
+    "queue_rejected": 0
+  },
+  "metrics_errors": 0,
+  "mode": "remote_worker",
+  "offered_rate": 3000,
+  "offered_window_ns": 8000000000,
+  "offline_verification_required": true,
+  "queue_delay": {
+    "count": 24000,
+    "maximum": 4902911,
+    "p50": 65535,
+    "p95": 500479,
+    "p99": 873983,
+    "significant_digits": 3,
+    "unit": "nanoseconds"
+  },
+  "read_latency": {
+    "count": 11968,
+    "maximum": 5148671,
+    "p50": 363775,
+    "p95": 814591,
+    "p99": 1186815,
+    "significant_digits": 3,
+    "unit": "nanoseconds"
+  },
+  "read_percent": 50,
+  "resource_window": {
+    "clock": "std::chrono::steady_clock_host_local",
+    "host": {
+      "boot_id": "ed318800882234bd55dcf97cdd91543a4032b05f5937527646b9d456e316f987",
+      "host_id": "8fd1d82c5f77a197784a1243b642b84c01d79de088a3df7310152f07cd9b96d6",
+      "hostname": "zyra",
+      "identity_source": "/etc/machine-id,/proc/sys/kernel/random/boot_id",
+      "logical_cpus": 144
+    },
+    "load_start_ns": 7260949577570807,
+    "measurement_end_ns": 7260959577570807,
+    "measurement_start_ns": 7260951577570807
+  },
+  "resources": {
+    "bytes_before_footer": 74639,
+    "end_ns": 7260959666886492,
+    "error": "",
+    "error_samples": 0,
+    "overhead_scope": "collection_and_writing_only_not_whole_host_perturbation",
+    "overruns": 0,
+    "sample_collection_thread_cpu_ns": 2604000,
+    "sample_collection_wall_ns": 6494167,
+    "samples": 12,
+    "start_ns": 7260949195061859,
+    "status": "complete",
+    "type": "footer"
+  },
+  "rpc_latency": {
+    "count": 24000,
+    "maximum": 5492735,
+    "p50": 525823,
+    "p95": 1001983,
+    "p99": 1262591,
+    "significant_digits": 3,
+    "unit": "nanoseconds"
+  },
+  "run_id": "cuda-rate-sweep-trial-0023",
+  "schedule_sha256": "93792a2435c499b107918140c30de83aee4e0217c440f8144d485e0063a59fcf",
+  "schema_version": 1,
+  "state": "complete",
+  "valid": true,
+  "warmup": {
+    "blocked_by_indeterminate_write": 0,
+    "completed": 6000,
+    "completed_in_window": 5998,
+    "expired_before_send": 0,
+    "failed": 0,
+    "indeterminate_writes": 0,
+    "offered": 6000,
+    "payload_mismatches": 0,
+    "queue_rejected": 0
+  },
+  "warmup_ns": 2000000000,
+  "write_latency": {
+    "count": 12032,
+    "maximum": 5554175,
+    "p50": 827903,
+    "p95": 1395711,
+    "p99": 1864703,
+    "significant_digits": 3,
+    "unit": "nanoseconds"
+  }
+}

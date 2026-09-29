@@ -1,6 +1,7 @@
 import importlib.util
 import datetime
 import json
+import os
 import plistlib
 from pathlib import Path
 import sys
@@ -8,6 +9,7 @@ import tempfile
 import subprocess
 import time
 import unittest
+from unittest import mock
 
 
 module_spec = importlib.util.spec_from_file_location(
@@ -85,10 +87,17 @@ class PlanTests(unittest.TestCase):
                           measurement_seconds=1, max_wall_seconds=120)
             plan = experiments.make_plan(config, self.dataset)
             experiments.write_json(root / "plan.json", plan)
-            result = experiments.run_plan(root / "plan.json", root / "run")
+            scratch = root / "scratch"
+            scratch.mkdir()
+            with mock.patch.dict(os.environ, {"LSM_LAB_SCRATCH_ROOT": str(scratch)}):
+                result = experiments.run_plan(root / "plan.json", root / "run")
             self.assertEqual(result["state"], "complete")
             self.assertEqual(len(result["trials"]), 2)
             self.assertTrue(all(trial["valid"] for trial in result["trials"]), result)
+            self.assertEqual(list(scratch.iterdir()), [])
+            self.assertTrue((root / "run" / "shared" / "baseline").is_dir())
+            build = json.loads((root / "run" / "build.json").read_text())
+            self.assertTrue(build["external_working_directory"])
             for trial in result["trials"]:
                 directory = root / "run" / "trials" / trial["id"]
                 self.assertEqual(trial["host_collector_exit_code"], 0)
@@ -193,9 +202,11 @@ class AnalysisTests(unittest.TestCase):
     def test_unknown_is_not_a_failed_capacity_bound(self):
         rows = [{"rate": 100, "qualification": "pass"}, {"rate": 200, "qualification": "unverified"}]
         self.assertEqual(analysis.capacity_bracket(rows), {"lower": 100, "upper": None, "censoring": "unverified"})
-        pairs = analysis.comparison_modes(["native_cpu", "cpu_native", "cpu_batched", "metal_batched"])
+        pairs = analysis.comparison_modes(["native_cpu", "cpu_native", "cpu_batched", "metal_batched", "cuda_local"])
         self.assertIn(("cpu_native", "metal_batched"), pairs)
         self.assertIn(("cpu_batched", "metal_batched"), pairs)
+        self.assertIn(("cpu_native", "cuda_local"), pairs)
+        self.assertIn(("cpu_batched", "cuda_local"), pairs)
 
     def test_work_counters_exclude_before_and_after_window(self):
         samples = [{"statistics": {"remote": {"committed": 4, "gpu_blocks": 200}}},

@@ -1,11 +1,94 @@
 #pragma once
 
+Status BlockBasedTableIterator::InitCompactionDecoded(std::string decoded)
+{
+    auto allocation = AllocateBlock(decoded.size(), nullptr);
+    memcpy(allocation.get(), decoded.data(), decoded.size());
+    CachableEntry<Block> block;
+    block.SetOwnedValue(std::make_unique<Block>(BlockContents(std::move(allocation), decoded.size()),
+        table_->get_rep()->table_options.read_amp_bytes_per_bit, table_->get_rep()->ioptions.stats,
+        table_->get_rep()->data_block_restart_interval));
+    table_->NewDataBlockIterator<DataBlockIter>(read_options_, block, &block_iter_, Status::OK());
+    return block_iter_.status();
+}
+
+Status BlockBasedTableIterator::PrepareCompactionBlocks()
+{
+    try
+    {
+        if (std::getenv("LSM_DISABLE_JOB_PREFETCH") != nullptr ||
+            std::getenv("LSM_DISABLE_GPU_INPUT") != nullptr)
+            return Status::OK();
+        const auto *rep = table_->get_rep();
+        const auto &transform = rep->table_options.compaction_block_transform;
+        if (!transform || rep->footer.format_version() != 6 || rep->footer.checksum_type() != kCRC32c ||
+            rep->compression_dict_handle.size() != 0 || rep->separate_key_value_in_data_block ||
+            !read_options_.verify_checksums)
+        {
+            return Status::OK();
+        }
+        if (!read_options_.compaction_block_session)
+            read_options_.compaction_block_session = transform->CreateSession();
+        auto index = table_->NewIndexIterator(read_options_, true, nullptr, nullptr, &lookup_context_);
+        index->SeekToFirst();
+        std::vector<std::string> serialized;
+        std::vector<CompactionBlockKey> keys;
+        IOOptions io_options;
+        auto status = rep->file->PrepareIOOptions(read_options_, io_options);
+        if (!status.ok()) return status;
+        while (index->Valid())
+        {
+            const auto handle = index->value().handle;
+            if (handle.size() > CompactionBlockTransform::max_block_bytes - 5 ||
+                handle.offset() > rep->file_size || handle.size() + 5 > rep->file_size - handle.offset())
+                return Status::Corruption("prefetched compaction block outside file bounds");
+            std::string buffer(static_cast<size_t>(handle.size() + 5), '\0');
+            Slice read;
+            status = rep->file->Read(io_options, handle.offset(), buffer.size(), &read, buffer.data());
+            if (!status.ok()) return status;
+            if (read.size() != buffer.size()) return Status::Corruption("truncated prefetched compaction block");
+            if (read.data() != buffer.data()) buffer.assign(read.data(), read.size());
+            keys.push_back({rep->footer.base_context_checksum(), handle.offset()});
+            serialized.push_back(std::move(buffer));
+            index->Next();
+        }
+        const auto index_status = index->status();
+        if (!index_status.ok()) return index_status;
+        std::vector<CompactionBlockInput> input;
+        input.reserve(serialized.size());
+        for (std::size_t block = 0; block < serialized.size(); ++block)
+        {
+            input.push_back({serialized[block],
+                ChecksumModifierForContext(rep->footer.base_context_checksum(), keys[block].block_offset)});
+        }
+        return read_options_.compaction_block_session->Add(keys, input);
+    }
+    catch (const std::exception &failure)
+    {
+        return Status::Aborted(failure.what());
+    }
+}
+
+Status BlockBasedTableIterator::FinishCompactionBlocks()
+{
+    if (!read_options_.compaction_block_session)
+        return Status::OK();
+    return read_options_.compaction_block_session->Finish();
+}
+
 Status BlockBasedTableIterator::InitCompactionBatch(const BlockHandle &current)
 {
     try
     {
         const auto *rep = table_->get_rep();
         const auto &transform = rep->table_options.compaction_block_transform;
+        if (read_options_.compaction_block_session)
+        {
+            std::string decoded;
+            if (read_options_.compaction_block_session->Take(
+                    {rep->footer.base_context_checksum(), current.offset()}, &decoded))
+                return InitCompactionDecoded(std::move(decoded));
+        }
         if (rep->footer.format_version() != 6 || rep->footer.checksum_type() != kCRC32c ||
             rep->compression_dict_handle.size() != 0 || rep->separate_key_value_in_data_block ||
             !read_options_.verify_checksums)
@@ -92,13 +175,7 @@ Status BlockBasedTableIterator::InitCompactionBatch(const BlockHandle &current)
         }
         auto decoded = std::move(compaction_batch_.front().second);
         compaction_batch_.pop_front();
-        auto allocation = AllocateBlock(decoded.size(), nullptr);
-        memcpy(allocation.get(), decoded.data(), decoded.size());
-        CachableEntry<Block> block;
-        block.SetOwnedValue(std::make_unique<Block>(BlockContents(std::move(allocation), decoded.size()),
-            rep->table_options.read_amp_bytes_per_bit, rep->ioptions.stats, rep->data_block_restart_interval));
-        table_->NewDataBlockIterator<DataBlockIter>(read_options_, block, &block_iter_, Status::OK());
-        return block_iter_.status();
+        return InitCompactionDecoded(std::move(decoded));
     }
     catch (const std::exception &failure)
     {

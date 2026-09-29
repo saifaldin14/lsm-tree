@@ -33,8 +33,9 @@ include(cmake/ApplyEnginePatch.cmake)
 target_include_directories(rocksdb PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>")
 file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/cmake/ApplyEnginePatch.cmake" LSM_PATCH_SCRIPT_SHA)
 file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/include/lsm_lab/compaction_batch.hpp" LSM_PATCH_BODY_SHA)
+file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/include/lsm_lab/compaction_output.hpp" LSM_PATCH_OUTPUT_SHA)
 file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/include/rocksdb/compaction_block_transform.h" LSM_PATCH_API_SHA)
-string(SHA256 LSM_ENGINE_PATCH_SHA "${LSM_PATCH_SCRIPT_SHA}${LSM_PATCH_BODY_SHA}${LSM_PATCH_API_SHA}")
+string(SHA256 LSM_ENGINE_PATCH_SHA "${LSM_PATCH_SCRIPT_SHA}${LSM_PATCH_BODY_SHA}${LSM_PATCH_OUTPUT_SHA}${LSM_PATCH_API_SHA}")
 configure_file(cmake/build_info.hpp.in generated/lsm_lab/build_info.hpp @ONLY)
 
 find_package(nlohmann_json CONFIG REQUIRED)
@@ -79,6 +80,7 @@ endif()
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu/blocks.metal"
   "${CMAKE_CURRENT_SOURCE_DIR}/include/lsm_lab/compaction_batch.hpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/include/lsm_lab/compaction_output.hpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/include/rocksdb/compaction_block_transform.h")
 include(cmake/Cuda.cmake)
 
@@ -175,7 +177,7 @@ add_library(lsm_remote src/engine/remote_compaction.cpp)
 target_link_libraries(lsm_remote PUBLIC lsm_engine lsm_runtime lsm_protocol)
 target_compile_options(lsm_remote PRIVATE -Wall -Wextra -Wpedantic -Werror)
 add_executable(lsm_db apps/lsm_db.cpp)
-target_link_libraries(lsm_db PRIVATE lsm_remote lsm_telemetry)
+target_link_libraries(lsm_db PRIVATE lsm_remote lsm_telemetry lsm_blocks)
 target_compile_options(lsm_db PRIVATE -Wall -Wextra -Wpedantic -Werror)
 add_library(lsm_load src/workload/load.cpp src/workload/open_loop.cpp)
 target_link_libraries(lsm_load PUBLIC lsm_engine lsm_runtime lsm_protocol
@@ -197,7 +199,7 @@ add_executable(lsm_worker apps/lsm_worker.cpp)
 target_link_libraries(lsm_worker PRIVATE lsm_worker_core lsm_telemetry)
 target_compile_options(lsm_worker PRIVATE -Wall -Wextra -Wpedantic -Werror)
 add_executable(lsm_worker_tests tests/worker_test.cpp)
-target_link_libraries(lsm_worker_tests PRIVATE lsm_worker_core lsm_remote lsm_load GTest::gtest_main)
+target_link_libraries(lsm_worker_tests PRIVATE lsm_worker_core lsm_remote lsm_load lsm_blocks GTest::gtest_main)
 target_compile_definitions(lsm_worker_tests PRIVATE LSM_WORKER_EXE="$<TARGET_FILE:lsm_worker>" LSM_DB_EXE="$<TARGET_FILE:lsm_db>" LSM_LOADGEN_EXE="$<TARGET_FILE:lsm_loadgen>")
 add_dependencies(lsm_worker_tests lsm_worker lsm_db lsm_loadgen)
 target_compile_options(lsm_worker_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)

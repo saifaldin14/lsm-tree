@@ -1,18 +1,105 @@
+#include "lsm_lab/block_transform.hpp"
 #include "lsm_lab/dataset.hpp"
 #include "lsm_lab/remote_compaction.hpp"
 #include "lsm_lab/telemetry.hpp"
 #include "benchmark.grpc.pb.h"
 
+#include <algorithm>
 #include <iostream>
 #include <charconv>
 #include <shared_mutex>
+#include <vector>
 #include <rocksdb/db.h>
+#include <rocksdb/listener.h>
 
 namespace
 {
     namespace wire = lsm_lab::rpc::v1;
     namespace fs = std::filesystem;
     using Json = nlohmann::json;
+
+    class CompactionMetrics final : public rocksdb::EventListener
+    {
+    public:
+        const char *Name() const override { return "lsm_lab_compaction_metrics_v1"; }
+
+        void OnCompactionCompleted(rocksdb::DB *, const rocksdb::CompactionJobInfo &info) override
+        {
+            const std::lock_guard guard(mutex_);
+            if (!info.status.ok())
+            {
+                ++failed_jobs_;
+                return;
+            }
+            elapsed_micros_.push_back(info.stats.elapsed_micros);
+            if (jobs_.size() < 4096)
+            {
+                jobs_.push_back({
+                    {"elapsed_micros", info.stats.elapsed_micros},
+                    {"cpu_micros", info.stats.cpu_micros},
+                    {"input_records", info.stats.num_input_records},
+                    {"output_records", info.stats.num_output_records},
+                    {"input_files", info.stats.num_input_files},
+                    {"output_files", info.stats.num_output_files},
+                    {"input_bytes", info.stats.total_input_bytes},
+                    {"output_bytes", info.stats.total_output_bytes},
+                    {"remote", info.stats.is_remote_compaction}});
+            }
+            else
+            {
+                ++dropped_job_samples_;
+            }
+            cpu_micros_ += info.stats.cpu_micros;
+            input_records_ += info.stats.num_input_records;
+            output_records_ += info.stats.num_output_records;
+            input_files_ += info.stats.num_input_files;
+            output_files_ += info.stats.num_output_files;
+            input_bytes_ += info.stats.total_input_bytes;
+            output_bytes_ += info.stats.total_output_bytes;
+            remote_jobs_ += info.stats.is_remote_compaction;
+        }
+
+        Json summary() const
+        {
+            const std::lock_guard guard(mutex_);
+            auto elapsed = elapsed_micros_;
+            std::sort(elapsed.begin(), elapsed.end());
+            const auto percentile = [&](std::size_t value)
+            {
+                if (elapsed.empty())
+                    return std::uint64_t{0};
+                const auto index = std::min(elapsed.size() - 1, (elapsed.size() * value + 99) / 100 - 1);
+                return elapsed[index];
+            };
+            std::uint64_t total = 0;
+            for (const auto value : elapsed)
+                total += value;
+            return {{"successful_jobs", elapsed.size()}, {"failed_jobs", failed_jobs_},
+                    {"remote_jobs", remote_jobs_}, {"elapsed_micros_total", total},
+                    {"elapsed_micros_p50", percentile(50)}, {"elapsed_micros_p95", percentile(95)},
+                    {"elapsed_micros_p99", percentile(99)}, {"elapsed_micros_max", percentile(100)},
+                    {"cpu_micros_total", cpu_micros_}, {"input_records", input_records_},
+                    {"output_records", output_records_}, {"input_files", input_files_},
+                    {"output_files", output_files_}, {"input_bytes", input_bytes_},
+                    {"output_bytes", output_bytes_}, {"jobs", jobs_},
+                    {"dropped_job_samples", dropped_job_samples_}};
+        }
+
+    private:
+        mutable std::mutex mutex_;
+        std::vector<std::uint64_t> elapsed_micros_;
+        std::vector<Json> jobs_;
+        std::uint64_t dropped_job_samples_ = 0;
+        std::uint64_t failed_jobs_ = 0;
+        std::uint64_t remote_jobs_ = 0;
+        std::uint64_t cpu_micros_ = 0;
+        std::uint64_t input_records_ = 0;
+        std::uint64_t output_records_ = 0;
+        std::uint64_t input_files_ = 0;
+        std::uint64_t output_files_ = 0;
+        std::uint64_t input_bytes_ = 0;
+        std::uint64_t output_bytes_ = 0;
+    };
 
     class DatabaseService final : public wire::BenchmarkService::Service
     {
@@ -50,10 +137,17 @@ namespace
                 options.compaction_service = remote_;
                 options.listeners.push_back(remote_);
             }
+            else if (mode_ == "cuda_local")
+            {
+                local_transform_ = lsm_lab::make_transform("cuda_hybrid");
+                options = lsm_lab::engine_options(spec_, local_transform_);
+            }
             else
             {
-                lsm_lab::require(mode_ == "native_cpu", "mode must be native_cpu or remote_worker");
+                lsm_lab::require(mode_ == "native_cpu", "mode must be native_cpu, cuda_local, or remote_worker");
             }
+            compactions_ = std::make_shared<CompactionMetrics>();
+            options.listeners.push_back(compactions_);
             lsm_lab::check(rocksdb::DB::Open(options, (root_ / "db").string(), &database_));
             lsm_lab::check(database_->GetDbSessionId(session_));
             run_record_ = {{"schema_version", 1}, {"owner", "lsm-lab"}, {"run_id", run_id_}, {"dataset_id", dataset_id_}, {"spec_sha256", spec_hash}, {"engine_fingerprint", lsm_lab::engine_fingerprint()}, {"db_session_id", session_}, {"state", "active"}, {"mode", mode_}};
@@ -222,7 +316,7 @@ namespace
                         properties[name] = nullptr;
                 }
             }
-            return {{"schema_version", 1}, {"run_id", run_id_}, {"db_session_id", session_}, {"reads", reads_.load()}, {"writes", writes_.load()}, {"deletes", deletes_.load()}, {"mode", mode_}, {"properties", properties}, {"process", lsm_lab::process_usage()}, {"remote", remote_ ? remote_->summary() : Json(nullptr)}};
+            return {{"schema_version", 1}, {"run_id", run_id_}, {"db_session_id", session_}, {"reads", reads_.load()}, {"writes", writes_.load()}, {"deletes", deletes_.load()}, {"mode", mode_}, {"properties", properties}, {"process", lsm_lab::process_usage()}, {"compactions", compactions_->summary()}, {"remote", remote_ ? remote_->summary() : Json(nullptr)}, {"local_transform", local_transform_ ? local_transform_->statistics() : Json(nullptr)}};
         }
 
         fs::path root_;
@@ -233,6 +327,8 @@ namespace
         std::string session_;
         std::shared_ptr<lsm_lab::EventLog> events_;
         std::shared_ptr<lsm_lab::RemoteCompaction> remote_;
+        std::shared_ptr<lsm_lab::BatchTransform> local_transform_;
+        std::shared_ptr<CompactionMetrics> compactions_;
         std::unique_ptr<rocksdb::DB> database_;
         Json run_record_;
         std::shared_mutex operations_;
@@ -268,6 +364,8 @@ int main(int argc, char **argv)
         arguments.finish();
         lsm_lab::require(mode != "native_cpu" || (remote.endpoint.empty() && remote.backend == "cpu_native"),
                          "native mode cannot select a remote worker or GPU backend");
+        lsm_lab::require(mode == "native_cpu" || mode == "remote_worker" || mode == "cuda_local",
+                         "mode must be native_cpu, cuda_local, or remote_worker");
         lsm_lab::block_shutdown_signals();
         lsm_lab::telemetry::Sampler sampler(resources);
         auto events = std::make_shared<lsm_lab::EventLog>(events_path);

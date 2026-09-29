@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "name": "cuda-local-smoke",
+  "dataset_spec": "configs/local-compaction-smoke.json",
+  "modes": ["cuda_local"],
+  "rates": [750],
+  "repetitions": 1,
+  "seed": 71,
+  "warmup_seconds": 2,
+  "measurement_seconds": 8,
+  "read_percent": 50,
+  "threads": 8,
+  "queue_capacity": 2048,
+  "deadline_ms": 5000,
+  "read_slo_ms": 10,
+  "write_slo_ms": 10,
+  "max_wall_seconds": 120,
+  "max_logical_write_bytes": 1073741824,
+  "max_artifact_bytes": 536870912
+}

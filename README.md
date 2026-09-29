@@ -18,7 +18,10 @@ The script checks out an exact vcpkg revision into `.deps/vcpkg`. Generated pack
 
 Use the `dev` configure/build/test presets. The preset uses the pinned vcpkg toolchain. RocksDB is downloaded separately at the exact commit and archive SHA-256 in [toolchains.lock.json](toolchains.lock.json). The current configuration uses Makefiles so Ninja is not required. CMake Tools could not discover this workspace during validation; the CLI presets are the verified fallback. A cache created before selecting the toolchain requires one fresh configuration.
 
-See [docs/runbook.md](docs/runbook.md) for native build, trial execution, GPU gates, and approved-host qualification commands.
+See [docs/runbook.md](docs/runbook.md) for native build, trial execution, GPU
+gates, and approved-host qualification commands. See
+[docs/rift-cluster-access.md](docs/rift-cluster-access.md) for SSH key
+registration, compute-node selection, and VS Code Remote SSH access.
 
 ## Dataset Commands
 

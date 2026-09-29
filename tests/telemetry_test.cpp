@@ -121,7 +121,9 @@ namespace lsm_lab::telemetry
                 storage_observed = true;
                 EXPECT_NE(sample.value("physical_interconnect", ""), "Virtual Interface");
                 if (sample.at("status") != "ok")
+                {
                     EXPECT_TRUE(sample.at("value").is_null());
+                }
             }
             if (sample.at("name") != "network_rx_bytes" || !sample.value("loopback", false))
                 continue;
@@ -183,13 +185,21 @@ namespace lsm_lab::telemetry
                 cpu_found = true;
             }
             if (after[index].at("name") == "resident_bytes")
+            {
                 EXPECT_GT(after[index].at("value").get<std::uint64_t>(), 0U);
+            }
             if (after[index].at("name") == "threads")
+            {
                 EXPECT_GT(after[index].at("value").get<std::uint64_t>(), 0U);
+            }
             if (after[index].at("name") == "peak_resident_bytes")
+            {
                 EXPECT_GT(after[index].at("value").get<std::uint64_t>(), 0U);
+            }
             if (after[index].at("status") == "unavailable")
+            {
                 EXPECT_TRUE(after[index].at("value").is_null());
+            }
         }
         EXPECT_TRUE(cpu_found);
         EXPECT_THROW(process_metrics(-1, "test"), std::invalid_argument);

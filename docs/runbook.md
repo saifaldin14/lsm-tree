@@ -64,6 +64,20 @@ The recorded run under `artifacts/local-metal-active-run` completed 48,000 measu
 
 CUDA uses the official nvCOMP 5.3.0.16 CUDA-12 package, pinned by SHA-256. The CUDA decompressor is selected explicitly; the dedicated hardware decompression mode is not used because its malformed-input guarantees differ. Input CRC32C is computed on-device before decoding, and both per-block status and output length are checked. Device copies, allocation, synchronization, and output materialization are real work inside worker elapsed time.
 
+`cuda_batched` always dispatches to CUDA and is retained for hardware
+qualification and crossover measurements. The in-process `cuda_local` mode
+uses `cuda_hybrid`: batches with fewer than 32 blocks, less than 2 MiB of
+decoded data, or less than 32 KiB average decoded block size remain on CPU.
+The selector records `cpu_fallback_batches`, `cpu_fallback_blocks`, and
+`cpu_fallback_bytes`. These thresholds come from RTX A6000 microbenchmarks;
+4 KiB blocks remained faster on CPU even at 256 blocks. Re-profile when the
+GPU, codec, or block-size distribution changes:
+
+```sh
+build/dev/lsm_gpu_check cpu_batched --blocks 256 --block-bytes 4096 --repetitions 100
+build/dev/lsm_gpu_check cuda_batched --require --blocks 256 --block-bytes 4096 --repetitions 100
+```
+
 On an approved native Linux x86_64 NVIDIA worker with an existing compatible driver and CUDA toolkit:
 
 ```sh
@@ -74,6 +88,36 @@ cmake --build --preset dev
 build/dev/lsm_gpu_check cuda_batched --require
 ctest --preset dev -R 'blocks.transforms|worker.lifecycle|hardware.cuda' --output-on-failure
 ```
+
+After the hardware gate passes, the bounded paired capacity sweep compares
+native CPU, CPU-batched, and CUDA-batched compaction at 750, 3,000, 6,000, and
+12,000 operations per second:
+
+```sh
+mkdir -p artifacts
+python3 tools/labctl.py plan configs/cuda-rate-sweep.json artifacts/cuda-rate-sweep-plan.json
+python3 tools/labctl.py run artifacts/cuda-rate-sweep-plan.json artifacts/cuda-rate-sweep-run
+python3 tools/labctl.py audit artifacts/cuda-rate-sweep-run
+python3 tools/labctl.py analyze artifacts/cuda-rate-sweep-run artifacts/cuda-rate-sweep-analysis
+```
+
+To qualify the in-process CUDA path without starting a remote worker, use
+`configs/cuda-local-smoke.json`. A valid write-bearing `cuda_local` trial must
+report nonzero `database_statistics.local_transform.blocks` during the
+measured window. On Rift machines, keep result artifacts under the persistent
+home directory but place the live RocksDB database on local storage:
+
+```sh
+mkdir -p /tmp/$USER/lsm-lab
+export LSM_LAB_SCRATCH_ROOT=/tmp/$USER/lsm-lab
+```
+
+The runner copies the verified database state into the sealed result bundle
+and removes its uniquely named scratch directory after the run.
+
+The sweep intentionally retains overload and SLO failures. Its three paired
+repetitions and increasing offered rates establish tested capacity brackets;
+they do not replace longer steady-state runs.
 
 The CUDA source has not been compiled or executed here. Its API calls were checked against the downloaded, hash-verified official headers. The Linux hardware gate must still establish compiler/runtime compatibility, real dispatch, malformed-input handling, and live-compaction correctness. Record the actual compiler, driver, toolkit, nvCOMP package, and GPU allocation before experiments. GPU selection currently uses the first visible device; use an exclusive allocation and `CUDA_VISIBLE_DEVICES` for CUDA. Do not pool CUDA and Metal speedup results across different hardware suites.
 
@@ -99,3 +143,27 @@ This is a functional deployment gate, not the long confirmation study. Physical 
 Successful load execution exits zero. A fully recorded load with failed accounting/qualification exits 3. Invalid setup or execution failure exits 1. A GPU availability probe without `--require` exits 77 if unavailable, which CTest reports as skipped; with `--require`, unavailability is failure. Failed experiment rows remain in the run and analysis.
 
 Inspect `commands.json`, per-trial process logs, `primary.events.jsonl`, raw request files, and native worker journals. `output_ready`, `outputs_imported`, and `committed` are different phases. A nominal worker result alone is never treated as a committed primary database. Interrupted output directories are retained and cannot be reused as fresh attempts.
+## GPU compaction tail-latency sweep
+
+The confirmed compaction-pressure workload uses 128 KiB blocks, 1 KiB values,
+a 256 KiB write buffer, one background job, and a pure-write workload.
+
+```bash
+python3 tools/labctl.py plan \
+  configs/cuda-compaction-bottleneck-sweep.json \
+  /tmp/$USER/cuda-compaction-bottleneck-plan.json
+
+LSM_LAB_SCRATCH_ROOT=/tmp/$USER/lsm-lab \
+LSM_DISABLE_GPU_INPUT=1 \
+python3 tools/labctl.py run \
+  /tmp/$USER/cuda-compaction-bottleneck-plan.json \
+  /tmp/$USER/cuda-compaction-bottleneck-run
+
+python3 tools/labctl.py audit \
+  /tmp/$USER/cuda-compaction-bottleneck-run
+```
+
+The production output path submits 64-block or 8 MiB batches asynchronously,
+keeps at most two submissions in flight, and drains output in FIFO order.
+Do not set `LSM_FORCE_CPU_OUTPUT` or `LSM_DISABLE_GPU_OUTPUT` for the GPU
+qualification run.

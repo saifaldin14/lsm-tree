@@ -1,5 +1,7 @@
 """Provider-neutral, approval-gated cross-host qualification using real SSH and native binaries."""
 
+from __future__ import annotations
+
 import importlib
 import ipaddress
 import json

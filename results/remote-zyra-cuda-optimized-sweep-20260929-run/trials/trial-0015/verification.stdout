@@ -1,0 +1,11 @@
+{
+  "dataset_id": "232c84c5-6e05-4276-9f77-af2b284218d6",
+  "file_hashes_verified": false,
+  "files_verified": null,
+  "full_payloads_verified": true,
+  "modified_keys_verified": 973,
+  "native_checksums_verified": true,
+  "records_verified": 1000,
+  "run_id": "cuda-rate-sweep-trial-0015",
+  "status": "ok"
+}

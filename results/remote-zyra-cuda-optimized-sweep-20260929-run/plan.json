@@ -1,0 +1,395 @@
+{
+  "artifact_upper_bound": 4592885760,
+  "config": {
+    "dataset_spec": "configs/local-compaction-smoke.json",
+    "deadline_ms": 5000,
+    "max_artifact_bytes": 5368709120,
+    "max_logical_write_bytes": 1073741824,
+    "max_wall_seconds": 1800,
+    "measurement_seconds": 8,
+    "modes": [
+      "native_cpu",
+      "cpu_batched",
+      "cuda_batched"
+    ],
+    "name": "cuda-rate-sweep",
+    "queue_capacity": 2048,
+    "rates": [
+      750,
+      3000,
+      6000,
+      12000
+    ],
+    "read_percent": 50,
+    "read_slo_ms": 10,
+    "repetitions": 3,
+    "schema_version": 1,
+    "seed": 67,
+    "threads": 8,
+    "warmup_seconds": 2,
+    "write_slo_ms": 10
+  },
+  "dataset": {
+    "dataset": {
+      "key_bytes": 16,
+      "overwrite_rounds": 1,
+      "records": 1000,
+      "seed": 1,
+      "value_bytes": 256
+    },
+    "engine": {
+      "background_jobs": 2,
+      "block_bytes": 4096,
+      "block_cache_bytes": 4194304,
+      "compression": "lz4",
+      "levels": 4,
+      "target_file_bytes": 65536,
+      "write_buffer_bytes": 65536
+    },
+    "limits": {
+      "logical_write_bytes": 67108864,
+      "minimum_free_disk_bytes": 268435456
+    },
+    "schema_version": 1
+  },
+  "logical_write_upper_bound": 532984000,
+  "owner": "lsm-lab",
+  "plan_sha256": "ace6e0250f1470fa48852b466fa03ae037e659c52788eb36985863e491ffe82c",
+  "resource_artifact_upper_bound": 583925760,
+  "schema_version": 1,
+  "telemetry": {
+    "host_budget_bytes": 11796480,
+    "host_collection": "once_per_physical_host",
+    "includes_background_activity": true,
+    "interval_ms": 1000,
+    "process_budget_bytes": 1474560,
+    "schema_version": 1
+  },
+  "topology": "local_process",
+  "trials": [
+    {
+      "id": "trial-0000",
+      "mode": "native_cpu",
+      "rate": 750,
+      "repetition": 0,
+      "requests": 6000,
+      "seed": 2141543712845836048,
+      "warmup_requests": 1500
+    },
+    {
+      "id": "trial-0001",
+      "mode": "cuda_batched",
+      "rate": 750,
+      "repetition": 0,
+      "requests": 6000,
+      "seed": 2141543712845836048,
+      "warmup_requests": 1500
+    },
+    {
+      "id": "trial-0002",
+      "mode": "cpu_batched",
+      "rate": 750,
+      "repetition": 0,
+      "requests": 6000,
+      "seed": 2141543712845836048,
+      "warmup_requests": 1500
+    },
+    {
+      "id": "trial-0003",
+      "mode": "native_cpu",
+      "rate": 6000,
+      "repetition": 0,
+      "requests": 48000,
+      "seed": 2141543712845836048,
+      "warmup_requests": 12000
+    },
+    {
+      "id": "trial-0004",
+      "mode": "cuda_batched",
+      "rate": 6000,
+      "repetition": 0,
+      "requests": 48000,
+      "seed": 2141543712845836048,
+      "warmup_requests": 12000
+    },
+    {
+      "id": "trial-0005",
+      "mode": "cpu_batched",
+      "rate": 6000,
+      "repetition": 0,
+      "requests": 48000,
+      "seed": 2141543712845836048,
+      "warmup_requests": 12000
+    },
+    {
+      "id": "trial-0006",
+      "mode": "cpu_batched",
+      "rate": 3000,
+      "repetition": 0,
+      "requests": 24000,
+      "seed": 2141543712845836048,
+      "warmup_requests": 6000
+    },
+    {
+      "id": "trial-0007",
+      "mode": "cuda_batched",
+      "rate": 3000,
+      "repetition": 0,
+      "requests": 24000,
+      "seed": 2141543712845836048,
+      "warmup_requests": 6000
+    },
+    {
+      "id": "trial-0008",
+      "mode": "native_cpu",
+      "rate": 3000,
+      "repetition": 0,
+      "requests": 24000,
+      "seed": 2141543712845836048,
+      "warmup_requests": 6000
+    },
+    {
+      "id": "trial-0009",
+      "mode": "cpu_batched",
+      "rate": 12000,
+      "repetition": 0,
+      "requests": 96000,
+      "seed": 2141543712845836048,
+      "warmup_requests": 24000
+    },
+    {
+      "id": "trial-0010",
+      "mode": "native_cpu",
+      "rate": 12000,
+      "repetition": 0,
+      "requests": 96000,
+      "seed": 2141543712845836048,
+      "warmup_requests": 24000
+    },
+    {
+      "id": "trial-0011",
+      "mode": "cuda_batched",
+      "rate": 12000,
+      "repetition": 0,
+      "requests": 96000,
+      "seed": 2141543712845836048,
+      "warmup_requests": 24000
+    },
+    {
+      "id": "trial-0012",
+      "mode": "cpu_batched",
+      "rate": 6000,
+      "repetition": 1,
+      "requests": 48000,
+      "seed": 645412497812684454,
+      "warmup_requests": 12000
+    },
+    {
+      "id": "trial-0013",
+      "mode": "cuda_batched",
+      "rate": 6000,
+      "repetition": 1,
+      "requests": 48000,
+      "seed": 645412497812684454,
+      "warmup_requests": 12000
+    },
+    {
+      "id": "trial-0014",
+      "mode": "native_cpu",
+      "rate": 6000,
+      "repetition": 1,
+      "requests": 48000,
+      "seed": 645412497812684454,
+      "warmup_requests": 12000
+    },
+    {
+      "id": "trial-0015",
+      "mode": "native_cpu",
+      "rate": 750,
+      "repetition": 1,
+      "requests": 6000,
+      "seed": 645412497812684454,
+      "warmup_requests": 1500
+    },
+    {
+      "id": "trial-0016",
+      "mode": "cuda_batched",
+      "rate": 750,
+      "repetition": 1,
+      "requests": 6000,
+      "seed": 645412497812684454,
+      "warmup_requests": 1500
+    },
+    {
+      "id": "trial-0017",
+      "mode": "cpu_batched",
+      "rate": 750,
+      "repetition": 1,
+      "requests": 6000,
+      "seed": 645412497812684454,
+      "warmup_requests": 1500
+    },
+    {
+      "id": "trial-0018",
+      "mode": "cuda_batched",
+      "rate": 12000,
+      "repetition": 1,
+      "requests": 96000,
+      "seed": 645412497812684454,
+      "warmup_requests": 24000
+    },
+    {
+      "id": "trial-0019",
+      "mode": "cpu_batched",
+      "rate": 12000,
+      "repetition": 1,
+      "requests": 96000,
+      "seed": 645412497812684454,
+      "warmup_requests": 24000
+    },
+    {
+      "id": "trial-0020",
+      "mode": "native_cpu",
+      "rate": 12000,
+      "repetition": 1,
+      "requests": 96000,
+      "seed": 645412497812684454,
+      "warmup_requests": 24000
+    },
+    {
+      "id": "trial-0021",
+      "mode": "cpu_batched",
+      "rate": 3000,
+      "repetition": 1,
+      "requests": 24000,
+      "seed": 645412497812684454,
+      "warmup_requests": 6000
+    },
+    {
+      "id": "trial-0022",
+      "mode": "native_cpu",
+      "rate": 3000,
+      "repetition": 1,
+      "requests": 24000,
+      "seed": 645412497812684454,
+      "warmup_requests": 6000
+    },
+    {
+      "id": "trial-0023",
+      "mode": "cuda_batched",
+      "rate": 3000,
+      "repetition": 1,
+      "requests": 24000,
+      "seed": 645412497812684454,
+      "warmup_requests": 6000
+    },
+    {
+      "id": "trial-0024",
+      "mode": "cpu_batched",
+      "rate": 6000,
+      "repetition": 2,
+      "requests": 48000,
+      "seed": 11989117946808637680,
+      "warmup_requests": 12000
+    },
+    {
+      "id": "trial-0025",
+      "mode": "native_cpu",
+      "rate": 6000,
+      "repetition": 2,
+      "requests": 48000,
+      "seed": 11989117946808637680,
+      "warmup_requests": 12000
+    },
+    {
+      "id": "trial-0026",
+      "mode": "cuda_batched",
+      "rate": 6000,
+      "repetition": 2,
+      "requests": 48000,
+      "seed": 11989117946808637680,
+      "warmup_requests": 12000
+    },
+    {
+      "id": "trial-0027",
+      "mode": "native_cpu",
+      "rate": 12000,
+      "repetition": 2,
+      "requests": 96000,
+      "seed": 11989117946808637680,
+      "warmup_requests": 24000
+    },
+    {
+      "id": "trial-0028",
+      "mode": "cpu_batched",
+      "rate": 12000,
+      "repetition": 2,
+      "requests": 96000,
+      "seed": 11989117946808637680,
+      "warmup_requests": 24000
+    },
+    {
+      "id": "trial-0029",
+      "mode": "cuda_batched",
+      "rate": 12000,
+      "repetition": 2,
+      "requests": 96000,
+      "seed": 11989117946808637680,
+      "warmup_requests": 24000
+    },
+    {
+      "id": "trial-0030",
+      "mode": "cpu_batched",
+      "rate": 750,
+      "repetition": 2,
+      "requests": 6000,
+      "seed": 11989117946808637680,
+      "warmup_requests": 1500
+    },
+    {
+      "id": "trial-0031",
+      "mode": "native_cpu",
+      "rate": 750,
+      "repetition": 2,
+      "requests": 6000,
+      "seed": 11989117946808637680,
+      "warmup_requests": 1500
+    },
+    {
+      "id": "trial-0032",
+      "mode": "cuda_batched",
+      "rate": 750,
+      "repetition": 2,
+      "requests": 6000,
+      "seed": 11989117946808637680,
+      "warmup_requests": 1500
+    },
+    {
+      "id": "trial-0033",
+      "mode": "native_cpu",
+      "rate": 3000,
+      "repetition": 2,
+      "requests": 24000,
+      "seed": 11989117946808637680,
+      "warmup_requests": 6000
+    },
+    {
+      "id": "trial-0034",
+      "mode": "cpu_batched",
+      "rate": 3000,
+      "repetition": 2,
+      "requests": 24000,
+      "seed": 11989117946808637680,
+      "warmup_requests": 6000
+    },
+    {
+      "id": "trial-0035",
+      "mode": "cuda_batched",
+      "rate": 3000,
+      "repetition": 2,
+      "requests": 24000,
+      "seed": 11989117946808637680,
+      "warmup_requests": 6000
+    }
+  ]
+}

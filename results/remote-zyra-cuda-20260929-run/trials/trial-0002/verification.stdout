@@ -1,0 +1,11 @@
+{
+  "dataset_id": "09310553-1b65-4821-adfe-2178be397656",
+  "file_hashes_verified": false,
+  "files_verified": null,
+  "full_payloads_verified": true,
+  "modified_keys_verified": 959,
+  "native_checksums_verified": true,
+  "records_verified": 1000,
+  "run_id": "remote-zyra-cuda-pilot-trial-0002",
+  "status": "ok"
+}
