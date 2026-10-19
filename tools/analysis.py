@@ -313,6 +313,46 @@ def window_work(samples: list[dict]) -> dict:
     return result
 
 
+ENGINE_COUNTERS = {
+    "user_bytes_written": ("io", "user_bytes_written"),
+    "flush_bytes_written": ("io", "flush_bytes_written"),
+    "compaction_bytes_read": ("io", "compaction_bytes_read"),
+    "compaction_bytes_written": ("io", "compaction_bytes_written"),
+    "write_stall_micros": ("write_stalls", "stall_micros"),
+    "write_stops": ("write_stalls", "cf", "total-stops"),
+    "write_delays": ("write_stalls", "cf", "total-delays"),
+}
+
+
+def engine_value(statistics_document: dict | None, path: tuple) -> float | None:
+    value = statistics_document
+    for key in path:
+        if not isinstance(value, dict) or key not in value:
+            return None
+        value = value[key]
+    return value if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def engine_metrics(samples: list[dict], summary: dict | None = None) -> dict:
+    """In-window deltas of primary write-stall and I/O counters plus whole-trial totals from primary-summary.json.
+
+    Fields are None when the primary predates these statistics."""
+    result = {}
+    for name, path in ENGINE_COUNTERS.items():
+        values = [engine_value(sample.get("statistics"), path) for sample in samples]
+        values = [value for value in values if value is not None]
+        result[f"window_{name}"] = values[-1] - values[0] if len(values) >= 2 and values[-1] >= values[0] else None
+        result[f"total_{name}"] = engine_value(summary, path) if summary else None
+    user = result["window_user_bytes_written"]
+    written = [result["window_flush_bytes_written"], result["window_compaction_bytes_written"]]
+    result["window_write_amplification"] = (sum(written) / user if user and None not in written else None)
+    result["total_write_amplification"] = engine_value(summary, ("io", "write_amplification")) if summary else None
+    running = [engine_value(sample.get("statistics"), ("properties", "rocksdb.num-running-compactions")) for sample in samples]
+    running = [value for value in running if value is not None]
+    result["window_mean_running_compactions"] = statistics.fmean(running) if running else None
+    return result
+
+
 def comparison_modes(modes: list[str]) -> list[tuple[str, str]]:
     cpu_modes = ("native_cpu", "cpu_native", "cpu_batched")
     pairs = []
@@ -326,12 +366,17 @@ def measured_rows(directory: Path, run: dict, plan: dict) -> list[dict]:
     config = plan["config"]
     rows = []
     for trial in run["trials"]:
-        row = {"trial": trial["id"], "repetition": trial["repetition"], "mode": trial["mode"], "rate": trial["rate"],
+        closed = trial.get("load_mode") == "closed_loop"
+        row = {"trial": trial["id"], "repetition": trial["repetition"], "mode": trial["mode"], "rate": trial.get("rate"),
                "qualification": "invalid", "reason": trial.get("failure", "trial did not complete"),
                "throughput": None, "read_p99_ms": None, "write_p99_ms": None, "schedule_sha256": None,
                "read_slo_ms": config["read_slo_ms"], "write_slo_ms": config["write_slo_ms"],
                "remote_committed": None, "in_window_remote_committed": 0, "in_window_gpu_blocks": 0,
                "backlog_first": None, "backlog_last": None}
+        if closed:
+            row.update(load_mode="closed_loop", clients=trial["clients"], reads_per_second=None, writes_per_second=None,
+                       read_p999_ms=None, write_p999_ms=None)
+        row.update(engine_metrics([]))
         if trial.get("result"):
             path = (directory / trial["result"]).resolve(strict=True)
             if not is_relative_to(path, directory.resolve(strict=True)):
@@ -339,13 +384,21 @@ def measured_rows(directory: Path, run: dict, plan: dict) -> list[dict]:
             result = json.loads(path.read_text())
             measured = result["measurement"]
             accounted = sum(measured[key] for key in ("completed", "failed", "expired_before_send", "blocked_by_indeterminate_write", "queue_rejected"))
-            if accounted != measured["offered"] or result["offered_rate"] != trial["rate"]:
+            if accounted != measured["offered"] or (not closed and result["offered_rate"] != trial["rate"]) or \
+                    (closed and result.get("load_mode") != "closed_loop"):
                 raise ValueError("result identity or request accounting mismatch")
             row["throughput"] = measured["completed_in_window"] * 1e9 / result["offered_window_ns"]
+            if closed:
+                row["throughput"] = result["throughput"]["ops_per_second"]
+                row["reads_per_second"] = result["throughput"]["reads_per_second"]
+                row["writes_per_second"] = result["throughput"]["writes_per_second"]
+                for kind in ("read", "write"):
+                    percentile = result[f"{kind}_latency"].get("p999")
+                    row[f"{kind}_p999_ms"] = None if percentile is None else percentile / 1e6
             for kind in ("read", "write"):
                 percentile = result[f"{kind}_latency"]["p99"]
                 row[f"{kind}_p99_ms"] = None if percentile is None else percentile / 1e6
-            row["schedule_sha256"] = result["schedule_sha256"]
+            row["schedule_sha256"] = result.get("schedule_sha256")
             database_statistics = result.get("database_statistics") or {}
             remote = database_statistics.get("remote")
             local_transform = database_statistics.get("local_transform")
@@ -363,6 +416,9 @@ def measured_rows(directory: Path, run: dict, plan: dict) -> list[dict]:
                         metrics.append(pending)
             if metrics:
                 row["backlog_first"], row["backlog_last"] = metrics[0], metrics[-1]
+            summary_path = path.parent.parent / "primary-summary.json"
+            primary_summary = json.loads(summary_path.read_text()) if summary_path.is_file() else None
+            row.update(engine_metrics(window_samples, primary_summary))
             observed_work = window_work(window_samples)
             row["in_window_remote_committed"] = observed_work["committed"]
             local_blocks = [
@@ -386,6 +442,8 @@ def measured_rows(directory: Path, run: dict, plan: dict) -> list[dict]:
                 row.update(qualification="unverified", reason="no useful GPU work observed between in-window samples")
             elif not read_ok or not write_ok:
                 row.update(qualification="fail", reason="operation p99 exceeds declared SLO")
+            elif closed:
+                row.update(qualification="pass", reason="valid saturation run, SLO satisfied (debt growth is expected at saturation)")
             elif len(metrics) < 3:
                 row.update(qualification="unverified", reason="fewer than three in-window compaction-debt samples")
             elif metrics[-1] > metrics[0]:
@@ -397,7 +455,7 @@ def measured_rows(directory: Path, run: dict, plan: dict) -> list[dict]:
     if {row["trial"] for row in rows} != expected or len(rows) != len(expected):
         raise ValueError("run is missing planned trials or contains duplicate trials")
     for repetition in range(config["repetitions"]):
-        for rate in config["rates"]:
+        for rate in config.get("rates", []):
             hashes = {row["schedule_sha256"] for row in rows if row["repetition"] == repetition and row["rate"] == rate and row["schedule_sha256"]}
             if len(hashes) > 1:
                 raise ValueError("paired treatments did not use identical workload schedules")
@@ -415,6 +473,8 @@ def analyze_run(directory: Path, output: Path, plots: bool = True) -> dict:
     rows = measured_rows(directory, run, plan)
     modes = plan["config"]["modes"]
     repetitions = plan["config"]["repetitions"]
+    if plan["config"].get("load_mode") == "closed_loop":
+        return analyze_closed_loop(directory, output, plan, run, rows, plots)
     curves = []
     for repetition in range(repetitions):
         for mode in modes:
@@ -457,6 +517,68 @@ def analyze_run(directory: Path, output: Path, plots: bool = True) -> dict:
     if plots:
         plot_rows(rows, curves, output)
     return summary
+
+
+def analyze_closed_loop(directory: Path, output: Path, plan: dict, run: dict, rows: list[dict], plots: bool) -> dict:
+    """Saturation runs: sustained throughput per trial and paired throughput ratios per repetition."""
+    modes = plan["config"]["modes"]
+    observed = [row for row in rows if row["qualification"] in ("pass", "fail")]
+    saturation = [{"repetition": row["repetition"], "mode": row["mode"], "clients": row["clients"],
+                   "ops_per_second": row["throughput"], "reads_per_second": row["reads_per_second"],
+                   "writes_per_second": row["writes_per_second"], "qualification": row["qualification"]} for row in rows]
+    comparisons = []
+    for baseline, mode in comparison_modes(modes):
+        pairs = []
+        for repetition in range(plan["config"]["repetitions"]):
+            reference = next((row for row in observed if row["repetition"] == repetition and row["mode"] == baseline), None)
+            treatment = next((row for row in observed if row["repetition"] == repetition and row["mode"] == mode), None)
+            if reference and treatment:
+                pairs.append((reference["throughput"], treatment["throughput"]))
+        comparisons.append({"baseline": baseline, "treatment": mode,
+                            "throughput_ratio": paired_bootstrap(pairs, plan["config"]["seed"])})
+    summary = {"schema_version": 1, "plan_sha256": plan["plan_sha256"], "topology": run["topology"], "load_mode": "closed_loop",
+               "cross_host_qualified": run["cross_host_qualified"], "trial_count": len(rows),
+               "saturation": saturation, "comparisons": comparisons,
+               "qualification_rule": "all requests successful, offline verified, per-operation p99 SLO, useful work between in-window samples",
+               "limitations": ["local-process runs do not establish cross-host speedup",
+                               "closed-loop throughput depends on the client count; latency excludes queueing before send",
+                               "per-request validation overhead is included"]}
+    output.mkdir(parents=False)
+    resources = analyze_resources(directory, run, output)
+    summary["resource_streams"] = len(resources["streams"])
+    summary["resource_report"] = "resources.json"
+    experiments.write_json(output / "analysis.json", summary)
+    with (output / "trials.csv").open("w", newline="") as stream:
+        writer = csv.DictWriter(stream, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)
+    if plots:
+        plot_saturation(rows, output)
+    return summary
+
+
+def plot_saturation(rows: list[dict], output: Path) -> None:
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plot
+
+    modes = sorted({row["mode"] for row in rows})
+    figure, axes = plot.subplots(1, 3, figsize=(12, 3.8), layout="constrained")
+    fields = ("throughput", "read_p99_ms", "write_p99_ms")
+    labels = ("Sustained Throughput (ops/s)", "Read p99 (ms)", "Write p99 (ms)")
+    for axis, field, label in zip(axes, fields, labels):
+        for index, mode in enumerate(modes):
+            samples = [row[field] for row in rows if row["mode"] == mode and row[field] is not None]
+            axis.scatter([index] * len(samples), samples, alpha=0.6, s=18, color=f"C{index}")
+            if samples:
+                axis.hlines(statistics.median(samples), index - 0.3, index + 0.3, color=f"C{index}")
+        axis.set_xticks(range(len(modes)), modes, rotation=20, fontsize=8)
+        axis.set(ylabel=label, ylim=(0, None))
+        axis.grid(alpha=0.2)
+    figure.suptitle("Closed-Loop Saturation (All Recorded Outcomes)")
+    for suffix in ("png", "svg", "pdf"):
+        figure.savefig(output / f"saturation.{suffix}", dpi=180)
+    plot.close(figure)
 
 
 def plot_rows(rows: list[dict], curves: list[dict], output: Path) -> None:

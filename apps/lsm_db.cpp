@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <iostream>
 #include <charconv>
+#include <cstdlib>
+#include <map>
 #include <shared_mutex>
 #include <vector>
 #include <rocksdb/db.h>
@@ -59,6 +61,37 @@ namespace
             remote_jobs_ += info.stats.is_remote_compaction;
         }
 
+        void OnFlushCompleted(rocksdb::DB *, const rocksdb::FlushJobInfo &) override
+        {
+            const std::lock_guard guard(mutex_);
+            ++flushes_;
+        }
+
+        void OnTableFileCreated(const rocksdb::TableFileCreationInfo &info) override
+        {
+            if (!info.status.ok())
+                return;
+            const std::lock_guard guard(mutex_);
+            if (info.reason == rocksdb::TableFileCreationReason::kFlush)
+            {
+                flush_bytes_ += info.file_size;
+                ++flush_files_;
+            }
+            else if (info.reason == rocksdb::TableFileCreationReason::kCompaction)
+            {
+                compaction_file_bytes_ += info.file_size;
+                ++compaction_files_;
+            }
+        }
+
+        Json io() const
+        {
+            const std::lock_guard guard(mutex_);
+            return {{"flushes", flushes_}, {"flush_files", flush_files_}, {"flush_bytes_written", flush_bytes_},
+                    {"compaction_bytes_read", input_bytes_}, {"compaction_bytes_written", output_bytes_},
+                    {"local_compaction_files_created", compaction_files_}, {"local_compaction_file_bytes_created", compaction_file_bytes_}};
+        }
+
         Json summary() const
         {
             const std::lock_guard guard(mutex_);
@@ -99,7 +132,41 @@ namespace
         std::uint64_t output_files_ = 0;
         std::uint64_t input_bytes_ = 0;
         std::uint64_t output_bytes_ = 0;
+        std::uint64_t flushes_ = 0;
+        std::uint64_t flush_files_ = 0;
+        std::uint64_t flush_bytes_ = 0;
+        std::uint64_t compaction_files_ = 0;
+        std::uint64_t compaction_file_bytes_ = 0;
     };
+
+    Json map_property(rocksdb::DB &database, const std::string &name, std::string_view prefix = {})
+    {
+        std::map<std::string, std::string> values;
+        if (!database.GetMapProperty(name, &values))
+            return nullptr;
+        Json result = Json::object();
+        for (const auto &[key, text] : values)
+        {
+            if (!key.starts_with(prefix))
+                continue;
+            std::uint64_t integer = 0;
+            const auto parsed = std::from_chars(text.data(), text.data() + text.size(), integer);
+            if (parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size())
+                result[key] = integer;
+            else
+            {
+                char *end = nullptr;
+                const auto real = std::strtod(text.c_str(), &end);
+                result[key] = end == text.c_str() + text.size() && !text.empty() ? Json(real) : Json(text);
+            }
+        }
+        return result;
+    }
+
+    Json number_or_null(const Json &object, const char *key)
+    {
+        return object.is_object() && object.contains(key) && object.at(key).is_number() ? object.at(key) : Json(nullptr);
+    }
 
     class DatabaseService final : public wire::BenchmarkService::Service
     {
@@ -137,14 +204,16 @@ namespace
                 options.compaction_service = remote_;
                 options.listeners.push_back(remote_);
             }
-            else if (mode_ == "cuda_local")
+            else if (mode_ == "cuda_local" || mode_ == "cuda_merge")
             {
-                local_transform_ = lsm_lab::make_transform("cuda_hybrid");
+                // cuda_local offloads output compression only; cuda_merge also
+                // merges compaction input on the GPU.
+                local_transform_ = lsm_lab::make_transform(mode_ == "cuda_local" ? "cuda_hybrid" : "cuda_merge");
                 options = lsm_lab::engine_options(spec_, local_transform_);
             }
             else
             {
-                lsm_lab::require(mode_ == "native_cpu", "mode must be native_cpu, cuda_local, or remote_worker");
+                lsm_lab::require(mode_ == "native_cpu", "mode must be native_cpu, cuda_local, cuda_merge, or remote_worker");
             }
             compactions_ = std::make_shared<CompactionMetrics>();
             options.listeners.push_back(compactions_);
@@ -297,7 +366,11 @@ namespace
         {
             Json properties = Json::object();
             for (const auto *name : {"rocksdb.estimate-pending-compaction-bytes", "rocksdb.num-files-at-level0",
-                                     "rocksdb.cur-size-all-mem-tables", "rocksdb.live-sst-files-size"})
+                                     "rocksdb.cur-size-all-mem-tables", "rocksdb.live-sst-files-size",
+                                     "rocksdb.num-running-compactions", "rocksdb.num-running-flushes",
+                                     "rocksdb.estimate-num-keys", "rocksdb.compaction-pending", "rocksdb.mem-table-flush-pending",
+                                     "rocksdb.num-immutable-mem-table", "rocksdb.actual-delayed-write-rate",
+                                     "rocksdb.is-write-stopped", "rocksdb.total-sst-files-size", "rocksdb.background-errors"})
             {
                 std::uint64_t value = 0;
                 if (database_->GetIntProperty(name, &value))
@@ -316,7 +389,25 @@ namespace
                         properties[name] = nullptr;
                 }
             }
-            return {{"schema_version", 1}, {"run_id", run_id_}, {"db_session_id", session_}, {"reads", reads_.load()}, {"writes", writes_.load()}, {"deletes", deletes_.load()}, {"mode", mode_}, {"properties", properties}, {"process", lsm_lab::process_usage()}, {"compactions", compactions_->summary()}, {"remote", remote_ ? remote_->summary() : Json(nullptr)}, {"local_transform", local_transform_ ? local_transform_->statistics() : Json(nullptr)}};
+            const auto db_stats = map_property(*database_, rocksdb::DB::Properties::kDBStats);
+            const auto cf_stats = map_property(*database_, rocksdb::DB::Properties::kCFStats);
+            Json io = compactions_->io();
+            io["user_bytes_written"] = number_or_null(db_stats, "db.user_bytes_written");
+            io["user_keys_written"] = number_or_null(db_stats, "db.user_keys_written");
+            io["wal_bytes_written"] = number_or_null(db_stats, "db.wal_bytes_written");
+            io["cf_compaction_read_gb"] = number_or_null(cf_stats, "compaction.Sum.ReadGB");
+            io["cf_compaction_write_gb"] = number_or_null(cf_stats, "compaction.Sum.WriteGB");
+            io["cf_write_amplification"] = number_or_null(cf_stats, "compaction.Sum.WriteAmp");
+            const auto user = io.at("user_bytes_written");
+            io["write_amplification"] = user.is_number_unsigned() && user.get<std::uint64_t>() != 0
+                                            ? Json(static_cast<double>(io.at("flush_bytes_written").get<std::uint64_t>() + io.at("compaction_bytes_written").get<std::uint64_t>()) / user.get<double>())
+                                            : Json(nullptr);
+            io["write_amplification_basis"] = "(flush_bytes_written + compaction_bytes_written) / user_bytes_written since open";
+            Json stalls{{"stall_micros", number_or_null(db_stats, "db.user_write_stall_micros")},
+                        {"db", map_property(*database_, rocksdb::DB::Properties::kDBWriteStallStats)},
+                        {"cf", map_property(*database_, rocksdb::DB::Properties::kCFWriteStallStats)},
+                        {"io_stalls", map_property(*database_, rocksdb::DB::Properties::kCFStats, "io_stalls.")}};
+            return {{"schema_version", 1}, {"run_id", run_id_}, {"db_session_id", session_}, {"reads", reads_.load()}, {"writes", writes_.load()}, {"deletes", deletes_.load()}, {"mode", mode_}, {"properties", properties}, {"write_stalls", stalls}, {"io", io}, {"process", lsm_lab::process_usage()}, {"compactions", compactions_->summary()}, {"remote", remote_ ? remote_->summary() : Json(nullptr)}, {"local_transform", local_transform_ ? local_transform_->statistics() : Json(nullptr)}};
         }
 
         fs::path root_;
@@ -364,8 +455,9 @@ int main(int argc, char **argv)
         arguments.finish();
         lsm_lab::require(mode != "native_cpu" || (remote.endpoint.empty() && remote.backend == "cpu_native"),
                          "native mode cannot select a remote worker or GPU backend");
-        lsm_lab::require(mode == "native_cpu" || mode == "remote_worker" || mode == "cuda_local",
-                         "mode must be native_cpu, cuda_local, or remote_worker");
+        lsm_lab::require(mode == "native_cpu" || mode == "remote_worker" || mode == "cuda_local" ||
+                             mode == "cuda_merge",
+                         "mode must be native_cpu, cuda_local, cuda_merge, or remote_worker");
         lsm_lab::block_shutdown_signals();
         lsm_lab::telemetry::Sampler sampler(resources);
         auto events = std::make_shared<lsm_lab::EventLog>(events_path);

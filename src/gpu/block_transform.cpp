@@ -248,7 +248,7 @@ namespace lsm_lab
             output->push_back({std::move(contents),
                                rocksdb::crc32c::Mask(
                                    rocksdb::crc32c::Value(checksummed.data(), checksummed.size())),
-                               use_compressed});
+                               use_compressed, std::string()});
         }
         return rocksdb::Status::OK();
     }
@@ -269,6 +269,9 @@ namespace lsm_lab
             slices.emplace_back(block);
         std::vector<rocksdb::CompactionOutputBlock> output;
         auto status = execute_output(slices, &output);
+        if (status.ok() && output.size() == input.size())
+            for (std::size_t index = 0; index < input.size(); ++index)
+                output[index].uncompressed = std::move(input[index]);
         *submission =
             std::make_unique<CompletedOutputSubmission>(status, std::move(output));
         return rocksdb::Status::OK();
@@ -281,7 +284,7 @@ namespace lsm_lab
         try
         {
             submission->reset();
-            if (input.empty() || input.size() > max_blocks)
+            if (input.empty() || input.size() > max_output_blocks)
                 return rocksdb::Status::InvalidArgument("output block count exceeds limit");
             std::size_t bytes = 0;
             for (const auto &block : input)
@@ -410,10 +413,70 @@ namespace lsm_lab
         }
     }
 
+    rocksdb::Status BatchTransform::execute_merge(const rocksdb::CompactionMergeRequest &request,
+                                                  std::unique_ptr<rocksdb::CompactionMergedInput> *output,
+                                                  MergeRunStats *stats)
+    {
+        return execute_cpu_merge(request, output, stats);
+    }
+
+    rocksdb::Status BatchTransform::MergeCompactionInput(const rocksdb::CompactionMergeRequest &request,
+                                                         std::unique_ptr<rocksdb::CompactionMergedInput> *output) noexcept
+    {
+        try
+        {
+            const auto started = std::chrono::steady_clock::now();
+            MergeRunStats stats;
+            auto status = execute_merge(request, output, &stats);
+            if (!status.ok())
+            {
+                output->reset();
+                return status;
+            }
+            const std::lock_guard guard(mutex_);
+            ++merge_jobs_;
+            merge_entries_ += stats.entries;
+            merge_blocks_ += stats.blocks;
+            merge_input_bytes_ += stats.input_bytes;
+            merge_decoded_bytes_ += stats.decoded_bytes;
+            merge_read_ns_ += stats.read_ns;
+            merge_device_ns_ += stats.device_ns;
+            merge_built_jobs_ += (*output && (*output)->built_output() != nullptr) ? 1 : 0;
+            merge_built_blocks_ += stats.built_blocks;
+            merge_built_bytes_ += stats.built_bytes;
+            merge_wall_ns_ += static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now() - started).count());
+            return rocksdb::Status::OK();
+        }
+        catch (const std::exception &error)
+        {
+            output->reset();
+            return rocksdb::Status::Aborted(error.what());
+        }
+        catch (...)
+        {
+            output->reset();
+            return rocksdb::Status::Aborted("unknown merged-input failure");
+        }
+    }
+
+    void BatchTransform::RecordMergeFallback(const rocksdb::Status &reason) noexcept
+    {
+        try
+        {
+            const std::lock_guard guard(mutex_);
+            ++merge_fallbacks_;
+            merge_last_fallback_ = reason.ToString();
+        }
+        catch (...)
+        {
+        }
+    }
+
     nlohmann::json BatchTransform::statistics() const
     {
         const std::lock_guard guard(mutex_);
-        return {{"backend", name()}, {"device", device()}, {"batches", batches_}, {"blocks", blocks_}, {"input_bytes", input_bytes_}, {"output_bytes", output_bytes_}, {"wall_ns", wall_ns_}, {"kernel_ns", kernel_ns_.load()}, {"dispatches", dispatches_.load()}, {"cpu_fallback_batches", cpu_fallback_batches_.load()}, {"cpu_fallback_blocks", cpu_fallback_blocks_.load()}, {"cpu_fallback_bytes", cpu_fallback_bytes_.load()}, {"compaction_sessions", compaction_sessions_.load()}, {"output_batches", output_batches_.load()}, {"output_blocks", output_blocks_.load()}, {"output_gpu_batches", output_gpu_batches_.load()}};
+        return {{"backend", name()}, {"device", device()}, {"batches", batches_}, {"blocks", blocks_}, {"input_bytes", input_bytes_}, {"output_bytes", output_bytes_}, {"wall_ns", wall_ns_}, {"kernel_ns", kernel_ns_.load()}, {"dispatches", dispatches_.load()}, {"cpu_fallback_batches", cpu_fallback_batches_.load()}, {"cpu_fallback_blocks", cpu_fallback_blocks_.load()}, {"cpu_fallback_bytes", cpu_fallback_bytes_.load()}, {"compaction_sessions", compaction_sessions_.load()}, {"output_batches", output_batches_.load()}, {"output_blocks", output_blocks_.load()}, {"output_gpu_batches", output_gpu_batches_.load()}, {"merged_input", merged_input_}, {"merge_jobs", merge_jobs_}, {"merge_fallbacks", merge_fallbacks_}, {"merge_last_fallback", merge_last_fallback_}, {"merge_entries", merge_entries_}, {"merge_blocks", merge_blocks_}, {"merge_input_bytes", merge_input_bytes_}, {"merge_decoded_bytes", merge_decoded_bytes_}, {"merge_wall_ns", merge_wall_ns_}, {"merge_read_ns", merge_read_ns_}, {"merge_device_ns", merge_device_ns_}, {"merge_built_jobs", merge_built_jobs_}, {"merge_built_blocks", merge_built_blocks_}, {"merge_built_bytes", merge_built_bytes_}};
     }
 
     std::shared_ptr<BatchTransform> make_cpu_transform() { return std::make_shared<CpuTransform>(); }
@@ -424,6 +487,12 @@ namespace lsm_lab
             return {};
         if (name == "cpu_batched")
             return make_cpu_transform();
+        if (name == "cpu_merge")
+        {
+            auto transform = make_cpu_transform();
+            transform->enable_merged_input();
+            return transform;
+        }
 #ifdef LSM_HAVE_METAL
         if (name == "metal_batched")
             return make_metal_transform();
@@ -433,6 +502,12 @@ namespace lsm_lab
             return make_cuda_transform();
         if (name == "cuda_hybrid")
             return make_cuda_hybrid_transform();
+        if (name == "cuda_merge")
+        {
+            auto transform = make_cuda_hybrid_transform();
+            transform->enable_merged_input();
+            return transform;
+        }
 #endif
         throw std::invalid_argument("requested block backend is not available: " + name);
     }

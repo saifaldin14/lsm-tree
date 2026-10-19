@@ -130,6 +130,27 @@ class PlanTests(unittest.TestCase):
                     self.assertEqual(row["qualification"], "unverified")
 
 
+class PrimaryPlacementTests(unittest.TestCase):
+    def test_unset_node_launches_directly(self):
+        with mock.patch.dict(os.environ, {"LSM_LAB_PRIMARY_NUMA_NODE": ""}):
+            self.assertEqual(experiments.primary_launch_prefix(), [])
+
+    def test_node_binds_cpu_and_memory(self):
+        with mock.patch.dict(os.environ, {"LSM_LAB_PRIMARY_NUMA_NODE": "0"}), \
+                mock.patch.object(experiments.shutil, "which", return_value="/usr/bin/numactl"):
+            self.assertEqual(experiments.primary_launch_prefix(),
+                             ["/usr/bin/numactl", "--cpunodebind=0", "--membind=0"])
+
+    def test_rejects_option_injection_and_missing_numactl(self):
+        with mock.patch.dict(os.environ, {"LSM_LAB_PRIMARY_NUMA_NODE": "0 --all"}):
+            with self.assertRaises(ValueError):
+                experiments.primary_launch_prefix()
+        with mock.patch.dict(os.environ, {"LSM_LAB_PRIMARY_NUMA_NODE": "1"}), \
+                mock.patch.object(experiments.shutil, "which", return_value=None):
+            with self.assertRaises(ValueError):
+                experiments.primary_launch_prefix()
+
+
 class AnalysisTests(unittest.TestCase):
     def test_power_import_preserves_units_and_rejects_ambiguous_fields(self):
         document = {"timestamp": datetime.datetime(2026, 1, 1), "elapsed_ns": 2_000_000_000,

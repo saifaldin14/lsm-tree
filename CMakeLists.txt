@@ -9,6 +9,16 @@ set(CMAKE_FIND_PACKAGE_PREFER_CONFIG ON)
 
 find_package(ZLIB MODULE REQUIRED)
 find_package(lz4 CONFIG REQUIRED)
+find_package(zstd CONFIG REQUIRED)
+# RocksDB's WITH_ZSTD path links the module-style target zstd::zstd; map it to the vcpkg config target.
+if(NOT TARGET zstd::zstd)
+  add_library(zstd::zstd INTERFACE IMPORTED)
+  if(TARGET zstd::libzstd)
+    target_link_libraries(zstd::zstd INTERFACE zstd::libzstd)
+  else()
+    target_link_libraries(zstd::zstd INTERFACE zstd::libzstd_static)
+  endif()
+endif()
 
 include(FetchContent)
 set(LSM_ROCKSDB_COMMIT abeebd9630f11bd08c28b7bd43c7bdfc62050654)
@@ -20,10 +30,15 @@ set(WITH_TRACE_TOOLS OFF CACHE BOOL "" FORCE)
 set(WITH_GFLAGS OFF CACHE BOOL "" FORCE)
 set(WITH_LIBURING OFF CACHE BOOL "" FORCE)
 set(WITH_LZ4 ON CACHE BOOL "" FORCE)
+set(WITH_ZSTD ON CACHE BOOL "" FORCE)
 set(ROCKSDB_BUILD_SHARED OFF CACHE BOOL "" FORCE)
 set(FAIL_ON_WARNINGS OFF CACHE BOOL "" FORCE)
 set(USE_RTTI ON CACHE STRING "" FORCE)
-set(PORTABLE ON CACHE STRING "" FORCE)
+# RocksDB selects hardware CRC32C (SSE4.2/PCLMUL) and other SIMD paths only at
+# compile time. "ON" builds for generic x86-64 (software CRC32C); "0" builds
+# for the build host's CPU (-march=native), which experiment hosts should use.
+set(LSM_ROCKSDB_PORTABLE ON CACHE STRING "RocksDB PORTABLE value: ON (generic) or 0 (-march=native)")
+set(PORTABLE ${LSM_ROCKSDB_PORTABLE} CACHE STRING "" FORCE)
 FetchContent_Declare(rocksdb
   URL "https://codeload.github.com/facebook/rocksdb/tar.gz/${LSM_ROCKSDB_COMMIT}"
   URL_HASH SHA256=25dee0decb85ea9a3c8a706b8b627fd67f218e35efae59e23997a4234db32198
@@ -35,7 +50,9 @@ file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/cmake/ApplyEnginePatch.cmake" LSM_PATCH
 file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/include/lsm_lab/compaction_batch.hpp" LSM_PATCH_BODY_SHA)
 file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/include/lsm_lab/compaction_output.hpp" LSM_PATCH_OUTPUT_SHA)
 file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/include/rocksdb/compaction_block_transform.h" LSM_PATCH_API_SHA)
-string(SHA256 LSM_ENGINE_PATCH_SHA "${LSM_PATCH_SCRIPT_SHA}${LSM_PATCH_BODY_SHA}${LSM_PATCH_OUTPUT_SHA}${LSM_PATCH_API_SHA}")
+file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/include/lsm_lab/compaction_merge_reader.hpp" LSM_PATCH_MERGE_READER_SHA)
+file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/include/lsm_lab/compaction_merge_job.hpp" LSM_PATCH_MERGE_JOB_SHA)
+string(SHA256 LSM_ENGINE_PATCH_SHA "${LSM_PATCH_SCRIPT_SHA}${LSM_PATCH_BODY_SHA}${LSM_PATCH_OUTPUT_SHA}${LSM_PATCH_API_SHA}${LSM_PATCH_MERGE_READER_SHA}${LSM_PATCH_MERGE_JOB_SHA}")
 configure_file(cmake/build_info.hpp.in generated/lsm_lab/build_info.hpp @ONLY)
 
 find_package(nlohmann_json CONFIG REQUIRED)
@@ -45,7 +62,7 @@ find_package(Protobuf CONFIG REQUIRED)
 find_package(gRPC CONFIG REQUIRED)
 find_package(hdr_histogram CONFIG REQUIRED)
 
-add_library(lsm_blocks src/gpu/block_transform.cpp)
+add_library(lsm_blocks src/gpu/block_transform.cpp src/gpu/merge_cpu.cpp)
 target_include_directories(lsm_blocks PUBLIC include)
 target_include_directories(lsm_blocks SYSTEM PRIVATE "${rocksdb_SOURCE_DIR}" "${rocksdb_BINARY_DIR}")
 target_link_libraries(lsm_blocks PUBLIC rocksdb nlohmann_json::nlohmann_json PRIVATE lz4::lz4)
@@ -81,7 +98,9 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
   "${CMAKE_CURRENT_SOURCE_DIR}/src/gpu/blocks.metal"
   "${CMAKE_CURRENT_SOURCE_DIR}/include/lsm_lab/compaction_batch.hpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/include/lsm_lab/compaction_output.hpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/include/rocksdb/compaction_block_transform.h")
+  "${CMAKE_CURRENT_SOURCE_DIR}/include/rocksdb/compaction_block_transform.h"
+  "${CMAKE_CURRENT_SOURCE_DIR}/include/lsm_lab/compaction_merge_reader.hpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/include/lsm_lab/compaction_merge_job.hpp")
 include(cmake/Cuda.cmake)
 
 set(LSM_PROTO_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
@@ -143,6 +162,16 @@ add_test(NAME telemetry.native COMMAND lsm_telemetry_tests)
 set_tests_properties(telemetry.native PROPERTIES TIMEOUT 60 LABELS "telemetry;integration")
 add_executable(lsm_gpu_check apps/lsm_gpu_check.cpp)
 target_link_libraries(lsm_gpu_check PRIVATE lsm_blocks lz4::lz4)
+add_executable(lsm_compaction_bench apps/lsm_compaction_bench.cpp)
+target_link_libraries(lsm_compaction_bench PRIVATE lsm_blocks lsm_runtime)
+target_include_directories(lsm_compaction_bench SYSTEM PRIVATE "${rocksdb_SOURCE_DIR}" "${rocksdb_BINARY_DIR}")
+target_compile_definitions(lsm_compaction_bench PRIVATE $<TARGET_PROPERTY:rocksdb,COMPILE_DEFINITIONS>)
+target_compile_options(lsm_compaction_bench PRIVATE -Wall -Wextra -Wpedantic -Werror)
+add_executable(lsm_system_bench apps/lsm_system_bench.cpp)
+target_link_libraries(lsm_system_bench PRIVATE lsm_blocks lsm_runtime)
+target_include_directories(lsm_system_bench SYSTEM PRIVATE "${rocksdb_SOURCE_DIR}" "${rocksdb_BINARY_DIR}")
+target_compile_definitions(lsm_system_bench PRIVATE $<TARGET_PROPERTY:rocksdb,COMPILE_DEFINITIONS>)
+target_compile_options(lsm_system_bench PRIVATE -Wall -Wextra -Wpedantic -Werror)
 target_include_directories(lsm_gpu_check SYSTEM PRIVATE "${rocksdb_SOURCE_DIR}" "${rocksdb_BINARY_DIR}")
 target_compile_definitions(lsm_gpu_check PRIVATE $<TARGET_PROPERTY:rocksdb,COMPILE_DEFINITIONS>)
 target_compile_options(lsm_gpu_check PRIVATE -Wall -Wextra -Wpedantic -Werror)
@@ -166,6 +195,7 @@ set_tests_properties(engine.persistence PROPERTIES TIMEOUT 90 LABELS "engine;int
 
 add_executable(lsm_config_tests tests/spec_test.cpp)
 target_link_libraries(lsm_config_tests PRIVATE lsm_config GTest::gtest_main)
+target_compile_definitions(lsm_config_tests PRIVATE LSM_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_options(lsm_config_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
 add_test(NAME config.validation COMMAND lsm_config_tests)
 set_tests_properties(config.validation PROPERTIES TIMEOUT 30 LABELS "config;unit")
@@ -179,7 +209,7 @@ target_compile_options(lsm_remote PRIVATE -Wall -Wextra -Wpedantic -Werror)
 add_executable(lsm_db apps/lsm_db.cpp)
 target_link_libraries(lsm_db PRIVATE lsm_remote lsm_telemetry lsm_blocks)
 target_compile_options(lsm_db PRIVATE -Wall -Wextra -Wpedantic -Werror)
-add_library(lsm_load src/workload/load.cpp src/workload/open_loop.cpp)
+add_library(lsm_load src/workload/load.cpp src/workload/open_loop.cpp src/workload/closed_loop.cpp)
 target_link_libraries(lsm_load PUBLIC lsm_engine lsm_runtime lsm_protocol
   $<IF:$<TARGET_EXISTS:hdr_histogram::hdr_histogram>,hdr_histogram::hdr_histogram,hdr_histogram::hdr_histogram_static>)
 target_compile_options(lsm_load PRIVATE -Wall -Wextra -Wpedantic -Werror)
@@ -210,6 +240,11 @@ target_link_libraries(lsm_dataset_tests PRIVATE lsm_engine GTest::gtest_main)
 target_compile_options(lsm_dataset_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
 add_test(NAME engine.datasets COMMAND lsm_dataset_tests)
 set_tests_properties(engine.datasets PROPERTIES TIMEOUT 120 LABELS "engine;integration")
+
+find_package(Threads REQUIRED)
+add_executable(lsm_burn apps/lsm_burn.cpp)
+target_link_libraries(lsm_burn PRIVATE nlohmann_json::nlohmann_json Threads::Threads)
+target_compile_options(lsm_burn PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 add_executable(lsm_admin apps/lsm_admin.cpp)
 target_link_libraries(lsm_admin PRIVATE lsm_engine lsm_runtime lsm_blocks)

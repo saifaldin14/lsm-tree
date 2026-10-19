@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "name": "rev-scale-stress",
+  "dataset_spec": "configs/rev-scale-2m.json",
+  "modes": ["native_cpu", "cuda_local"],
+  "rates": [5000],
+  "repetitions": 3,
+  "seed": 7311,
+  "warmup_seconds": 10,
+  "measurement_seconds": 60,
+  "read_percent": 0,
+  "threads": 8,
+  "queue_capacity": 16384,
+  "deadline_ms": 5000,
+  "read_slo_ms": 100,
+  "write_slo_ms": 100,
+  "max_wall_seconds": 3600,
+  "max_logical_write_bytes": 8589934592,
+  "max_artifact_bytes": 17179869184
+}

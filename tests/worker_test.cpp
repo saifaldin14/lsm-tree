@@ -585,5 +585,84 @@ namespace lsm_lab
                       1000U);
             EXPECT_EQ(primary.stop(), 0);
         }
+
+        TEST_F(WorkerTest, OpenLoopInsertsNewKeysAndVerifiesThem)
+        {
+            const auto trial = root / "shared" / "insert";
+            clone_dataset(root / "shared" / "dataset", trial);
+            Process primary({LSM_DB_EXE, "--dataset", trial.string(), "--run-id", "insert", "--listen", "127.0.0.1:0",
+                             "--ready-file", (root / "db.ready").string(), "--events", (root / "db.events").string(),
+                             "--summary", (root / "db.summary").string()},
+                            root / "db.log");
+            const auto endpoint = primary.ready(root / "db.ready");
+            const auto output = root / "load";
+            Process load({LSM_LOADGEN_EXE, "--endpoint", endpoint, "--run-id", "insert", "--output", output.string(),
+                          "--requests", "150", "--warmup-requests", "20", "--rate", "500", "--read-percent", "30",
+                          "--insert-percent", "50"},
+                         root / "load.log");
+            ASSERT_EQ(load.wait(), 0) << read_file(root / "load.log");
+            const auto result = nlohmann::json::parse(read_file(output / "result.json"));
+            const auto manifest = nlohmann::json::parse(read_file(output / "manifest.json"));
+            EXPECT_EQ(manifest.at("key_index_limit"), spec.dataset.records + 170);
+            EXPECT_GT(result.at("inserted_keys").get<std::uint64_t>(), 0U);
+            EXPECT_EQ(primary.stop(), 0);
+            const auto summary = nlohmann::json::parse(read_file(root / "db.summary"));
+            EXPECT_TRUE(summary.at("properties").contains("rocksdb.num-running-compactions"));
+            EXPECT_TRUE(summary.at("properties").at("rocksdb.estimate-num-keys").is_number());
+            EXPECT_GT(summary.at("io").at("user_bytes_written").get<std::uint64_t>(), 0U);
+            EXPECT_GT(summary.at("io").at("flush_bytes_written").get<std::uint64_t>(), 0U);
+            EXPECT_TRUE(summary.at("io").contains("compaction_bytes_written"));
+            EXPECT_TRUE(summary.at("io").at("write_amplification").is_number());
+            EXPECT_TRUE(summary.at("write_stalls").at("stall_micros").is_number());
+            EXPECT_TRUE(summary.at("write_stalls").at("cf").is_object());
+            EXPECT_TRUE(summary.at("write_stalls").at("db").is_object());
+            std::istringstream samples(read_file(output / "primary-metrics.jsonl"));
+            std::string line;
+            ASSERT_TRUE(std::getline(samples, line));
+            EXPECT_TRUE(nlohmann::json::parse(line).at("statistics").contains("write_stalls"));
+            const auto verification = verify_trial(trial, output);
+            EXPECT_EQ(verification.at("inserted_keys_verified"), result.at("inserted_keys"));
+            EXPECT_EQ(verification.at("records_verified").get<std::uint64_t>(),
+                      spec.dataset.records + result.at("inserted_keys").get<std::uint64_t>());
+        }
+
+        TEST_F(WorkerTest, ClosedLoopSaturatesAndVerifiesEveryValue)
+        {
+            const auto trial = root / "shared" / "closed";
+            clone_dataset(root / "shared" / "dataset", trial);
+            Process primary({LSM_DB_EXE, "--dataset", trial.string(), "--run-id", "closed", "--listen", "127.0.0.1:0",
+                             "--ready-file", (root / "db.ready").string(), "--events", (root / "db.events").string(),
+                             "--summary", (root / "db.summary").string()},
+                            root / "db.log");
+            const auto endpoint = primary.ready(root / "db.ready");
+            Process rejected({LSM_LOADGEN_EXE, "--endpoint", endpoint, "--run-id", "closed", "--output", (root / "rejected").string(),
+                              "--closed-loop", "2", "--rate", "100"},
+                             root / "rejected.log");
+            EXPECT_EQ(rejected.wait(), 1);
+            const auto output = root / "load";
+            Process load({LSM_LOADGEN_EXE, "--endpoint", endpoint, "--run-id", "closed", "--output", output.string(),
+                          "--closed-loop", "4", "--duration-seconds", "2", "--warmup-duration-seconds", "1",
+                          "--read-percent", "50", "--insert-percent", "20"},
+                         root / "load.log");
+            ASSERT_EQ(load.wait(), 0) << read_file(root / "load.log");
+            const auto result = nlohmann::json::parse(read_file(output / "result.json"));
+            EXPECT_EQ(result.at("load_mode"), "closed_loop");
+            EXPECT_EQ(result.at("valid"), true);
+            EXPECT_EQ(result.at("clients"), 4);
+            EXPECT_GT(result.at("throughput").at("ops_per_second").get<double>(), 0.0);
+            EXPECT_NEAR(result.at("throughput").at("ops_per_second").get<double>(),
+                        result.at("throughput").at("reads_per_second").get<double>() + result.at("throughput").at("writes_per_second").get<double>(), 1e-6);
+            for (const auto *field : {"p50", "p95", "p99", "p999"})
+                EXPECT_TRUE(result.at("write_latency").contains(field)) << field;
+            EXPECT_GE(result.at("timeline").size(), 3U);
+            EXPECT_EQ(result.at("timeline").at(0).at("phase"), "warmup");
+            EXPECT_EQ(result.at("timeline").at(1).at("phase"), "measurement");
+            EXPECT_EQ(result.at("measurement").at("indeterminate_writes"), 0);
+            EXPECT_GT(result.at("inserted_keys").get<std::uint64_t>(), 0U);
+            EXPECT_EQ(primary.stop(), 0);
+            const auto verification = verify_trial(trial, output);
+            EXPECT_EQ(verification.at("inserted_keys_verified"), result.at("inserted_keys"));
+            EXPECT_EQ(verification.at("full_payloads_verified"), true);
+        }
     }
 }

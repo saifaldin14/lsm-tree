@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "name": "cuda-realistic-update-heavy",
+  "dataset_spec": "configs/gpu-compaction-bottleneck-128k.json",
+  "modes": ["native_cpu", "cuda_local"],
+  "rates": [4000, 5334, 6667],
+  "repetitions": 3,
+  "seed": 409,
+  "warmup_seconds": 2,
+  "measurement_seconds": 8,
+  "read_percent": 25,
+  "threads": 64,
+  "queue_capacity": 8192,
+  "deadline_ms": 5000,
+  "read_slo_ms": 100,
+  "write_slo_ms": 100,
+  "max_wall_seconds": 600,
+  "max_logical_write_bytes": 8589934592,
+  "max_artifact_bytes": 8589934592
+}

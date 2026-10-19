@@ -1,4 +1,5 @@
 #include "lsm_lab/block_transform.hpp"
+#include "lsm_lab/cuda_merge.hpp"
 
 #include <algorithm>
 #include <array>
@@ -40,10 +41,15 @@ namespace lsm_lab
         {
         public:
             DeviceBuffer() = default;
+            // front_guard bytes are allocated before data. nvCOMP 5.3.0.16 LZ4 decoding of a
+            // malformed back-reference can read before the destination buffer; LZ4 offsets
+            // are < 64 KiB, so a 64 KiB guard keeps that read in bounds and the status check
+            // reports corruption instead of faulting the CUDA context.
+            explicit DeviceBuffer(std::size_t front_guard) : guard_(front_guard) {}
             ~DeviceBuffer()
             {
                 if (data != nullptr)
-                    cudaFree(data);
+                    cudaFree(data - guard_elements());
             }
             DeviceBuffer(const DeviceBuffer &) = delete;
             DeviceBuffer &operator=(const DeviceBuffer &) = delete;
@@ -54,15 +60,21 @@ namespace lsm_lab
                 if (count <= capacity)
                     return;
                 Element *replacement = nullptr;
-                cuda_check(cudaMalloc(reinterpret_cast<void **>(&replacement), count * sizeof(Element)));
+                cuda_check(cudaMalloc(reinterpret_cast<void **>(&replacement),
+                                      (count + guard_elements()) * sizeof(Element)));
+                cuda_check(cudaMemset(replacement, 0, guard_elements() * sizeof(Element)));
                 if (data != nullptr)
-                    cuda_check(cudaFree(data));
-                data = replacement;
+                    cuda_check(cudaFree(data - guard_elements()));
+                data = replacement + guard_elements();
                 capacity = count;
             }
 
             Element *data = nullptr;
             std::size_t capacity = 0;
+
+        private:
+            std::size_t guard_elements() const { return (guard_ + sizeof(Element) - 1) / sizeof(Element); }
+            std::size_t guard_ = 0;
         };
 
         template <typename Element>
@@ -111,7 +123,7 @@ namespace lsm_lab
         class Event
         {
         public:
-            void create() { cuda_check(cudaEventCreate(&value)); }
+            void create(unsigned int flags) { cuda_check(cudaEventCreateWithFlags(&value, flags)); }
             ~Event()
             {
                 if (value != nullptr)
@@ -119,6 +131,29 @@ namespace lsm_lab
             }
             cudaEvent_t value = nullptr;
         };
+
+        // LSM_CUDA_SYNC selects how host threads wait for the GPU: "auto" (CUDA's
+        // default heuristic, which spins on hosts with many logical CPUs), "spin",
+        // or "blocking" (sleep on an OS primitive).
+        struct SyncMode
+        {
+            const char *label;
+            unsigned int device_flags;
+            unsigned int event_flags;
+        };
+
+        SyncMode sync_mode_from_environment()
+        {
+            const char *value = std::getenv("LSM_CUDA_SYNC");
+            const std::string mode = value == nullptr ? "" : value;
+            if (mode.empty() || mode == "auto")
+                return {"auto", cudaDeviceScheduleAuto, cudaEventDefault};
+            if (mode == "spin")
+                return {"spin", cudaDeviceScheduleSpin, cudaEventDefault};
+            if (mode == "blocking")
+                return {"blocking", cudaDeviceScheduleBlockingSync, cudaEventBlockingSync};
+            throw std::runtime_error("LSM_CUDA_SYNC must be auto, spin, or blocking");
+        }
 
         class FutureOutputSubmission final : public rocksdb::CompactionOutputSubmission
         {
@@ -370,7 +405,7 @@ namespace lsm_lab
                 Event end;
                 Event complete;
                 DeviceBuffer<unsigned char> device_input;
-                DeviceBuffer<unsigned char> device_output;
+                DeviceBuffer<unsigned char> device_output{64ULL << 10};
                 DeviceBuffer<unsigned char> device_compressed;
                 DeviceBuffer<unsigned char> temporary;
                 DeviceBuffer<BlockDescriptor> device_blocks;
@@ -442,13 +477,15 @@ namespace lsm_lab
         public:
             explicit CudaTransform(bool hybrid) : hybrid_(hybrid)
             {
+                const auto sync = sync_mode_from_environment();
+                cuda_check(cudaSetDeviceFlags(sync.device_flags));
                 cuda_check(cudaSetDevice(0));
                 for (auto &slot : slots_)
                 {
                     slot.stream.create();
-                    slot.begin.create();
-                    slot.end.create();
-                    slot.complete.create();
+                    slot.begin.create(sync.event_flags);
+                    slot.end.create(sync.event_flags);
+                    slot.complete.create(sync.event_flags);
                 }
                 decompress_ = nvcompBatchedLZ4DecompressDefaultOpts;
                 decompress_.backend = NVCOMP_DECOMPRESS_BACKEND_CUDA;
@@ -513,7 +550,8 @@ namespace lsm_lab
                     throw std::runtime_error("nvCOMP runtime/header version mismatch");
                 int runtime = 0;
                 cuda_check(cudaRuntimeGetVersion(&runtime));
-                device_name_ = std::string(device.name) + "; nvCOMP=5.3.0.16; CUDA=" + std::to_string(runtime);
+                device_name_ = std::string(device.name) + "; nvCOMP=5.3.0.16; CUDA=" + std::to_string(runtime) +
+                               "; sync=" + sync.label;
             }
             ~CudaTransform() override { cudaSetDevice(0); }
 
@@ -521,6 +559,18 @@ namespace lsm_lab
             std::string device() const override { return device_name_; }
 
         protected:
+            rocksdb::Status execute_merge(const rocksdb::CompactionMergeRequest &request,
+                                          std::unique_ptr<rocksdb::CompactionMergedInput> *output,
+                                          MergeRunStats *stats) override
+            {
+                {
+                    const std::lock_guard guard(merge_engine_mutex_);
+                    if (!merge_engine_)
+                        merge_engine_ = make_cuda_merge_engine();
+                }
+                return merge_engine_->merge(request, output, stats);
+            }
+
             rocksdb::Status submit_output(
                 std::vector<std::string> input,
                 std::unique_ptr<rocksdb::CompactionOutputSubmission> *submission) override
@@ -534,6 +584,9 @@ namespace lsm_lab
                             slices.emplace_back(block);
                         std::vector<rocksdb::CompactionOutputBlock> output;
                         auto status = execute_output(slices, &output);
+                        if (status.ok() && output.size() == input.size())
+                            for (std::size_t index = 0; index < input.size(); ++index)
+                                output[index].uncompressed = std::move(input[index]);
                         return FutureOutputSubmission::Result{
                             std::move(status), std::move(output)};
                     });
@@ -739,7 +792,7 @@ namespace lsm_lab
                 std::size_t max_input = 0;
                 for (const auto &block : input)
                     max_input = std::max(max_input, block.size());
-                const auto workspace_max_input = rounded(max_input, 32ULL << 10);
+                const auto workspace_max_input = rounded(max_input, 4ULL << 10);
                 const auto workspace_total_bytes = rounded(total_bytes, 1ULL << 20);
                 auto cached_max_output =
                     slot.compression_max_outputs.find(workspace_max_input);
@@ -831,8 +884,15 @@ namespace lsm_lab
                         slot.compression_workspace_sizes.emplace(workspace_key, queried_bytes).first;
                 }
                 const auto temporary_bytes = cached_workspace->second;
-                if (temporary_bytes > 32ULL << 20)
-                    return rocksdb::Status::MemoryLimit("nvCOMP compression workspace exceeds batch budget");
+                if (temporary_bytes > 512ULL << 20)
+                {
+                    // Uploads above are already queued from this slot's pinned buffers.
+                    cuda_check(cudaStreamSynchronize(slot.stream.value));
+                    ++cpu_fallback_batches_;
+                    cpu_fallback_blocks_ += input.size();
+                    cpu_fallback_bytes_ += total_bytes;
+                    return execute_cpu_output(input, output);
+                }
                 slot.temporary.reserve(temporary_bytes);
                 cuda_check(cudaEventRecord(slot.begin.value, slot.stream.value));
                 nvcomp_check(nvcompBatchedLZ4CompressAsync(
@@ -892,6 +952,8 @@ namespace lsm_lab
             std::array<Slot, 2> slots_;
             std::mutex slots_mutex_;
             std::condition_variable slots_ready_;
+            std::mutex merge_engine_mutex_;
+            std::unique_ptr<CudaMergeEngine> merge_engine_;
         };
     }
 

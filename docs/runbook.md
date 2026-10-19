@@ -167,3 +167,108 @@ The production output path submits 64-block or 8 MiB batches asynchronously,
 keeps at most two submissions in flight, and drains output in FIFO order.
 Do not set `LSM_FORCE_CPU_OUTPUT` or `LSM_DISABLE_GPU_OUTPUT` for the GPU
 qualification run.
+
+## Revision experiments: sync mode, NUMA placement, profiling
+
+`LSM_DISABLE_GPU_INPUT=1` is part of the published configuration: only output
+compression and checksums are offloaded. With the input path enabled, compaction
+jobs are slower than native CPU on Zyra. Every run now records all `LSM_*`
+environment variables in `build.json` under `lsm_environment`.
+
+Two opt-in controls support the placement and synchronization ablation:
+
+- `LSM_CUDA_SYNC=auto|spin|blocking` selects how host threads wait for the GPU
+  (`auto` is CUDA's default and the published behavior; `blocking` sets
+  `cudaDeviceScheduleBlockingSync` and blocking-sync events). The chosen mode is
+  appended to `local_transform.device` in each primary summary.
+- `LSM_LAB_PRIMARY_NUMA_NODE=N` launches only `lsm_db` under
+  `numactl --cpunodebind=N --membind=N`. On Zyra the GPU is attached to node 0.
+
+```bash
+export LSM_LAB_SCRATCH_ROOT=/tmp/$USER/lsm-lab
+# Randomized blocks: 2 workloads x 5 conditions + write-heavy 5,556 ops/s, with RAPL energy.
+.venv/bin/python publication/campaign.py /tmp/$USER/rev-campaign --blocks 6
+# Per-thread/per-symbol CPU attribution for one paired trial (fixed-period cpu-clock sampling).
+LSM_DISABLE_GPU_INPUT=1 publication/profile.sh /tmp/$USER/rev-profile-auto auto
+```
+
+`perf_event_paranoid` must allow system-wide sampling and RAPL events
+(`power/energy-pkg/`, `power/energy-ram/`).
+
+## Harness options (all optional; defaults reproduce earlier behavior)
+
+Absent fields keep the canonical dataset spec, dataset fingerprints, and plan
+checksums unchanged. Optional spec fields are written to `spec_json` only when
+they differ from the default.
+
+Dataset spec (`lsm_admin validate|create`):
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `engine.compression` | required | `lz4`, `zstd` (CPU only; GPU block transforms accept only LZ4/none), or `none` |
+| `engine.max_subcompactions` | 1 | 1–256 |
+| `engine.max_bytes_for_level_base` | `target_file_bytes * 4` | 64 KiB–1 TiB |
+| `engine.max_write_buffer_number` | 4 | 2–64 |
+| `engine.level0_file_num_compaction_trigger` / `level0_slowdown_writes_trigger` / `level0_stop_writes_trigger` | RocksDB defaults (4/20/36, not set) | 1–1024; effective values must satisfy compaction <= slowdown <= stop |
+| `engine.use_direct_io` | false | sets `use_direct_reads` and `use_direct_io_for_flush_and_compaction` (not supported on tmpfs) |
+| `engine.verify_output` | true | `false` selects the RocksDB defaults `paranoid_file_checks=false` and `verify_compression=false`. The GPU output path never performs the CPU decompress-and-compare that `verify_compression` adds, so use `false` when comparing CPU and GPU compaction cost |
+| `dataset.load_mode` | `sync` | `bulk`: every generation written with the WAL disabled in 1 MiB batches from up to 16 parallel producers (64 MiB write groups), flushed per generation, uncapped compaction wait, more background jobs during creation only. `ingest`: only the final generation, written as sorted non-overlapping SSTs by up to 16 threads and ingested with `IngestExternalFile` (fully compacted shape, no obsolete versions or compaction history) |
+
+Both fast modes produce exactly the same keys and final values (including
+`overwrite_rounds`) as `sync` and publish the same manifest; `lsm_admin
+verify` still checks every key and full value. `bulk` keeps the natural LSM
+shape (all generations pass through flush and compaction); `ingest` is much
+faster for tens of GB but starts from a fully compacted tree. `lsm_admin create` prints a
+`creation` report (records/s, MiB/s, load and compaction-wait seconds) that is
+not stored in `dataset.json`. `lsm_admin capabilities` reports `zstd`. The ZSTD
+port is part of `vcpkg.json`; rerun `scripts/bootstrap.sh` once on existing hosts.
+
+Load generator (`lsm_loadgen`):
+
+- `--insert-percent P` (default 0): P% of writes insert a new key with index
+  `dataset.records + request_id` (deterministic from the seed). The load
+  manifest records `key_index_limit`; `lsm_admin verify-trial` checks every
+  inserted key and value and requires the row count to equal records plus inserts.
+- `--closed-loop N` selects saturation mode with N back-to-back clients
+  (`--duration-seconds`, default 10; `--warmup-duration-seconds`, default 0).
+  Each client owns the keys congruent to its index, so final versions stay
+  verifiable. `result.json` has `throughput` (ops/reads/writes/inserts per
+  second over the measurement window), `read_latency`/`write_latency` with
+  p50/p95/p99/p999 (send to response), and a per-second `timeline`. The run
+  stops and is marked invalid if it exhausts `--write-budget-bytes` or the
+  expected-version memory budget. Open-loop options (`--rate`, `--requests`,
+  `--threads`, ...) are rejected in this mode. Open loop remains the default.
+
+Experiment configuration (`labctl plan|run`):
+
+| Field | Meaning |
+| --- | --- |
+| `load_mode` | `open_loop` (default) or `closed_loop`. Closed loop replaces `rates`, `warmup_seconds`, `measurement_seconds`, `queue_capacity` with `duration_seconds` and `warmup_duration_seconds`; `threads` is the client count (1–1024). Each trial gets an equal share of `max_logical_write_bytes` after the baseline. `labctl analyze` reports sustained throughput per trial and paired throughput ratios. |
+| `insert_percent` | passed to `lsm_loadgen --insert-percent` |
+| `core_budget` | pins `lsm_db` and `lsm_worker` with `numactl --physcpubind=<cpus> --membind=<node>` to N physical cores (lowest hardware thread of each core from `/sys/devices/system/cpu/cpu*/topology`). Takes precedence over `LSM_LAB_PRIMARY_NUMA_NODE`. `lsm_loadgen` runs on the remaining online CPUs, excluding the sibling threads of the reserved cores. Requires Linux and `numactl`. |
+| `numa_node` | node for `core_budget` (default 0) |
+| `background_load_percent` | runs `lsm_burn` on the same cores at P% duty cycle (10 ms period) for the whole trial; requires `core_budget`. `lsm_burn` is only required when P > 0. |
+| `trial_root` | e.g. `/dev/shm/$USER/lsm-trials` (`$VARS` and `~` expanded; must be absolute). The baseline stays in the scratch root; each trial clone is created in a per-run shared root under `trial_root` and deleted after verification (its `dataset.json`/`run.json` are kept in `trials/<id>/dataset-metadata/`). The per-run directory is removed at the end even on failure. |
+
+Every trial outcome in `run.json` also records `host_load_before` and
+`host_load_after` (1-minute load average and the CPU share of all host CPUs
+used by processes outside the runner's process tree over 0.5 s, with the top
+foreign processes; `unavailable` without Linux `/proc`), plus `cpu_placement`
+and `burner` when configured.
+
+`primary-summary.json` and each 1 Hz `primary-metrics.jsonl` sample now include
+`write_stalls` (`stall_micros`, `rocksdb.db-write-stall-stats`,
+`rocksdb.cf-write-stall-stats`, `io_stalls.*`), `io` (user, WAL, flush, and
+compaction bytes, `write_amplification` since open, and RocksDB's cumulative
+`compaction.Sum` read/write GB and W-Amp), and more properties
+(`num-running-compactions`, `num-running-flushes`, `estimate-num-keys`,
+`actual-delayed-write-rate`, `is-write-stopped`, ...). `labctl analyze` adds
+in-window deltas (`window_*`) and whole-trial totals (`total_*`) of these
+counters to `trials.csv`.
+
+```bash
+# 300 M records of 16 B keys / 128 B values: "load_mode": "bulk" or "ingest" in the dataset spec.
+build/dev/lsm_admin create configs/my-large.json /scratch/$USER/large
+build/dev/lsm_loadgen --endpoint HOST:PORT --run-id RUN --output OUT \
+  --closed-loop 32 --warmup-duration-seconds 30 --duration-seconds 120 --read-percent 50 --insert-percent 20
+```

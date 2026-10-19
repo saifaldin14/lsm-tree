@@ -7,8 +7,13 @@
 
 namespace lsm_lab
 {
+    // Exclusive bound on generated key indices; indices at or beyond DatasetSpec::records are keys inserted by a load.
+    constexpr std::uint64_t maximum_key_index = 1ULL << 62;
     std::string record_key(const DatasetSpec &spec, std::uint64_t index);
     std::string record_value(const DatasetSpec &spec, std::uint64_t index, std::uint64_t generation);
+    // Same generator as record_key/record_value without the dataset.records bound.
+    std::string generated_key(const DatasetSpec &spec, std::uint64_t index);
+    std::string generated_value(const DatasetSpec &spec, std::uint64_t index, std::uint64_t generation);
     rocksdb::Options engine_options(const Spec &spec, std::shared_ptr<rocksdb::CompactionBlockTransform> transform = {});
     nlohmann::json create_dataset(const Spec &spec, const std::filesystem::path &destination);
     nlohmann::json verify_dataset(const std::filesystem::path &directory);

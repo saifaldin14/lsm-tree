@@ -8,6 +8,7 @@
     {"name": "hdr-histogram", "features": ["log"]},
     "lz4",
     "nlohmann-json",
-    "openssl"
+    "openssl",
+    "zstd"
   ]
 }

@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "dataset": {
+    "records": 20000000,
+    "seed": 11,
+    "key_bytes": 16,
+    "value_bytes": 128,
+    "overwrite_rounds": 1,
+    "load_mode": "bulk"
+  },
+  "engine": {
+    "compression": "lz4",
+    "write_buffer_bytes": 67108864,
+    "target_file_bytes": 67108864,
+    "block_cache_bytes": 268435456,
+    "block_bytes": 4096,
+    "background_jobs": 4,
+    "levels": 7,
+    "max_bytes_for_level_base": 268435456,
+    "verify_output": false
+  },
+  "limits": {
+    "logical_write_bytes": 68719476736,
+    "minimum_free_disk_bytes": 4294967296
+  }
+}

@@ -64,7 +64,7 @@ namespace lsm_lab
     {
         require(valid_id(options.run_id) && options.requests >= 1 && options.requests <= 1'000'000'000 &&
                     options.warmup_requests <= 1'000'000'000 && options.rate >= 1 && options.rate <= 10'000'000 &&
-                    options.read_percent <= 100 && options.threads >= 1 && options.threads <= 64 &&
+                    options.read_percent <= 100 && options.insert_percent <= 100 && options.threads >= 1 && options.threads <= 64 &&
                     options.queue_capacity >= 1 && options.queue_capacity <= 65536 && options.deadline_ms >= 1 &&
                     options.deadline_ms <= 60000,
                 "invalid load parameters");
@@ -95,14 +95,17 @@ namespace lsm_lab
         require(options.required_mode.empty() || description.compaction_backend() == options.required_mode, "database mode mismatch");
         const auto spec = parse_spec(description.dataset_spec_json());
         require(description.resolved_spec_sha256() == digest_hex(spec_json(spec).dump()), "database specification mismatch");
-        const auto estimated_memory = std::min(spec.dataset.records, total_requests) * 192 +
-                                      static_cast<std::uint64_t>(options.threads) * (options.queue_capacity * sizeof(ScheduledOperation) + (2ULL << 20));
-        require(estimated_memory <= options.memory_budget_bytes, "load exceeds declared memory estimate budget");
         std::uint64_t planned_writes = 0;
+        std::uint64_t planned_inserts = 0;
         for (std::uint64_t request_id = 0; request_id < total_requests; ++request_id)
         {
-            planned_writes += scheduled_operation(spec.dataset, options, request_id).write;
+            const auto operation = scheduled_operation(spec.dataset, options, request_id);
+            planned_writes += operation.write;
+            planned_inserts += operation.insert;
         }
+        const auto estimated_memory = (std::min(spec.dataset.records, total_requests) + planned_inserts) * 192 +
+                                      static_cast<std::uint64_t>(options.threads) * (options.queue_capacity * sizeof(ScheduledOperation) + (2ULL << 20));
+        require(estimated_memory <= options.memory_budget_bytes, "load exceeds declared memory estimate budget");
         const auto logical_bytes = planned_writes * (static_cast<std::uint64_t>(spec.dataset.key_bytes) + spec.dataset.value_bytes);
         require(logical_bytes <= options.write_budget_bytes, "planned load exceeds logical write budget");
         const auto output = parent / fs::absolute(options.output).filename();
@@ -110,6 +113,12 @@ namespace lsm_lab
         sync_directory(parent);
         telemetry::Sampler resources({.output = output / "resources.jsonl", .role = "load", .max_output_bytes = resource_budget});
         Json manifest{{"schema_version", 1}, {"owner", "lsm-lab"}, {"state", "incomplete"}, {"run_id", options.run_id}, {"dataset_id", description.dataset_id()}, {"engine_fingerprint", engine_fingerprint()}, {"spec", spec_json(spec)}, {"mode", description.compaction_backend()}, {"seed", options.seed}, {"rate", options.rate}, {"read_percent", options.read_percent}, {"requests", options.requests}, {"warmup_requests", options.warmup_requests}, {"threads", options.threads}, {"queue_capacity", options.queue_capacity}, {"deadline_ms", options.deadline_ms}, {"planned_logical_write_bytes", logical_bytes}, {"memory_budget_bytes", options.memory_budget_bytes}, {"schedule_generator", "splitmix64-uniform-v1"}, {"value_generator", "splitmix64-record-v1"}};
+        if (options.insert_percent != 0)
+        {
+            manifest["insert_percent"] = options.insert_percent;
+            manifest["planned_inserts"] = planned_inserts;
+            manifest["key_index_limit"] = spec.dataset.records + total_requests;
+        }
         durable_json(output / "manifest.json", manifest);
         std::ofstream schedule(output / "schedule.jsonl", std::ios::binary);
         std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)> digest(EVP_MD_CTX_new(), EVP_MD_CTX_free);
@@ -117,7 +126,10 @@ namespace lsm_lab
         for (std::uint64_t request_id = 0; request_id < total_requests; ++request_id)
         {
             const auto operation = scheduled_operation(spec.dataset, options, request_id);
-            const auto encoded = Json{{"request_id", request_id}, {"key_index", operation.key_index}, {"generation", operation.generation}, {"intended_ns", operation.intended_ns}, {"write", operation.write}}.dump() + "\n";
+            Json entry{{"request_id", request_id}, {"key_index", operation.key_index}, {"generation", operation.generation}, {"intended_ns", operation.intended_ns}, {"write", operation.write}};
+            if (operation.insert)
+                entry["insert"] = true;
+            const auto encoded = entry.dump() + "\n";
             schedule << encoded;
             require(EVP_DigestUpdate(digest.get(), encoded.data(), encoded.size()) == 1, "schedule digest failed");
         }
@@ -228,8 +240,10 @@ namespace lsm_lab
                                 trace << record.dump() << '\n';
                                 continue;
                             }
-                            const auto key = record_key(spec.dataset, operation.key_index);
-                            const auto value = operation.write ? record_value(spec.dataset, operation.key_index, operation.generation) : std::string();
+                            if (operation.insert)
+                                record["insert"] = true;
+                            const auto key = generated_key(spec.dataset, operation.key_index);
+                            const auto value = operation.write ? generated_value(spec.dataset, operation.key_index, operation.generation) : std::string();
                             const auto sent = elapsed(start);
                             const auto remaining = due + static_cast<std::int64_t>(options.deadline_ms) * 1'000'000 - sent;
                             if (remaining <= 0)
@@ -382,12 +396,23 @@ namespace lsm_lab
                              (stats.at("remote").is_null() || stats.at("remote").at("healthy") == true);
         const auto warmup = count_json(counts[0], options.warmup_requests, rejected[0]);
         const auto measured = count_json(counts[1], options.requests, rejected[1]);
+        std::uint64_t inserted_keys = 0;
+        for (const auto &lane : lanes)
+        {
+            for (const auto &entry : lane->versions)
+                inserted_keys += entry.first >= spec.dataset.records;
+        }
         Json result{{"schema_version", 1}, {"state", "complete"}, {"run_id", options.run_id}, {"valid", healthy && sample_errors == 0 && counts[0].completed == options.warmup_requests && counts[1].completed == options.requests}, {"warmup", warmup}, {"measurement", measured}, {"warmup_ns", warmup_ns}, {"offered_window_ns", end_ns - warmup_ns}, {"load_and_queue_drain_ns", finished_ns}, {"offered_rate", options.rate}, {"read_percent", options.read_percent}, {"mode", description.compaction_backend()}, {"schedule_sha256", fingerprint}, {"read_latency", reads.summary()}, {"write_latency", writes.summary()}, {"queue_delay", queue_delay.summary()}, {"rpc_latency", rpc_latency.summary()}, {"generator_lag", generator_lag.summary()}, {"database_statistics", stats}, {"metrics_errors", sample_errors.load()}, {"drain_status", drain_status.error_message()}, {"checksums_verified", drained.checksums_verified()}, {"database_drain_ns", drain_ns}, {"load_process", process_usage()}, {"offline_verification_required", true}, {"latency_scope", "intended arrival to response, including generator and client queue delay"}};
         durable_bytes(output / "read.hdr", reads.encode() + "\n");
         durable_bytes(output / "write.hdr", writes.encode() + "\n");
         durable_bytes(output / "queue.hdr", queue_delay.encode() + "\n");
         durable_bytes(output / "rpc.hdr", rpc_latency.encode() + "\n");
         durable_bytes(output / "generator.hdr", generator_lag.encode() + "\n");
+        if (options.insert_percent != 0)
+        {
+            result["insert_percent"] = options.insert_percent;
+            result["inserted_keys"] = inserted_keys;
+        }
         result["resource_window"] = resource_window;
         result["resources"] = resources.stop();
         result["valid"] = result.at("valid").get<bool>() && result.at("resources").at("status") == "complete";

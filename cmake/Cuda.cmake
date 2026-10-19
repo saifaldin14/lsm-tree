@@ -9,7 +9,7 @@ if(LSM_ENABLE_CUDA)
   find_path(LSM_NVCOMP_INCLUDE nvcomp/lz4.h PATHS "${LSM_NVCOMP_ROOT}/include" NO_DEFAULT_PATH REQUIRED)
   find_library(LSM_NVCOMP_LIBRARY NAMES nvcomp libnvcomp.so.5 libnvcomp.so.5.3.0
     PATHS "${LSM_NVCOMP_ROOT}/lib" "${LSM_NVCOMP_ROOT}/lib64" NO_DEFAULT_PATH REQUIRED)
-  target_sources(lsm_blocks PRIVATE src/gpu/cuda_transform.cu)
+  target_sources(lsm_blocks PRIVATE src/gpu/cuda_transform.cu src/gpu/cuda_merge.cu)
   set_target_properties(lsm_blocks PROPERTIES CUDA_STANDARD 20 CUDA_STANDARD_REQUIRED ON)
   target_include_directories(lsm_blocks SYSTEM PRIVATE "${LSM_NVCOMP_INCLUDE}")
   target_compile_definitions(lsm_blocks PUBLIC LSM_HAVE_CUDA=1)

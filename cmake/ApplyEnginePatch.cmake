@@ -204,3 +204,204 @@ Status LevelIterator::FinishCompactionBlocks() {
 }
 
 void LevelIterator::SeekToFirst() {]=])
+# Merged-input compaction offload (include/lsm_lab/compaction_merge_*.hpp).
+lsm_replace("table/block_based/block_based_table_reader.h"
+  "  bool TEST_BlockInCache(const BlockHandle& handle) const;"
+  "  bool TEST_BlockInCache(const BlockHandle& handle) const;\n\n  Status LsmCollectDataBlocks(const ReadOptions& read_options,\n                              const Slice* start_user_key,\n                              const Slice* end_user_key,\n                              CompactionMergeFile* file);")
+lsm_replace("table/block_based/block_based_table_reader.cc"
+  "bool BlockBasedTable::TEST_BlockInCache(const BlockHandle& handle) const {"
+  "#include \"lsm_lab/compaction_merge_reader.hpp\"\n\nbool BlockBasedTable::TEST_BlockInCache(const BlockHandle& handle) const {")
+lsm_replace("db/table_cache.h"
+  "  Status GetTableProperties(const FileOptions& toptions,"
+  "  Status LsmCollectDataBlocks(const ReadOptions& read_options,\n                              const InternalKeyComparator& internal_comparator,\n                              const FileMetaData& file_meta,\n                              const MutableCFOptions& mutable_cf_options,\n                              const Slice* start_user_key,\n                              const Slice* end_user_key,\n                              CompactionMergeFile* file);\n\n  Status GetTableProperties(const FileOptions& toptions,")
+lsm_replace("db/table_cache.cc"
+  "Status TableCache::GetTableProperties("
+  [=[Status TableCache::LsmCollectDataBlocks(
+    const ReadOptions& read_options,
+    const InternalKeyComparator& internal_comparator,
+    const FileMetaData& file_meta, const MutableCFOptions& mutable_cf_options,
+    const Slice* start_user_key, const Slice* end_user_key,
+    CompactionMergeFile* file) {
+  TypedHandle* table_handle = nullptr;
+  TableReader* table = nullptr;
+  Status s = FindTable(read_options, file_options_, internal_comparator,
+                       file_meta, &table_handle, mutable_cf_options, &table);
+  if (s.ok()) {
+    auto* block_based = dynamic_cast<BlockBasedTable*>(table);
+    if (block_based == nullptr) {
+      s = Status::NotSupported("merged input requires block-based tables");
+    } else {
+      s = block_based->LsmCollectDataBlocks(read_options, start_user_key,
+                                            end_user_key, file);
+    }
+  }
+  if (table_handle) {
+    cache_.Release(table_handle);
+  }
+  return s;
+}
+
+Status TableCache::GetTableProperties(]=])
+lsm_replace("db/compaction/compaction_job.cc"
+  "void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {"
+  "#include \"lsm_lab/compaction_merge_job.hpp\"\n\nvoid CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {")
+set(compaction_job_path "${rocksdb_SOURCE_DIR}/db/compaction/compaction_job.cc")
+file(READ "${compaction_job_path}" compaction_job_content)
+string(REPLACE
+  "        read_options, &lsm_merged_input);"
+  "        read_options,\n        job_context_->snapshot_checker == nullptr ? &job_context_->snapshot_seqs\n                                                  : nullptr,\n        &lsm_merged_input);"
+  migrated_compaction_job "${compaction_job_content}")
+if(NOT compaction_job_content STREQUAL migrated_compaction_job)
+  file(WRITE "${compaction_job_path}" "${migrated_compaction_job}")
+endif()
+# Stage 3 migration: the merged-input call gains the built-output context.
+file(READ "${compaction_job_path}" compaction_job_content)
+string(REPLACE [=[
+    const Status lsm_status = LsmMaybeCreateMergedInput(
+        sub_compact->compaction, cfd, boundaries.start, boundaries.end,
+        read_options,
+        job_context_->snapshot_checker == nullptr ? &job_context_->snapshot_seqs
+                                                  : nullptr,
+        &lsm_merged_input);]=] [=[
+    LsmBuildContext lsm_build;
+    lsm_build.allowed = job_context_->snapshot_checker == nullptr &&
+                        compaction_progress_writer_ == nullptr &&
+                        !sub_compact->compaction->SupportsPerKeyPlacement();
+    lsm_build.zero_sequences = sub_compact->compaction->bottommost_level();
+    lsm_build.zero_limit = std::min(earliest_snapshot_, preserve_seqno_after_);
+    const Status lsm_status = LsmMaybeCreateMergedInput(
+        sub_compact->compaction, cfd, boundaries.start, boundaries.end,
+        read_options,
+        job_context_->snapshot_checker == nullptr ? &job_context_->snapshot_seqs
+                                                  : nullptr,
+        &lsm_build, &lsm_merged_input);]=] migrated_compaction_job "${compaction_job_content}")
+if(NOT compaction_job_content STREQUAL migrated_compaction_job)
+  file(WRITE "${compaction_job_path}" "${migrated_compaction_job}")
+endif()
+lsm_replace("db/compaction/compaction_job.cc"
+  "  InternalIterator* input_iter = CreateInputIterator(\n      sub_compact, cfd, iterators, boundaries, read_options);\n\n  assert(input_iter);\n"
+  [=[  InternalIterator* input_iter = CreateInputIterator(
+      sub_compact, cfd, iterators, boundaries, read_options);
+
+  assert(input_iter);
+
+  std::unique_ptr<InternalIterator> lsm_merged_input;
+  {
+    LsmBuildContext lsm_build;
+    lsm_build.allowed = job_context_->snapshot_checker == nullptr &&
+                        compaction_progress_writer_ == nullptr &&
+                        !sub_compact->compaction->SupportsPerKeyPlacement();
+    lsm_build.zero_sequences = sub_compact->compaction->bottommost_level();
+    lsm_build.zero_limit = std::min(earliest_snapshot_, preserve_seqno_after_);
+    const Status lsm_status = LsmMaybeCreateMergedInput(
+        sub_compact->compaction, cfd, boundaries.start, boundaries.end,
+        read_options,
+        job_context_->snapshot_checker == nullptr ? &job_context_->snapshot_seqs
+                                                  : nullptr,
+        &lsm_build, &lsm_merged_input);
+    if (!lsm_status.ok()) {
+      sub_compact->status = lsm_status;
+      return;
+    }
+    if (lsm_merged_input) {
+      input_iter = lsm_merged_input.get();
+    }
+  }
+]=])
+lsm_replace("db/compaction/compaction_job.cc"
+  "  FinalizeSubcompaction(sub_compact, status, open_file_func, close_file_func,\n                        blob_file_builder.get(), c_iter.get(), input_iter,\n                        start_cpu_micros, prev_cpu_micros, io_stats);\n\n  NotifyOnSubcompactionCompleted(sub_compact);"
+  "  FinalizeSubcompaction(sub_compact, status, open_file_func, close_file_func,\n                        blob_file_builder.get(), c_iter.get(), input_iter,\n                        start_cpu_micros, prev_cpu_micros, io_stats);\n  if (lsm_merged_input) {\n    LsmAccountMergedInputDrops(lsm_merged_input.get(),\n                               &sub_compact->compaction_job_stats);\n  }\n\n  NotifyOnSubcompactionCompleted(sub_compact);")
+
+# Stage 3: finished data blocks from the accelerator replace CompactionIterator
+# and per-key table building (include/lsm_lab/compaction_merge_job.hpp,
+# include/lsm_lab/compaction_output.hpp).
+lsm_replace("table/table_builder.h"
+  "  virtual uint64_t EstimatedFileSize() const { return FileSize(); }"
+  "  virtual uint64_t EstimatedFileSize() const { return FileSize(); }\n\n  // Adds a finished data block (block-based tables only).\n  virtual Status LsmAddBuiltBlock(const CompactionBuiltBlock& /*block*/,\n                                  const char* /*contents*/,\n                                  const Slice& /*first_key*/,\n                                  const Slice& /*last_key*/,\n                                  const uint64_t* /*hashes*/) {\n    return Status::NotSupported(\"built data blocks\");\n  }")
+lsm_replace("table/block_based/block_based_table_builder.h"
+  "  Status Finish() override;"
+  "  Status Finish() override;\n\n  Status LsmAddBuiltBlock(const CompactionBuiltBlock& block, const char* contents,\n                          const Slice& first_key, const Slice& last_key,\n                          const uint64_t* hashes) override;\n  void LsmFinishPendingIndex(const Slice* first_key_in_next_block);\n  std::string lsm_pending_index_key_;\n  bool lsm_pending_index_ = false;")
+lsm_replace("table/block_based/block_based_table_builder.cc"
+  "  // To make sure properties block is able to keep the accurate size of index\n  // block, we will finish writing all index entries first, in Flush().\n  Flush(/*first_key_in_next_block=*/nullptr);"
+  "  LsmFinishPendingIndex(nullptr);\n  // To make sure properties block is able to keep the accurate size of index\n  // block, we will finish writing all index entries first, in Flush().\n  Flush(/*first_key_in_next_block=*/nullptr);")
+lsm_replace("table/block_based/filter_policy_internal.h"
+  "  virtual size_t EstimateEntriesAdded() = 0;"
+  "  virtual size_t EstimateEntriesAdded() = 0;\n\n  // Adds a precomputed Hash64 of a whole key; false if unsupported.\n  virtual bool LsmAddKeyHash(uint64_t /*hash*/) { return false; }")
+lsm_replace("table/block_based/filter_policy.cc"
+  "  size_t EstimateEntriesAdded() override {\n    return hash_entries_info_.entries_count.LoadRelaxed();\n  }"
+  "  size_t EstimateEntriesAdded() override {\n    return hash_entries_info_.entries_count.LoadRelaxed();\n  }\n\n  // Same as AddKey with the hash already computed.\n  bool LsmAddKeyHash(uint64_t hash) override {\n    if (hash_entries_info_.entries.empty() ||\n        hash != hash_entries_info_.entries.back()) {\n      AddHash(hash);\n    }\n    return true;\n  }")
+lsm_replace("table/block_based/filter_block.h"
+  "  virtual size_t EstimateEntriesAdded() = 0;"
+  "  virtual size_t EstimateEntriesAdded() = 0;\n\n  // Adds precomputed Hash64 values of whole user keys; false if unsupported.\n  virtual bool LsmAddKeyHashes(const uint64_t* /*hashes*/, size_t /*count*/) {\n    return false;\n  }")
+lsm_replace("table/block_based/full_filter_block.h"
+  "  void AddWithPrevKey(const Slice& key_without_ts,\n                      const Slice& prev_key_without_ts) override;"
+  "  void AddWithPrevKey(const Slice& key_without_ts,\n                      const Slice& prev_key_without_ts) override;\n\n  bool LsmAddKeyHashes(const uint64_t* hashes, size_t count) override {\n    if (prefix_extractor_ != nullptr || !whole_key_filtering_) {\n      return false;\n    }\n    for (size_t i = 0; i < count; ++i) {\n      if (!filter_bits_builder_->LsmAddKeyHash(hashes[i])) {\n        return false;\n      }\n    }\n    return true;\n  }")
+lsm_replace("db/compaction/compaction_outputs.h"
+  "  bool ShouldStopBefore(const CompactionIterator& c_iter);"
+  "  bool ShouldStopBefore(const CompactionIterator& c_iter);\n  bool LsmShouldStopBefore(const Slice& internal_key, const Slice& lsm_user_key);\n\n public:\n  // Adds a finished data block; may close the current file first when\n  // can_cut is set and the regular file-cutting rules say so.\n  Status LsmAddBuiltBlock(const CompactionBuiltBlock& block, const char* contents,\n                          const Slice& first_key, const Slice& last_key,\n                          const uint64_t* hashes, bool can_cut,\n                          const CompactionFileOpenFunc& open_file_func,\n                          const CompactionFileCloseFunc& close_file_func,\n                          const ParsedInternalKey& prev_iter_output_internal_key);\n\n private:")
+lsm_replace("db/compaction/compaction_outputs.cc"
+  "bool CompactionOutputs::ShouldStopBefore(const CompactionIterator& c_iter) {\n  assert(c_iter.Valid());\n  const Slice& internal_key = c_iter.key();"
+  "bool CompactionOutputs::ShouldStopBefore(const CompactionIterator& c_iter) {\n  assert(c_iter.Valid());\n  return LsmShouldStopBefore(c_iter.key(), c_iter.user_key());\n}\n\nbool CompactionOutputs::LsmShouldStopBefore(const Slice& internal_key,\n                                            const Slice& lsm_user_key) {")
+lsm_replace("db/compaction/compaction_outputs.cc"
+  "last_key_for_partitioner_, c_iter.user_key(),"
+  "last_key_for_partitioner_, lsm_user_key,")
+lsm_replace("db/compaction/compaction_outputs.cc"
+  "Status CompactionOutputs::AddToOutput(\n    const CompactionIterator& c_iter,"
+  [=[Status CompactionOutputs::LsmAddBuiltBlock(
+    const CompactionBuiltBlock& block, const char* contents,
+    const Slice& first_key, const Slice& last_key, const uint64_t* hashes,
+    bool can_cut, const CompactionFileOpenFunc& open_file_func,
+    const CompactionFileCloseFunc& close_file_func,
+    const ParsedInternalKey& prev_iter_output_internal_key) {
+  Status s;
+  // Always evaluated, as for every key on the regular path, so grandparent
+  // and TTL tracking advance; files are only cut between user keys.
+  const bool stop = LsmShouldStopBefore(first_key, ExtractUserKey(first_key));
+  if (can_cut && stop && HasBuilder()) {
+    s = close_file_func(Status::OK(), prev_iter_output_internal_key, first_key,
+                        nullptr, *this);
+    if (!s.ok()) {
+      return s;
+    }
+    grandparent_boundary_switched_num_ = 0;
+    grandparent_overlapped_bytes_ =
+        GetCurrentKeyGrandparentOverlappedBytes(first_key);
+    range_tombstone_lower_bound_.Clear();
+  }
+  if (!HasBuilder()) {
+    s = open_file_func(*this);
+    if (!s.ok()) {
+      return s;
+    }
+  }
+  assert(builder_ != nullptr);
+  s = current_output().validator.Add(first_key, Slice());
+  if (s.ok()) {
+    s = current_output().validator.Add(last_key, Slice());
+  }
+  if (!s.ok()) {
+    return s;
+  }
+  s = builder_->LsmAddBuiltBlock(block, contents, first_key, last_key, hashes);
+  if (!s.ok()) {
+    return s;
+  }
+  stats_.num_output_records += block.entries;
+  current_output_file_size_ = builder_->EstimatedFileSize();
+  s = current_output().meta.UpdateBoundaries(first_key, Slice(),
+                                             block.smallest_seqno, kTypeValue);
+  if (s.ok()) {
+    s = current_output().meta.UpdateBoundaries(last_key, Slice(),
+                                               block.largest_seqno, kTypeValue);
+  }
+  return s;
+}
+
+Status CompactionOutputs::AddToOutput(
+    const CompactionIterator& c_iter,]=])
+lsm_replace("db/compaction/compaction_job.cc"
+  "#include \"db/compaction/compaction_job.h\""
+  "#include \"db/compaction/compaction_job.h\"\n#include \"rocksdb/flush_block_policy.h\"\n#include \"table/block_based/filter_policy_internal.h\"")
+lsm_replace("db/compaction/compaction_job.cc"
+  "  status = ProcessKeyValue(sub_compact, cfd, c_iter.get(), open_file_func,\n                           close_file_func, prev_cpu_micros);"
+  "  if (const auto* lsm_built = LsmBuiltOutputOf(lsm_merged_input.get())) {\n    status = LsmProcessBuiltOutput(*lsm_built, sub_compact, cfd, open_file_func,\n                                   close_file_func, compaction_aborted_);\n  } else {\n    status = ProcessKeyValue(sub_compact, cfd, c_iter.get(), open_file_func,\n                             close_file_func, prev_cpu_micros);\n  }")
