@@ -563,12 +563,44 @@ namespace lsm_lab
                                           std::unique_ptr<rocksdb::CompactionMergedInput> *output,
                                           MergeRunStats *stats) override
             {
+                // A pool of engines, each with its own stream and buffers, lets several
+                // background compactions use the GPU at once (LSM_GPU_MERGE_STREAMS, default 2).
+                static const std::size_t limit = [] {
+                    const char *configured = std::getenv("LSM_GPU_MERGE_STREAMS");
+                    const auto parsed = configured == nullptr ? 0 : std::strtoull(configured, nullptr, 10);
+                    return parsed == 0 ? std::size_t{2} : static_cast<std::size_t>(parsed);
+                }();
+                CudaMergeEngine *engine = nullptr;
                 {
-                    const std::lock_guard guard(merge_engine_mutex_);
-                    if (!merge_engine_)
-                        merge_engine_ = make_cuda_merge_engine();
+                    std::unique_lock lock(merge_engine_mutex_);
+                    merge_engine_ready_.wait(lock, [&] {
+                        return !merge_engines_idle_.empty() || merge_engines_.size() < limit;
+                    });
+                    if (!merge_engines_idle_.empty())
+                    {
+                        engine = merge_engines_idle_.back();
+                        merge_engines_idle_.pop_back();
+                    }
+                    else
+                    {
+                        merge_engines_.push_back(make_cuda_merge_engine());
+                        engine = merge_engines_.back().get();
+                    }
                 }
-                return merge_engine_->merge(request, output, stats);
+                struct Release
+                {
+                    CudaTransform *self;
+                    CudaMergeEngine *engine;
+                    ~Release()
+                    {
+                        {
+                            const std::lock_guard guard(self->merge_engine_mutex_);
+                            self->merge_engines_idle_.push_back(engine);
+                        }
+                        self->merge_engine_ready_.notify_one();
+                    }
+                } release{this, engine};
+                return engine->merge(request, output, stats);
             }
 
             rocksdb::Status submit_output(
@@ -953,7 +985,9 @@ namespace lsm_lab
             std::mutex slots_mutex_;
             std::condition_variable slots_ready_;
             std::mutex merge_engine_mutex_;
-            std::unique_ptr<CudaMergeEngine> merge_engine_;
+            std::condition_variable merge_engine_ready_;
+            std::vector<std::unique_ptr<CudaMergeEngine>> merge_engines_;
+            std::vector<CudaMergeEngine *> merge_engines_idle_;
         };
     }
 

@@ -25,6 +25,8 @@ bool BlockBasedTableBuilder::QueueCompactionOutput(
         std::getenv("LSM_DISABLE_GPU_OUTPUT") == nullptr && transform &&
         r->reason == TableFileCreationReason::kCompaction &&
         !r->IsParallelCompressionActive() && uncompressed.size() >= LsmGpuOutputMinBlockBytes() &&
+        // The output-only GPU path produces LZ4 blocks.
+        r->basic_compressor && r->basic_compressor->GetPreferredCompressionType() == kLZ4Compression &&
         uncompressed.size() <= CompactionBlockTransform::max_block_bytes;
     if (!eligible)
     {
@@ -148,6 +150,7 @@ Status BlockBasedTableBuilder::LsmAddBuiltBlock(const CompactionBuiltBlock &bloc
         return Status::NotSupported("filter builder does not accept precomputed key hashes");
     LsmFinishPendingIndex(&first_key);
     r->props.num_entries += block.entries;
+    r->props.num_deletions += block.deletions;
     r->props.raw_key_size += block.raw_key_bytes;
     r->props.raw_value_size += block.raw_value_bytes;
     r->props.key_smallest_seqno = std::min(r->props.key_smallest_seqno, block.smallest_seqno);
@@ -159,7 +162,7 @@ Status BlockBasedTableBuilder::LsmAddBuiltBlock(const CompactionBuiltBlock &bloc
     const Slice uncompressed(contents, block.uncompressed_bytes);
     const Slice stored(contents, block.contents_bytes);
     bool skip_delta_encoding = false;
-    WriteMaybeCompressedBlock(stored, block.compressed ? kLZ4Compression : kNoCompression, &r->pending_handle,
+    WriteMaybeCompressedBlock(stored, static_cast<CompressionType>(block.compressed), &r->pending_handle,
                               BlockType::kData, &uncompressed, &skip_delta_encoding, &block.checksum);
     if (!ok())
         return status();

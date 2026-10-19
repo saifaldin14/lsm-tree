@@ -21,6 +21,7 @@
 #include <cuda_runtime.h>
 #include <nvcomp.h>
 #include <nvcomp/lz4.h>
+#include <nvcomp/zstd.h>
 
 namespace lsm_lab
 {
@@ -715,10 +716,80 @@ namespace lsm_lab
         {
             const auto trailer = load64(key + user);
             auto value = trailer >> 8;
-            if (spec.zero_sequences && value <= spec.zero_limit)
+            // Only Puts are zeroed; deletions keep their sequence (CompactionIterator::PrepareOutput).
+            if (spec.zero_sequences && value <= spec.zero_limit && (trailer & 0xff) == 1)
                 value = 0;
             *sequence = value;
             return (value << 8) | (trailer & 0xff);
+        }
+
+        struct DeletionSpec
+        {
+            const unsigned char *range_bytes;
+            const std::uint64_t *range_offsets; // 4 per range: start offset, start bytes, end offset, end bytes
+            std::uint64_t earliest_snapshot;
+            std::uint32_t ranges;
+            std::uint32_t bottommost;
+            std::uint32_t check_ranges;
+        };
+
+        __device__ bool key_may_exist_beyond(const unsigned char *key, std::uint32_t bytes, const DeletionSpec &spec)
+        {
+            if (spec.bottommost)
+                return false;
+            if (!spec.check_ranges)
+                return true;
+            // Last range whose start <= key.
+            std::uint32_t low = 0, high = spec.ranges;
+            while (low < high)
+            {
+                const auto middle = (low + high) / 2;
+                const auto *range = spec.range_offsets + 4 * middle;
+                if (compare_bytes(spec.range_bytes + range[0], static_cast<std::uint32_t>(range[1]), key, bytes) <= 0)
+                    low = middle + 1;
+                else
+                    high = middle;
+            }
+            if (low == 0)
+                return false;
+            const auto *range = spec.range_offsets + 4 * (low - 1);
+            return compare_bytes(key, bytes, spec.range_bytes + range[2], static_cast<std::uint32_t>(range[3])) <= 0;
+        }
+
+        // keep[i] = 0 for deletions that CompactionIterator drops (see CompactionOutputSpec).
+        __global__ void drop_deletions(const std::uint32_t *order, const GpuEntry *entries, const unsigned char *keys,
+                                       std::uint64_t count, DeletionSpec spec, unsigned char *keep,
+                                       unsigned long long *dropped)
+        {
+            const std::uint64_t index = static_cast<std::uint64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+            if (index >= count)
+                return;
+            const GpuEntry entry = entries[order[index]];
+            const unsigned char *key = keys + entry.key_offset;
+            const auto user = entry.key_bytes - 8;
+            bool drop = false;
+            if (key[user] == 0)
+            {
+                const auto sequence = load64(key + user) >> 8;
+                drop = sequence <= spec.earliest_snapshot && !key_may_exist_beyond(key, user, spec);
+                if (!drop && spec.bottommost)
+                {
+                    if (index + 1 == count)
+                        drop = true;
+                    else
+                    {
+                        const GpuEntry next = entries[order[index + 1]];
+                        drop = next.key_bytes != entry.key_bytes ||
+                               compare_bytes(keys + next.key_offset, next.key_bytes - 8, key, user) != 0;
+                    }
+                }
+            }
+            keep[index] = drop ? 0 : 1;
+            if (drop)
+            {
+                atomicAdd(&dropped[0], 1ULL);
+                atomicAdd(&dropped[1], static_cast<unsigned long long>(entry.key_bytes));
+            }
         }
 
         // Per sorted entry: output sequence, bytes shared with the previous
@@ -735,7 +806,7 @@ namespace lsm_lab
             const GpuEntry entry = entries[order[index]];
             const unsigned char *key = keys + entry.key_offset;
             const auto user = entry.key_bytes - 8;
-            if (key[user] != 1 || user > 240)
+            if (key[user] > 1 || user > 240)
                 atomicOr(error, 1u);
             std::uint64_t sequence = 0;
             const auto trailer = output_trailer(key, user, spec, &sequence);
@@ -856,7 +927,8 @@ namespace lsm_lab
         }
 
         // Per block: raw size, statistics and key/hash counts.
-        __global__ void block_summary(const std::uint32_t *order, const GpuEntry *entries, const std::uint32_t *first,
+        __global__ void block_summary(const std::uint32_t *order, const GpuEntry *entries, const unsigned char *keys,
+                                      const std::uint32_t *first,
                                       const std::uint64_t *position, const std::uint64_t *sequences,
                                       const unsigned char *distinct, std::uint32_t blocks, std::uint32_t interval,
                                       rocksdb::CompactionBuiltBlock *built, std::uint64_t *raw_bytes,
@@ -883,6 +955,7 @@ namespace lsm_lab
                 out.smallest_seqno = min(out.smallest_seqno, sequences[index]);
                 out.largest_seqno = max(out.largest_seqno, sequences[index]);
                 hashes += distinct[index];
+                out.deletions += keys[entries[order[index]].key_offset + entries[order[index]].key_bytes - 8] == 0 ? 1u : 0u;
             }
             out.first_key_bytes = entries[order[begin]].key_bytes;
             out.last_key_bytes = entries[order[end - 1]].key_bytes;
@@ -960,7 +1033,7 @@ namespace lsm_lab
 
         // Keeps a compressed block only if its stored form fits RocksDB's limit.
         __global__ void choose_contents(rocksdb::CompactionBuiltBlock *built, const std::size_t *compressed_bytes,
-                                        const nvcompStatus_t *statuses, std::uint32_t blocks, std::uint32_t lz4,
+                                        const nvcompStatus_t *statuses, std::uint32_t blocks, std::uint32_t codec,
                                         std::uint32_t max_compressed_bytes_per_kb, std::uint64_t *contents_bytes)
         {
             const std::uint32_t block = blockIdx.x * blockDim.x + threadIdx.x;
@@ -969,14 +1042,14 @@ namespace lsm_lab
             const std::uint64_t raw = built[block].uncompressed_bytes;
             bool use = false;
             std::uint64_t stored = raw;
-            if (lz4 && statuses[block] == nvcompSuccess)
+            if (codec != 0 && statuses[block] == nvcompSuccess)
             {
                 const auto total = varint_length(raw) + compressed_bytes[block];
                 use = total <= ((static_cast<std::uint64_t>(max_compressed_bytes_per_kb) * raw) >> 10);
                 if (use)
                     stored = total;
             }
-            built[block].compressed = use ? 1u : 0u;
+            built[block].compressed = use ? codec : 0u;
             built[block].contents_bytes = static_cast<std::uint32_t>(stored);
             contents_bytes[block] = stored;
         }
@@ -1011,7 +1084,7 @@ namespace lsm_lab
             const unsigned char *p = out;
             for (std::uint32_t remaining = info.contents_bytes; remaining > 0; --remaining)
                 crc = tables[(crc ^ *p++) & 0xff] ^ (crc >> 8);
-            const unsigned char type = info.compressed ? 4 : 0;
+            const auto type = static_cast<unsigned char>(info.compressed);
             crc = tables[(crc ^ type) & 0xff] ^ (crc >> 8);
             crc = ~crc;
             built[block].checksum = ((crc >> 15) | (crc << 17)) + 0xa282ead8u;
@@ -1039,6 +1112,17 @@ namespace lsm_lab
             }
             built[block].keys_offset = key_offset[block];
             built[block].hash_offset = hash_offset[block];
+        }
+
+        // nvCOMP rejects very large batches; large jobs are processed in sub-batches.
+        std::size_t nvcomp_batch_limit()
+        {
+            static const std::size_t value = [] {
+                const char *configured = std::getenv("LSM_NVCOMP_BATCH");
+                const auto parsed = configured == nullptr ? 0 : std::strtoull(configured, nullptr, 10);
+                return parsed == 0 ? std::size_t{16384} : static_cast<std::size_t>(parsed);
+            }();
+            return value;
         }
 
         unsigned int grid(std::uint64_t items, unsigned int threads)
@@ -1113,6 +1197,13 @@ namespace lsm_lab
                 compress_options_ = nvcompBatchedLZ4CompressDefaultOpts;
                 nvcomp_ok(nvcompBatchedLZ4CompressGetRequiredAlignments(compress_options_, &compress_alignments_),
                           "nvCOMP LZ4 compress alignments");
+                zstd_options_ = nvcompBatchedZstdDecompressDefaultOpts;
+                zstd_options_.backend = NVCOMP_DECOMPRESS_BACKEND_CUDA;
+                nvcomp_ok(nvcompBatchedZstdDecompressGetRequiredAlignments(zstd_options_, &zstd_alignments_),
+                          "nvCOMP ZSTD alignments");
+                zstd_compress_options_ = nvcompBatchedZstdCompressDefaultOpts;
+                nvcomp_ok(nvcompBatchedZstdCompressGetRequiredAlignments(zstd_compress_options_, &zstd_compress_alignments_),
+                          "nvCOMP ZSTD compress alignments");
             }
 
             ~Engine() override
@@ -1156,7 +1247,9 @@ namespace lsm_lab
                 blocks.reserve(offsets.size());
                 std::vector<std::uint32_t> compressed;
                 std::uint64_t decoded_total = 0;
-                const std::uint64_t output_alignment = std::max<std::uint64_t>(8, alignments_.output);
+                const std::uint64_t output_alignment =
+                    std::max<std::uint64_t>({8, alignments_.output, zstd_alignments_.output});
+                const std::uint64_t input_alignment = std::max<std::uint64_t>(alignments_.input, zstd_alignments_.input);
                 std::size_t block_index = 0;
                 for (const auto &file : request.files)
                 {
@@ -1176,12 +1269,12 @@ namespace lsm_lab
                             block.compressed_bytes = source.size;
                             block.decoded_bytes = source.size;
                         }
-                        else if (type == 4)
+                        else if (type == 4 || type == 7)
                         {
                             std::uint32_t decoded_bytes = 0;
                             const auto *data = decode_varint32(payload, payload + source.size, &decoded_bytes);
                             if (data == nullptr || data == payload + source.size)
-                                return rocksdb::Status::Corruption("GPU merged-input invalid LZ4 size prefix");
+                                return rocksdb::Status::Corruption("GPU merged-input invalid compressed size prefix");
                             block.compressed_offset = offset + static_cast<std::uint64_t>(data - payload);
                             block.compressed_bytes = static_cast<std::uint32_t>(payload + source.size - data);
                             block.decoded_bytes = decoded_bytes;
@@ -1189,7 +1282,7 @@ namespace lsm_lab
                         }
                         else
                         {
-                            return rocksdb::Status::NotSupported("GPU merged input supports only uncompressed and LZ4 blocks");
+                            return rocksdb::Status::NotSupported("GPU merged input supports only uncompressed, LZ4 and ZSTD blocks");
                         }
                         if (block.decoded_bytes == 0 || block.decoded_bytes > kMaxBlockBytes)
                             return rocksdb::Status::Corruption("GPU merged-input block size out of range");
@@ -1223,6 +1316,11 @@ namespace lsm_lab
                     d_serialized, d_blocks, block_count, d_decoded, tables_.get(), d_crc_status);
                 cuda_ok(cudaGetLastError(), "verify_blocks");
 
+                // LZ4 blocks first, then ZSTD; each codec is decoded with its own nvCOMP call.
+                const auto lz4_end = std::stable_partition(compressed.begin(), compressed.end(), [&](std::uint32_t index) {
+                    return blocks[index].compression == 4;
+                });
+                const auto lz4_count = static_cast<std::size_t>(lz4_end - compressed.begin());
                 const auto compressed_count = compressed.size();
                 if (compressed_count > 0)
                 {
@@ -1237,7 +1335,7 @@ namespace lsm_lab
                     for (std::size_t index = 0; index < compressed_count; ++index)
                     {
                         const auto &block = blocks[compressed[index]];
-                        aligned_sources = aligned_sources && block.compressed_offset % alignments_.input == 0;
+                        aligned_sources = aligned_sources && block.compressed_offset % input_alignment == 0;
                         h_destinations[index] = d_decoded + block.decoded_offset;
                         h_input_sizes[index] = block.compressed_bytes;
                         h_output_sizes[index] = block.decoded_bytes;
@@ -1257,7 +1355,7 @@ namespace lsm_lab
                         std::uint64_t staged_total = 0;
                         for (std::size_t index = 0; index < compressed_count; ++index)
                         {
-                            staged_total = align_up(staged_total, alignments_.input);
+                            staged_total = align_up(staged_total, input_alignment);
                             h_staged_offsets[index] = staged_total;
                             staged_total += blocks[compressed[index]].compressed_bytes;
                         }
@@ -1295,15 +1393,43 @@ namespace lsm_lab
                     cuda_ok(cudaMemcpyAsync(d_output_sizes, h_output_sizes, compressed_count * sizeof(std::size_t),
                                             cudaMemcpyHostToDevice, stream_),
                             "upload output sizes");
-                    std::size_t temp_bytes = 0;
-                    nvcomp_ok(nvcompBatchedLZ4DecompressGetTempSizeAsync(compressed_count, max_output, options_,
-                                                                         &temp_bytes, total_output),
-                              "nvCOMP LZ4 temp size");
-                    auto *d_temp = d_nvcomp_temp_.reserve(temp_bytes);
-                    nvcomp_ok(nvcompBatchedLZ4DecompressAsync(d_sources, d_input_sizes, d_output_sizes, d_actual_sizes,
-                                                              compressed_count, d_temp, temp_bytes, d_destinations,
-                                                              options_, d_statuses, stream_),
-                              "nvCOMP LZ4 decompress");
+                    const auto batch_limit = nvcomp_batch_limit();
+                    for (std::size_t first = 0; first < compressed_count;)
+                    {
+                        const bool lz4 = first < lz4_count;
+                        const auto end = lz4 ? lz4_count : compressed_count;
+                        const auto count = std::min(batch_limit, end - first);
+                        std::size_t batch_output = 0;
+                        for (std::size_t index = first; index < first + count; ++index)
+                            batch_output += h_output_sizes[index];
+                        std::size_t temp_bytes = 0;
+                        if (lz4)
+                        {
+                            nvcomp_ok(nvcompBatchedLZ4DecompressGetTempSizeAsync(count, max_output, options_, &temp_bytes,
+                                                                                 batch_output),
+                                      "nvCOMP LZ4 temp size");
+                            auto *d_temp = d_nvcomp_temp_.reserve(temp_bytes);
+                            nvcomp_ok(nvcompBatchedLZ4DecompressAsync(d_sources + first, d_input_sizes + first,
+                                                                      d_output_sizes + first, d_actual_sizes + first, count,
+                                                                      d_temp, temp_bytes, d_destinations + first, options_,
+                                                                      d_statuses + first, stream_),
+                                      "nvCOMP LZ4 decompress");
+                        }
+                        else
+                        {
+                            nvcomp_ok(nvcompBatchedZstdDecompressGetTempSizeAsync(count, max_output, zstd_options_,
+                                                                                  &temp_bytes, batch_output),
+                                      "nvCOMP ZSTD temp size");
+                            auto *d_temp = d_nvcomp_temp_.reserve(temp_bytes);
+                            nvcomp_ok(nvcompBatchedZstdDecompressAsync(d_sources + first, d_input_sizes + first,
+                                                                       d_output_sizes + first, d_actual_sizes + first,
+                                                                       count, d_temp, temp_bytes, d_destinations + first,
+                                                                       zstd_options_, d_statuses + first, stream_),
+                                      "nvCOMP ZSTD decompress");
+                        }
+                        first += count;
+                    }
+                    (void)total_output;
                     auto *h_statuses = h_statuses_.reserve(compressed_count);
                     auto *h_actual_sizes = h_actual_sizes_.reserve(compressed_count);
                     cuda_ok(cudaMemcpyAsync(h_statuses, d_statuses, compressed_count * sizeof(nvcompStatus_t),
@@ -1602,6 +1728,82 @@ namespace lsm_lab
                 if (count >= 0xffffffffULL)
                     return rocksdb::Status::OK();
 
+                // 0. Drop obsolete deletions exactly as CompactionIterator would.
+                {
+                    std::string range_bytes;
+                    std::vector<std::uint64_t> range_offsets;
+                    for (const auto &[start, end] : request_spec.beyond_ranges)
+                    {
+                        range_offsets.push_back(range_bytes.size());
+                        range_offsets.push_back(start.size());
+                        range_bytes += start;
+                        range_offsets.push_back(range_bytes.size());
+                        range_offsets.push_back(end.size());
+                        range_bytes += end;
+                    }
+                    DeletionSpec deletion{};
+                    deletion.earliest_snapshot = request_spec.earliest_snapshot_seq;
+                    deletion.ranges = static_cast<std::uint32_t>(request_spec.beyond_ranges.size());
+                    deletion.bottommost = request_spec.bottommost ? 1 : 0;
+                    deletion.check_ranges = request_spec.check_beyond_ranges ? 1 : 0;
+                    auto *d_range_bytes = b_range_bytes_.reserve(range_bytes.size());
+                    auto *d_range_offsets = b_range_offsets_.reserve(range_offsets.size());
+                    if (!range_bytes.empty())
+                    {
+                        auto *h_range_bytes = h_range_bytes_.reserve(range_bytes.size());
+                        auto *h_range_offsets = h_range_offsets_.reserve(range_offsets.size());
+                        std::memcpy(h_range_bytes, range_bytes.data(), range_bytes.size());
+                        std::memcpy(h_range_offsets, range_offsets.data(), range_offsets.size() * sizeof(std::uint64_t));
+                        cuda_ok(cudaMemcpyAsync(d_range_bytes, h_range_bytes, range_bytes.size(), cudaMemcpyHostToDevice,
+                                                stream_),
+                                "upload beyond ranges");
+                        cuda_ok(cudaMemcpyAsync(d_range_offsets, h_range_offsets,
+                                                range_offsets.size() * sizeof(std::uint64_t), cudaMemcpyHostToDevice,
+                                                stream_),
+                                "upload beyond offsets");
+                    }
+                    deletion.range_bytes = d_range_bytes;
+                    deletion.range_offsets = d_range_offsets;
+                    auto *d_keep = b_keep_.reserve(count);
+                    auto *d_counters = b_deletion_counters_.reserve(3);
+                    cuda_ok(cudaMemsetAsync(d_counters, 0, 3 * sizeof(unsigned long long), stream_), "clear deletions");
+                    drop_deletions<<<grid(count, 256), 256, 0, stream_>>>(d_order, d_entries, d_keys, count, deletion,
+                                                                          d_keep, d_counters);
+                    cuda_ok(cudaGetLastError(), "drop_deletions");
+                    auto *d_selected = b_kept_order_.reserve(count);
+                    std::size_t select_bytes = 0;
+                    cuda_ok(cub::DeviceSelect::Flagged(nullptr, select_bytes, d_order, d_keep, d_selected, d_counters + 2,
+                                                       static_cast<std::int64_t>(count), stream_),
+                            "deletion select temp size");
+                    auto *d_select_temp = d_select_temp_.reserve(select_bytes);
+                    cuda_ok(cub::DeviceSelect::Flagged(d_select_temp, select_bytes, d_order, d_keep, d_selected,
+                                                       d_counters + 2, static_cast<std::int64_t>(count), stream_),
+                            "deletion select");
+                    auto *h_counters = h_deletion_counters_.reserve(3);
+                    cuda_ok(cudaMemcpyAsync(h_counters, d_counters, 3 * sizeof(unsigned long long), cudaMemcpyDeviceToHost,
+                                            stream_),
+                            "download deletion counters");
+                    cuda_ok(cudaStreamSynchronize(stream_), "synchronize deletions");
+                    dropped.entries += h_counters[0];
+                    dropped.deletions += h_counters[0];
+                    dropped.key_bytes += h_counters[1];
+                    d_order = d_selected;
+                    count = h_counters[2];
+                    mark("build_deletions");
+                }
+                if (count == 0)
+                {
+                    rocksdb::CompactionBuiltOutput empty;
+                    if (stats)
+                    {
+                        stats->built_blocks = 0;
+                        stats->built_bytes = 0;
+                    }
+                    *output = std::make_unique<BuiltMergedInput>(std::make_shared<BuiltOwner>(), empty, dropped);
+                    *built = true;
+                    return rocksdb::Status::OK();
+                }
+
                 // 1. Entry analysis and block cuts.
                 // Separate from d_error_, which the entry-stream path reads as parse errors.
                 auto *d_error = b_ineligible_.reserve(1);
@@ -1656,7 +1858,7 @@ namespace lsm_lab
                 cuda_ok(cudaMemsetAsync(d_raw_bytes + blocks, 0, sizeof(std::uint64_t), stream_), "clear raw tail");
                 cuda_ok(cudaMemsetAsync(d_key_bytes + blocks, 0, sizeof(std::uint64_t), stream_), "clear key tail");
                 cuda_ok(cudaMemsetAsync(d_hash_counts + blocks, 0, sizeof(std::uint64_t), stream_), "clear hash tail");
-                block_summary<<<grid(blocks, 128), 128, 0, stream_>>>(d_order, d_entries, d_first, d_position,
+                block_summary<<<grid(blocks, 128), 128, 0, stream_>>>(d_order, d_entries, d_keys, d_first, d_position,
                                                                      d_sequences, d_distinct, blocks, spec.interval,
                                                                      d_built, d_raw_bytes, d_key_bytes, d_hash_counts);
                 cuda_ok(cudaGetLastError(), "block_summary");
@@ -1705,12 +1907,19 @@ namespace lsm_lab
                 auto *d_statuses = b_statuses_.reserve(blocks);
                 std::uint64_t stride = 0;
                 unsigned char *d_compressed = nullptr;
-                if (request_spec.lz4)
+                const std::uint32_t codec = request_spec.zstd ? 7u : (request_spec.lz4 ? 4u : 0u);
+                if (codec != 0)
                 {
                     std::size_t max_compressed = 0;
-                    nvcomp_ok(nvcompBatchedLZ4CompressGetMaxOutputChunkSize(max_raw, compress_options_, &max_compressed),
-                              "nvCOMP max output");
-                    stride = align_up(max_compressed, std::max<std::uint64_t>(8, compress_alignments_.output));
+                    if (codec == 4)
+                        nvcomp_ok(nvcompBatchedLZ4CompressGetMaxOutputChunkSize(max_raw, compress_options_, &max_compressed),
+                                  "nvCOMP max output");
+                    else
+                        nvcomp_ok(nvcompBatchedZstdCompressGetMaxOutputChunkSize(max_raw, zstd_compress_options_,
+                                                                                &max_compressed),
+                                  "nvCOMP ZSTD max output");
+                    stride = align_up(max_compressed, std::max<std::uint64_t>(
+                                                          {8, compress_alignments_.output, zstd_compress_alignments_.output}));
                     d_compressed = b_compressed_.reserve(stride * blocks);
                     auto *d_sources = b_sources_.reserve(blocks);
                     auto *d_source_bytes = b_source_bytes_.reserve(blocks);
@@ -1719,20 +1928,42 @@ namespace lsm_lab
                                                                               d_compressed, stride, d_sources,
                                                                               d_source_bytes, d_destinations);
                     cuda_ok(cudaGetLastError(), "compress_arguments");
-                    std::size_t temp_bytes = 0;
-                    nvcomp_ok(nvcompBatchedLZ4CompressGetTempSizeAsync(blocks, max_raw, compress_options_, &temp_bytes,
-                                                                      raw_total),
-                              "nvCOMP compress temp size");
-                    auto *d_temp = b_compress_temp_.reserve(temp_bytes);
-                    nvcomp_ok(nvcompBatchedLZ4CompressAsync(d_sources, d_source_bytes, max_raw, blocks, d_temp, temp_bytes,
-                                                            d_destinations, d_compressed_bytes, compress_options_,
-                                                            d_statuses, stream_),
-                              "nvCOMP LZ4 compress");
+                    const std::size_t batch_limit = nvcomp_batch_limit();
+                    for (std::size_t first = 0; first < blocks; first += batch_limit)
+                    {
+                        const auto count = std::min<std::size_t>(batch_limit, blocks - first);
+                        std::size_t temp_bytes = 0;
+                        const auto bound = std::min<std::size_t>(raw_total, static_cast<std::size_t>(max_raw) * count);
+                        if (codec == 4)
+                        {
+                            nvcomp_ok(nvcompBatchedLZ4CompressGetTempSizeAsync(count, max_raw, compress_options_,
+                                                                               &temp_bytes, bound),
+                                      "nvCOMP compress temp size");
+                            auto *d_temp = b_compress_temp_.reserve(temp_bytes);
+                            nvcomp_ok(nvcompBatchedLZ4CompressAsync(d_sources + first, d_source_bytes + first, max_raw,
+                                                                    count, d_temp, temp_bytes, d_destinations + first,
+                                                                    d_compressed_bytes + first, compress_options_,
+                                                                    d_statuses + first, stream_),
+                                      "nvCOMP LZ4 compress");
+                        }
+                        else
+                        {
+                            nvcomp_ok(nvcompBatchedZstdCompressGetTempSizeAsync(count, max_raw, zstd_compress_options_,
+                                                                                &temp_bytes, bound),
+                                      "nvCOMP ZSTD compress temp size");
+                            auto *d_temp = b_compress_temp_.reserve(temp_bytes);
+                            nvcomp_ok(nvcompBatchedZstdCompressAsync(d_sources + first, d_source_bytes + first, max_raw,
+                                                                     count, d_temp, temp_bytes, d_destinations + first,
+                                                                     d_compressed_bytes + first, zstd_compress_options_,
+                                                                     d_statuses + first, stream_),
+                                      "nvCOMP ZSTD compress");
+                        }
+                    }
                 }
                 auto *d_contents_bytes = b_contents_bytes_.reserve(blocks + 1);
                 cuda_ok(cudaMemsetAsync(d_contents_bytes + blocks, 0, sizeof(std::uint64_t), stream_), "clear contents tail");
                 choose_contents<<<grid(blocks, 128), 128, 0, stream_>>>(d_built, d_compressed_bytes, d_statuses, blocks,
-                                                                       request_spec.lz4 ? 1u : 0u,
+                                                                       codec,
                                                                        request_spec.max_compressed_bytes_per_kb,
                                                                        d_contents_bytes);
                 cuda_ok(cudaGetLastError(), "choose_contents");
@@ -1890,6 +2121,10 @@ namespace lsm_lab
             // Stage 3 buffers.
             nvcompBatchedLZ4CompressOpts_t compress_options_{};
             nvcompAlignmentRequirements_t compress_alignments_{};
+            nvcompBatchedZstdDecompressOpts_t zstd_options_{};
+            nvcompAlignmentRequirements_t zstd_alignments_{};
+            nvcompBatchedZstdCompressOpts_t zstd_compress_options_{};
+            nvcompAlignmentRequirements_t zstd_compress_alignments_{};
             DeviceArray<std::uint64_t> b_sequences_, b_hashes_, b_entry_bytes_, b_position_, b_raw_bytes_, b_key_bytes_,
                 b_hash_counts_, b_raw_offset_, b_key_offset_, b_hash_offset_, b_max_raw_, b_contents_bytes_,
                 b_final_offset_, b_selected_hashes_;
@@ -1901,6 +2136,13 @@ namespace lsm_lab
             DeviceArray<void *> b_destinations_;
             DeviceArray<nvcompStatus_t> b_statuses_;
             DeviceArray<unsigned int> b_ineligible_;
+            DeviceArray<unsigned char> b_range_bytes_, b_keep_;
+            DeviceArray<std::uint64_t> b_range_offsets_;
+            DeviceArray<unsigned long long> b_deletion_counters_;
+            DeviceArray<std::uint32_t> b_kept_order_;
+            HostArray<unsigned char> h_range_bytes_;
+            HostArray<std::uint64_t> h_range_offsets_;
+            HostArray<unsigned long long> h_deletion_counters_;
             HostArray<std::uint32_t> h_sentinel_;
             HostArray<std::uint64_t> h_totals_;
         };

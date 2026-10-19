@@ -405,3 +405,8 @@ lsm_replace("db/compaction/compaction_job.cc"
 lsm_replace("db/compaction/compaction_job.cc"
   "  status = ProcessKeyValue(sub_compact, cfd, c_iter.get(), open_file_func,\n                           close_file_func, prev_cpu_micros);"
   "  if (const auto* lsm_built = LsmBuiltOutputOf(lsm_merged_input.get())) {\n    status = LsmProcessBuiltOutput(*lsm_built, sub_compact, cfd, open_file_func,\n                                   close_file_func, compaction_aborted_);\n  } else {\n    status = ProcessKeyValue(sub_compact, cfd, c_iter.get(), open_file_func,\n                             close_file_func, prev_cpu_micros);\n  }")
+
+# Deletions on the built-output path need CompactionIterator's earliest snapshot.
+lsm_replace("db/compaction/compaction_job.cc"
+  "    lsm_build.zero_limit = std::min(earliest_snapshot_, preserve_seqno_after_);\n"
+  "    lsm_build.zero_limit = std::min(earliest_snapshot_, preserve_seqno_after_);\n    lsm_build.earliest_snapshot = earliest_snapshot_;\n")

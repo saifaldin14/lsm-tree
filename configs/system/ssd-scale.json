@@ -1,0 +1,66 @@
+{
+ "common": {
+  "records": 200000000,
+  "read-percent": 0,
+  "warmup-seconds": 60,
+  "duration-seconds": 900,
+  "verify": true,
+  "threads": 4,
+  "adaptive-yield": true,
+  "use-direct-io": true
+ },
+ "trials": [
+  {
+   "design": "native",
+   "mode": "native_cpu",
+   "cores": 4,
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 4
+   },
+   "workload": "batched",
+   "scratch": "/tmp/sa29ali/ssd",
+   "golden": "/tmp/sa29ali/ssd/golden-200m"
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 4,
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 4
+   },
+   "workload": "batched",
+   "scratch": "/tmp/sa29ali/ssd",
+   "golden": "/tmp/sa29ali/ssd/golden-200m"
+  },
+  {
+   "design": "native",
+   "mode": "native_cpu",
+   "cores": 4,
+   "flags": {
+    "batch-size": 1,
+    "read-percent": 50,
+    "background-jobs": 2
+   },
+   "workload": "ycsb-A",
+   "scratch": "/tmp/sa29ali/ssd",
+   "golden": "/tmp/sa29ali/ssd/golden-200m"
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 4,
+   "flags": {
+    "batch-size": 1,
+    "read-percent": 50,
+    "background-jobs": 2
+   },
+   "workload": "ycsb-A",
+   "scratch": "/tmp/sa29ali/ssd",
+   "golden": "/tmp/sa29ali/ssd/golden-200m"
+  }
+ ]
+}

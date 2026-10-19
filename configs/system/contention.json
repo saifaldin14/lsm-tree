@@ -1,0 +1,143 @@
+{
+ "common": {
+  "records": 50000000,
+  "read-percent": 0,
+  "warmup-seconds": 30,
+  "duration-seconds": 120,
+  "verify": true,
+  "threads": 4,
+  "adaptive-yield": true
+ },
+ "trials": [
+  {
+   "design": "native",
+   "mode": "native_cpu",
+   "cores": 2,
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 2,
+    "threads": 2
+   },
+   "burn_percent": 0,
+   "writes": "batched"
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 2,
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 2,
+    "threads": 2
+   },
+   "burn_percent": 0,
+   "writes": "batched"
+  },
+  {
+   "design": "native",
+   "mode": "native_cpu",
+   "cores": 8,
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 4,
+    "threads": 8
+   },
+   "burn_percent": 0,
+   "writes": "batched"
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 8,
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 4,
+    "threads": 8
+   },
+   "burn_percent": 0,
+   "writes": "batched"
+  },
+  {
+   "design": "native",
+   "mode": "native_cpu",
+   "cores": 16,
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 4,
+    "threads": 16
+   },
+   "burn_percent": 0,
+   "writes": "batched"
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 16,
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 4,
+    "threads": 16
+   },
+   "burn_percent": 0,
+   "writes": "batched"
+  },
+  {
+   "design": "native",
+   "mode": "native_cpu",
+   "cores": 4,
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 4,
+    "threads": 4
+   },
+   "burn_percent": 40,
+   "writes": "batched"
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 4,
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 4,
+    "threads": 4
+   },
+   "burn_percent": 40,
+   "writes": "batched"
+  },
+  {
+   "design": "native",
+   "mode": "native_cpu",
+   "cores": 4,
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 4,
+    "threads": 4
+   },
+   "burn_percent": 80,
+   "writes": "batched"
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 4,
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 4,
+    "threads": 4
+   },
+   "burn_percent": 80,
+   "writes": "batched"
+  }
+ ]
+}

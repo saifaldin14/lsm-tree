@@ -73,6 +73,16 @@ namespace
         bool adaptive_yield = true;
         // Puts per WriteBatch; write latency is then per batch.
         std::uint32_t batch_size = 1;
+        // Operation mix (percent of operations); the rest are puts. YCSB A: 50 reads;
+        // B: 95 reads; F: 50 read-modify-writes.
+        std::uint32_t rmw_percent = 0;
+        std::uint32_t delete_percent = 0;
+        std::string distribution = "uniform";
+        double zipf_theta = 0.99;
+        bool use_direct_io = false;
+        // Compaction shape (0 keeps RocksDB defaults).
+        std::uint32_t l0_trigger = 0;
+        double level_multiplier = 0;
         bool verify = true;
         std::uint64_t seed = 1;
     };
@@ -106,8 +116,12 @@ namespace
     }
 
     // Half pseudorandom, half repeating pattern (compresses roughly 2:1 with LZ4).
+    // Bit 31 of a tracked version marks the key as deleted.
+    constexpr std::uint32_t kDeleted = 1U << 31;
+
     void make_value(const Config &config, std::uint64_t index, std::uint64_t version, std::string &value)
     {
+        version &= ~std::uint64_t{kDeleted};
         value.resize(config.value_bytes);
         std::uint64_t word = 0;
         const auto base = mix64(index * 1315423911ULL + version);
@@ -185,6 +199,12 @@ namespace
         options.max_subcompactions = config.subcompactions;
         options.num_levels = static_cast<int>(config.levels);
         options.paranoid_checks = true;
+        if (config.l0_trigger > 0)
+            options.level0_file_num_compaction_trigger = static_cast<int>(config.l0_trigger);
+        if (config.level_multiplier > 0)
+            options.max_bytes_for_level_multiplier = config.level_multiplier;
+        options.use_direct_reads = config.use_direct_io;
+        options.use_direct_io_for_flush_and_compaction = config.use_direct_io;
         // With more writers than cores, adaptive yield spins waiting writers and burns the CPU budget.
         options.enable_write_thread_adaptive_yield = config.adaptive_yield;
         options.statistics = rocksdb::CreateDBStatistics();
@@ -266,6 +286,8 @@ namespace
             if (index >= config.records || seen[index])
                 throw std::runtime_error("verification: unexpected or duplicate key " + std::to_string(index));
             seen[index] = true;
+            if (versions[index] & kDeleted)
+                throw std::runtime_error("verification: deleted key " + std::to_string(index) + " is present");
             make_value(config, index, versions[index], expected);
             if (iterator->value() != rocksdb::Slice(expected))
                 throw std::runtime_error("verification: wrong value for key " + std::to_string(index) + " (expected version " +
@@ -273,9 +295,13 @@ namespace
             ++count;
         }
         check(iterator->status(), "verification iterator");
-        if (count != config.records)
-            throw std::runtime_error("verification: found " + std::to_string(count) + " of " + std::to_string(config.records) + " keys");
-        return {{"keys", count}, {"seconds", std::chrono::duration<double>(Clock::now() - started).count()}};
+        std::uint64_t live = 0;
+        for (const auto version : versions)
+            live += (version & kDeleted) ? 0 : 1;
+        if (count != live)
+            throw std::runtime_error("verification: found " + std::to_string(count) + " of " + std::to_string(live) + " live keys");
+        return {{"keys", count}, {"deleted_keys", config.records - live},
+                {"seconds", std::chrono::duration<double>(Clock::now() - started).count()}};
     }
 
     // Log-linear latency histogram: 16 sub-buckets per power of two of nanoseconds.
@@ -331,6 +357,39 @@ namespace
             return {{"count", count}, {"p50_ns", percentile(0.50)}, {"p95_ns", percentile(0.95)}, {"p99_ns", percentile(0.99)},
                     {"p999_ns", percentile(0.999)}, {"max_ns", maximum}, {"unit", "nanoseconds"}};
         }
+    };
+
+    // YCSB ZipfianGenerator (Gray et al.): ranks 0..n-1, rank 0 most popular.
+    class Zipfian
+    {
+    public:
+        Zipfian(std::uint64_t items, double theta) : items_(items)
+        {
+            if (items < 2 || theta <= 0 || theta >= 1)
+                throw std::invalid_argument("zipfian needs >= 2 items and 0 < theta < 1");
+            double zeta = 0;
+            for (std::uint64_t index = 1; index <= items; ++index)
+                zeta += 1.0 / std::pow(static_cast<double>(index), theta);
+            zetan_ = zeta;
+            const double zeta2 = 1.0 + 1.0 / std::pow(2.0, theta);
+            alpha_ = 1.0 / (1.0 - theta);
+            eta_ = (1.0 - std::pow(2.0 / static_cast<double>(items), 1.0 - theta)) / (1.0 - zeta2 / zetan_);
+            half_pow_ = 1.0 + std::pow(0.5, theta);
+        }
+        std::uint64_t next(double u) const
+        {
+            const double uz = u * zetan_;
+            if (uz < 1.0)
+                return 0;
+            if (uz < half_pow_)
+                return 1;
+            const auto rank = static_cast<std::uint64_t>(static_cast<double>(items_) * std::pow(eta_ * u - eta_ + 1.0, alpha_));
+            return std::min(rank, items_ - 1);
+        }
+
+    private:
+        std::uint64_t items_;
+        double zetan_ = 0, alpha_ = 0, eta_ = 0, half_pow_ = 0;
     };
 
     struct alignas(64) ThreadState
@@ -438,6 +497,12 @@ namespace
         std::atomic<int> phase{0}; // 0 warmup, 1 measurement, 2 stop
         const auto per_thread = config.records / config.threads;
 
+        std::unique_ptr<Zipfian> zipf;
+        if (config.distribution == "zipfian")
+            zipf = std::make_unique<Zipfian>(per_thread, config.zipf_theta);
+        else if (config.distribution != "uniform")
+            throw std::invalid_argument("--distribution must be uniform or zipfian");
+
         auto worker = [&](std::uint32_t thread)
         {
             auto &state = states[thread];
@@ -447,7 +512,15 @@ namespace
             try
             {
                 std::mt19937_64 random(mix64(config.seed * 7919 + thread));
-                std::uniform_int_distribution<std::uint64_t> pick(0, per_thread - 1);
+                std::uniform_int_distribution<std::uint64_t> uniform(0, per_thread - 1);
+                std::uniform_real_distribution<double> unit(0.0, 1.0);
+                // Scrambled Zipfian over this thread's keys (YCSB): rank r maps to a hashed slot.
+                const auto pick = [&](auto &generator) -> std::uint64_t {
+                    if (!zipf)
+                        return uniform(generator);
+                    const auto rank = zipf->next(unit(generator));
+                    return mix64(rank ^ 0x5bd1e9955bd1e995ULL) % per_thread;
+                };
                 std::uniform_int_distribution<std::uint32_t> percent(0, 99);
                 rocksdb::WriteOptions write;
                 write.disableWAL = config.disable_wal;
@@ -461,26 +534,65 @@ namespace
                     if (current == 2)
                         break;
                     const auto index = thread + config.threads * pick(random);
-                    const bool is_read = percent(random) < config.read_percent;
+                    const auto roll = percent(random);
+                    const bool is_read = roll < config.read_percent;
+                    const bool is_rmw = !is_read && roll < config.read_percent + config.rmw_percent;
+                    const bool is_delete = !is_read && !is_rmw &&
+                                           roll < config.read_percent + config.rmw_percent + config.delete_percent;
                     make_key(config, index, key);
-                    if (is_read)
-                    {
-                        const auto begin = Clock::now();
+                    // Reads (and the read half of read-modify-writes) are checked against the
+                    // version this thread last wrote; a deleted key must be absent.
+                    const auto checked_get = [&]() {
                         found.Reset();
-                        check(db->Get(read, db->DefaultColumnFamily(), key, &found), "get");
-                        const auto ns = static_cast<std::uint64_t>((Clock::now() - begin).count());
+                        const auto status = db->Get(read, db->DefaultColumnFamily(), key, &found);
+                        if (versions[index] & kDeleted)
+                        {
+                            if (!status.IsNotFound())
+                                throw std::runtime_error("online read found deleted key " + std::to_string(index));
+                            return;
+                        }
+                        check(status, "get");
                         make_value(config, index, versions[index], expected);
                         if (found != rocksdb::Slice(expected))
                             throw std::runtime_error("online read returned a wrong value for key " + std::to_string(index));
+                    };
+                    if (is_read)
+                    {
+                        const auto begin = Clock::now();
+                        checked_get();
+                        const auto ns = static_cast<std::uint64_t>((Clock::now() - begin).count());
                         if (current == 1)
                         {
                             state.read_latency.add(ns);
                             ++state.window_reads;
                         }
                     }
+                    else if (is_rmw || is_delete)
+                    {
+                        const auto version = (versions[index] & ~kDeleted) + 1;
+                        const auto begin = Clock::now();
+                        if (is_rmw)
+                        {
+                            checked_get();
+                            make_value(config, index, version, value);
+                            check(db->Put(write, key, value), "put");
+                            versions[index] = version;
+                        }
+                        else
+                        {
+                            check(db->Delete(write, key), "delete");
+                            versions[index] = version | kDeleted;
+                        }
+                        const auto ns = static_cast<std::uint64_t>((Clock::now() - begin).count());
+                        if (current == 1)
+                        {
+                            (is_rmw ? state.read_latency : state.write_latency).add(ns);
+                            ++(is_rmw ? state.window_reads : state.window_writes);
+                        }
+                    }
                     else if (config.batch_size == 1)
                     {
-                        const auto version = versions[index] + 1;
+                        const auto version = (versions[index] & ~kDeleted) + 1;
                         make_value(config, index, version, value);
                         const auto begin = Clock::now();
                         check(db->Put(write, key, value), "put");
@@ -501,7 +613,8 @@ namespace
                         {
                             const auto owned = item == 0 ? index : thread + config.threads * pick(random);
                             make_key(config, owned, key);
-                            make_value(config, owned, ++versions[owned], value);
+                            versions[owned] = (versions[owned] & ~kDeleted) + 1;
+                            make_value(config, owned, versions[owned], value);
                             check(batch.Put(key, value), "batch put");
                         }
                         const auto begin = Clock::now();
@@ -545,6 +658,7 @@ namespace
         };
 
         const auto run_cpu_start = process_cpu();
+        const double run_start_unix = unix_seconds();
         const auto run_counters_start = counters();
         const auto started = Clock::now();
         std::vector<std::thread> workers;
@@ -613,6 +727,7 @@ namespace
         const auto drain_cpu_start = process_cpu();
         wait_for_compactions(db.get());
         const auto drain_end = Clock::now();
+        const double drain_end_unix = unix_seconds();
         const auto drain_cpu_end = process_cpu();
         const auto run_counters_end = counters();
         if (window_end == Clock::time_point{})
@@ -671,7 +786,8 @@ namespace
                          const double rewritten = run_counters_end.at("flush_write_bytes").get<double>() - run_counters_start.at("flush_write_bytes").get<double>() +
                                                   run_counters_end.at("compact_write_bytes").get<double>() - run_counters_start.at("compact_write_bytes").get<double>();
                          const double total = load_seconds + drain_seconds;
-                         return Json{{"ops", all_ops}, {"load_seconds", load_seconds}, {"drain_seconds", drain_seconds},
+                         return Json{{"ops", all_ops}, {"start_unix", run_start_unix}, {"end_unix", drain_end_unix},
+                                     {"load_seconds", load_seconds}, {"drain_seconds", drain_seconds},
                                      {"seconds", total}, {"ops_per_second", all_ops / total},
                                      {"cpu_seconds", total_cpu}, {"drain_cpu_seconds", drain_cpu},
                                      {"cpu_microseconds_per_op", all_ops > 0 ? total_cpu * 1e6 / all_ops : 0.0},
@@ -679,6 +795,8 @@ namespace
                                                                  run_counters_start.at("compactions").at("cpu_micros").get<double>()) / 1e6},
                                      {"write_amplification", written > 0 ? rewritten / written : 0.0}};
                      }()},
+                    {"sst_bytes_after_run", property(db.get(), "rocksdb.total-sst-files-size")},
+                    {"live_sst_bytes_after_run", property(db.get(), "rocksdb.live-sst-files-size")},
                     {"levels_before", levels_before},
                     {"levels_after_run", level_shape(db.get())},
                     {"transform", backend ? backend->statistics() : Json(nullptr)}};
@@ -686,6 +804,7 @@ namespace
         {
             result["verification"] = verify_all(db.get(), config, versions);
             result["levels_after_verification"] = level_shape(db.get());
+            result["sst_bytes_after_compaction"] = property(db.get(), "rocksdb.total-sst-files-size");
             result["transform_after_verification"] = backend ? backend->statistics() : Json(nullptr);
         }
         check(db->Close(), "close");
@@ -747,6 +866,20 @@ namespace
                 config.duration_seconds = static_cast<std::uint32_t>(number());
             else if (name == "--disable-wal")
                 config.disable_wal = value() == "true";
+            else if (name == "--rmw-percent")
+                config.rmw_percent = static_cast<std::uint32_t>(number());
+            else if (name == "--delete-percent")
+                config.delete_percent = static_cast<std::uint32_t>(number());
+            else if (name == "--distribution")
+                config.distribution = value();
+            else if (name == "--zipf-theta")
+                config.zipf_theta = std::stod(value());
+            else if (name == "--l0-trigger")
+                config.l0_trigger = static_cast<std::uint32_t>(number());
+            else if (name == "--level-multiplier")
+                config.level_multiplier = std::stod(value());
+            else if (name == "--use-direct-io")
+                config.use_direct_io = value() == "true";
             else if (name == "--batch-size")
                 config.batch_size = static_cast<std::uint32_t>(number());
             else if (name == "--adaptive-yield")
@@ -764,6 +897,10 @@ namespace
             throw std::invalid_argument("--dir is required");
         if (config.key_bytes != 16)
             throw std::invalid_argument("--key-bytes must be 16");
+        if (config.read_percent + config.rmw_percent + config.delete_percent > 100)
+            throw std::invalid_argument("--read-percent + --rmw-percent + --delete-percent must be <= 100");
+        if (config.batch_size > 1 && (config.read_percent + config.rmw_percent + config.delete_percent) > 0)
+            throw std::invalid_argument("--batch-size > 1 supports write-only runs");
         if (config.threads == 0 || config.read_percent > 100 || config.duration_seconds == 0 || config.records == 0 || config.batch_size == 0 ||
             config.records >= (1ULL << 32))
             throw std::invalid_argument("invalid --threads, --read-percent, --duration-seconds or --records");
@@ -784,6 +921,10 @@ int main(int argc, char **argv)
                             {"subcompactions", config.subcompactions}, {"levels", config.levels},
                             {"block_cache_bytes", config.block_cache_bytes}, {"disable_wal", config.disable_wal},
                             {"adaptive_yield", config.adaptive_yield}, {"batch_size", config.batch_size}, {"threads", config.threads}, {"read_percent", config.read_percent},
+                            {"rmw_percent", config.rmw_percent}, {"delete_percent", config.delete_percent},
+                            {"distribution", config.distribution}, {"zipf_theta", config.zipf_theta},
+                            {"use_direct_io", config.use_direct_io}, {"l0_trigger", config.l0_trigger},
+                            {"level_multiplier", config.level_multiplier},
                             {"warmup_seconds", config.warmup_seconds}, {"duration_seconds", config.duration_seconds},
                             {"seed", config.seed}};
         result["engine_fingerprint"] = lsm_lab::engine_fingerprint();

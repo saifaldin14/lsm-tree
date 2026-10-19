@@ -11,6 +11,7 @@
 #include <cstring>
 #include <fcntl.h>
 #include <lz4.h>
+#include <zstd.h>
 #include <unistd.h>
 
 #include "util/coding.h"
@@ -175,17 +176,24 @@ namespace lsm_lab
                 decoded->assign(serialized, block.size);
                 return rocksdb::Status::OK();
             }
-            if (type != 4)
-                return rocksdb::Status::NotSupported("merged input supports only uncompressed and LZ4 blocks");
+            if (type != 4 && type != 7)
+                return rocksdb::Status::NotSupported("merged input supports only uncompressed, LZ4 and ZSTD blocks");
             rocksdb::Slice compressed(serialized, block.size);
             std::uint32_t decoded_bytes = 0;
             if (!rocksdb::GetVarint32(&compressed, &decoded_bytes) || decoded_bytes == 0 ||
                 decoded_bytes > rocksdb::CompactionBlockTransform::max_block_bytes)
-                return rocksdb::Status::Corruption("merged-input invalid LZ4 size prefix");
+                return rocksdb::Status::Corruption("merged-input invalid compressed size prefix");
             decoded->resize(decoded_bytes);
-            if (LZ4_decompress_safe(compressed.data(), decoded->data(), static_cast<int>(compressed.size()),
-                                    static_cast<int>(decoded_bytes)) != static_cast<int>(decoded_bytes))
-                return rocksdb::Status::Corruption("merged-input LZ4 decoding failed");
+            if (type == 4)
+            {
+                if (LZ4_decompress_safe(compressed.data(), decoded->data(), static_cast<int>(compressed.size()),
+                                        static_cast<int>(decoded_bytes)) != static_cast<int>(decoded_bytes))
+                    return rocksdb::Status::Corruption("merged-input LZ4 decoding failed");
+            }
+            else if (ZSTD_decompress(decoded->data(), decoded_bytes, compressed.data(), compressed.size()) != decoded_bytes)
+            {
+                return rocksdb::Status::Corruption("merged-input ZSTD decoding failed");
+            }
             return rocksdb::Status::OK();
         }
     }
@@ -423,23 +431,72 @@ namespace lsm_lab
                                        MergeRunStats *stats)
     {
         *built = false;
-        // Output internal keys (after sequence zeroing) and per-entry metadata.
-        std::vector<std::string> keys(count);
-        std::vector<std::uint64_t> sequences(count);
+        const auto user_key = [&](std::size_t index) {
+            return rocksdb::Slice(packed + entries[index].offset, entries[index].key_bytes - 8);
+        };
+        // Deletion rules of CompactionIterator, applied after hidden versions are gone.
+        const auto key_may_exist_beyond = [&](const rocksdb::Slice &key) {
+            if (spec.bottommost)
+                return false;
+            if (!spec.check_beyond_ranges)
+                return true;
+            auto after = std::upper_bound(spec.beyond_ranges.begin(), spec.beyond_ranges.end(), key,
+                                          [](const rocksdb::Slice &value, const auto &range) {
+                                              return value.compare(rocksdb::Slice(range.first)) < 0;
+                                          });
+            if (after == spec.beyond_ranges.begin())
+                return false;
+            --after;
+            return key.compare(rocksdb::Slice(after->second)) <= 0;
+        };
+        std::vector<MergedEntry> kept;
+        kept.reserve(count);
         for (std::size_t index = 0; index < count; ++index)
         {
             const auto &entry = entries[index];
             const char *key = packed + entry.offset;
             const auto user_bytes = entry.key_bytes - 8;
             const auto trailer = rocksdb::DecodeFixed64(key + user_bytes);
-            if ((trailer & 0xff) != kTypeValue || user_bytes > 240)
+            const auto type = static_cast<unsigned char>(trailer & 0xff);
+            if ((type != kTypeValue && type != kTypeDeletion) || user_bytes > 240)
                 return rocksdb::Status::OK();
+            if (type == kTypeDeletion)
+            {
+                const auto sequence = trailer >> 8;
+                bool drop = sequence <= spec.earliest_snapshot_seq && !key_may_exist_beyond(user_key(index));
+                if (!drop && spec.bottommost)
+                    drop = index + 1 == count || user_key(index + 1) != user_key(index);
+                if (drop)
+                {
+                    ++dropped.entries;
+                    ++dropped.deletions;
+                    dropped.key_bytes += entry.key_bytes;
+                    continue;
+                }
+            }
+            kept.push_back(entry);
+        }
+        entries = kept.data();
+        count = kept.size();
+
+        // Output internal keys (after sequence zeroing) and per-entry metadata.
+        std::vector<std::string> keys(count);
+        std::vector<std::uint64_t> sequences(count);
+        std::vector<unsigned char> deletion(count);
+        for (std::size_t index = 0; index < count; ++index)
+        {
+            const auto &entry = entries[index];
+            const char *key = packed + entry.offset;
+            const auto user_bytes = entry.key_bytes - 8;
+            const auto trailer = rocksdb::DecodeFixed64(key + user_bytes);
+            const auto type = static_cast<unsigned char>(trailer & 0xff);
             auto sequence = trailer >> 8;
-            if (spec.zero_sequences && sequence <= spec.earliest_snapshot)
+            if (type == kTypeValue && spec.zero_sequences && sequence <= spec.earliest_snapshot)
                 sequence = 0;
             sequences[index] = sequence;
+            deletion[index] = type == kTypeDeletion;
             keys[index].assign(key, user_bytes);
-            rocksdb::PutFixed64(&keys[index], (sequence << 8) | kTypeValue);
+            rocksdb::PutFixed64(&keys[index], (sequence << 8) | type);
         }
         const auto shared_with_previous = [&](std::size_t index) -> std::uint32_t {
             if (index == 0)
@@ -528,6 +585,7 @@ namespace lsm_lab
                 raw.append(packed + entries[index].offset + entries[index].key_bytes, value_bytes);
                 out.raw_key_bytes += key.size();
                 out.raw_value_bytes += value_bytes;
+                out.deletions += deletion[index];
                 out.smallest_seqno = std::min(out.smallest_seqno, sequences[index]);
                 out.largest_seqno = std::max(out.largest_seqno, sequences[index]);
                 const auto user_bytes = key.size() - 8;
@@ -545,14 +603,26 @@ namespace lsm_lab
             out.uncompressed_bytes = static_cast<std::uint32_t>(raw.size());
             out.contents_offset = buffers->contents.size();
             bool use_compressed = false;
-            if (spec.lz4)
+            const char codec = spec.zstd ? 7 : (spec.lz4 ? 4 : 0);
+            if (codec != 0)
             {
                 compressed.clear();
                 rocksdb::PutVarint32(&compressed, static_cast<std::uint32_t>(raw.size()));
                 const auto prefix = compressed.size();
-                compressed.resize(prefix + LZ4_compressBound(static_cast<int>(raw.size())));
-                const int body = LZ4_compress_default(raw.data(), compressed.data() + prefix, static_cast<int>(raw.size()),
-                                                      static_cast<int>(compressed.size() - prefix));
+                std::int64_t body = 0;
+                if (codec == 4)
+                {
+                    compressed.resize(prefix + LZ4_compressBound(static_cast<int>(raw.size())));
+                    body = LZ4_compress_default(raw.data(), compressed.data() + prefix, static_cast<int>(raw.size()),
+                                                static_cast<int>(compressed.size() - prefix));
+                }
+                else
+                {
+                    compressed.resize(prefix + ZSTD_compressBound(raw.size()));
+                    const auto written = ZSTD_compress(compressed.data() + prefix, compressed.size() - prefix, raw.data(),
+                                                       raw.size(), 3);
+                    body = ZSTD_isError(written) ? 0 : static_cast<std::int64_t>(written);
+                }
                 const auto limit = (static_cast<std::uint64_t>(spec.max_compressed_bytes_per_kb) * raw.size()) >> 10;
                 if (body > 0 && prefix + static_cast<std::uint64_t>(body) <= limit)
                 {
@@ -561,10 +631,10 @@ namespace lsm_lab
                 }
             }
             const std::string &contents = use_compressed ? compressed : raw;
-            const char type = use_compressed ? 4 : 0;
+            const char type = use_compressed ? codec : 0;
             buffers->contents.append(contents);
             out.contents_bytes = static_cast<std::uint32_t>(contents.size());
-            out.compressed = use_compressed ? 1 : 0;
+            out.compressed = static_cast<unsigned char>(type);
             out.checksum = rocksdb::crc32c::Mask(
                 rocksdb::crc32c::Extend(rocksdb::crc32c::Value(contents.data(), contents.size()), &type, 1));
             out.keys_offset = buffers->keys.size();

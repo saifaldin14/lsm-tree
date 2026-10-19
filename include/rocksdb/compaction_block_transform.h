@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 #include "rocksdb/slice.h"
 #include "rocksdb/status.h"
@@ -52,8 +53,8 @@ namespace ROCKSDB_NAMESPACE
     };
 
     // Output encoding requested together with a merged input. When enabled and
-    // every entry left after drop_hidden is a Put whose user key has at most
-    // 240 bytes, the accelerator returns finished data blocks
+    // every entry left after drop_hidden is a Put or Delete whose user key has
+    // at most 240 bytes, the accelerator returns finished data blocks
     // (CompactionBuiltOutput) instead of an entry stream; otherwise it returns
     // the entry stream as usual. Blocks follow the block-based table format
     // (format_version 6, CRC32C, binary-search data blocks, delta-encoded keys,
@@ -71,6 +72,9 @@ namespace ROCKSDB_NAMESPACE
         // its varint32 size prefix) fits in raw * max_compressed_bytes_per_kb / 1024.
         std::uint32_t max_compressed_bytes_per_kb = 896;
         bool lz4 = true;
+        // ZSTD instead of LZ4 (same block layout: varint32 size prefix, then a
+        // standard ZSTD frame). Compressed bytes may differ from libzstd's.
+        bool zstd = false;
         // Bottommost output: sequence numbers <= earliest_snapshot become 0,
         // as CompactionIterator::PrepareOutput does.
         bool zero_sequences = false;
@@ -78,6 +82,18 @@ namespace ROCKSDB_NAMESPACE
         // Compute the 64-bit filter hash (RocksDB Hash64 of the user key) of
         // every entry whose user key differs from the previous entry's.
         bool filter_hashes = true;
+        // Deletions follow CompactionIterator: a deletion at or below
+        // earliest_snapshot_seq is dropped when the key cannot exist below the
+        // output level (always at the bottommost level; otherwise when it lies
+        // outside every range in beyond_ranges, if check_beyond_ranges is
+        // set). At the bottommost level a deletion with no older version of the
+        // same user key is also dropped. beyond_ranges holds the merged,
+        // sorted, disjoint [smallest, largest] user-key ranges of all files
+        // below the output level.
+        bool bottommost = false;
+        std::uint64_t earliest_snapshot_seq = ~0ULL;
+        bool check_beyond_ranges = false;
+        std::vector<std::pair<std::string, std::string>> beyond_ranges;
     };
 
     // One finished data block. contents excludes the 5-byte trailer; checksum
@@ -90,12 +106,15 @@ namespace ROCKSDB_NAMESPACE
         std::uint32_t contents_bytes = 0;
         std::uint32_t uncompressed_bytes = 0;
         std::uint32_t checksum = 0;
+        // Block compression type byte: 0 (none), 4 (LZ4) or 7 (ZSTD).
         std::uint32_t compressed = 0;
         std::uint64_t keys_offset = 0;
         std::uint32_t first_key_bytes = 0;
         std::uint32_t last_key_bytes = 0;
         std::uint32_t entries = 0;
         std::uint32_t hash_count = 0;
+        std::uint32_t deletions = 0;
+        std::uint32_t reserved = 0;
         std::uint64_t hash_offset = 0;
         std::uint64_t raw_key_bytes = 0;
         std::uint64_t raw_value_bytes = 0;

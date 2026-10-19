@@ -19,7 +19,38 @@ struct LsmBuildContext
     // Sequence numbers <= zero_limit become 0 at the bottommost level
     // (min of the earliest snapshot and preserve_seqno_after).
     SequenceNumber zero_limit = 0;
+    // CompactionIterator's earliest_snapshot_ (kMaxSequenceNumber without snapshots).
+    SequenceNumber earliest_snapshot = kMaxSequenceNumber;
 };
+
+// User-key ranges of every file below the output level, merged into sorted
+// disjoint ranges; a key outside all of them cannot exist beyond the output
+// level (Compaction::KeyNotExistsBeyondOutputLevel).
+static std::vector<std::pair<std::string, std::string>> LsmBeyondOutputRanges(const Compaction *compaction)
+{
+    std::vector<std::pair<std::string, std::string>> ranges;
+    const auto *storage = compaction->input_version()->storage_info();
+    for (int level = compaction->output_level() + 1; level < compaction->number_levels(); ++level)
+    {
+        for (const auto *file : storage->LevelFiles(level))
+            ranges.emplace_back(file->smallest.user_key().ToString(), file->largest.user_key().ToString());
+    }
+    std::sort(ranges.begin(), ranges.end());
+    std::vector<std::pair<std::string, std::string>> merged;
+    for (auto &range : ranges)
+    {
+        if (!merged.empty() && range.first <= merged.back().second)
+        {
+            if (range.second > merged.back().second)
+                merged.back().second = std::move(range.second);
+        }
+        else
+        {
+            merged.push_back(std::move(range));
+        }
+    }
+    return merged;
+}
 
 class LsmMergedInputIterator final : public InternalIterator
 {
@@ -104,7 +135,8 @@ static bool LsmBuiltOutputEligible(const Compaction *compaction, ColumnFamilyDat
         !ioptions.table_properties_collector_factories.empty() || !cfd->internal_tbl_prop_coll_factories()->empty() ||
         cfd->user_comparator()->timestamp_size() != 0)
         return false;
-    if (compaction->output_compression() != kLZ4Compression && compaction->output_compression() != kNoCompression)
+    if (compaction->output_compression() != kLZ4Compression && compaction->output_compression() != kZSTD &&
+        compaction->output_compression() != kNoCompression)
         return false;
     if (compression.max_dict_bytes != 0 || compression.zstd_max_train_bytes != 0 || compression.parallel_threads > 1)
         return false;
@@ -188,9 +220,18 @@ static Status LsmMaybeCreateMergedInput(const Compaction *compaction, ColumnFami
         spec.max_compressed_bytes_per_kb = static_cast<std::uint32_t>(
             std::min(1023, std::max(0, compaction->output_compression_opts().max_compressed_bytes_per_kb)));
         spec.lz4 = compaction->output_compression() == kLZ4Compression;
+        spec.zstd = compaction->output_compression() == kZSTD;
         spec.zero_sequences = build->zero_sequences;
         spec.earliest_snapshot = build->zero_limit;
         spec.filter_hashes = table_options->filter_policy != nullptr;
+        spec.bottommost = compaction->bottommost_level();
+        spec.earliest_snapshot_seq = build->earliest_snapshot;
+        if (!spec.bottommost && compaction->output_level() != 0 &&
+            cfd->ioptions().compaction_style == kCompactionStyleLevel)
+        {
+            spec.check_beyond_ranges = true;
+            spec.beyond_ranges = LsmBeyondOutputRanges(compaction);
+        }
     }
     const Slice start_slice(request.start_user_key);
     const Slice end_slice(request.end_user_key);
