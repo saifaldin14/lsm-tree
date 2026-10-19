@@ -1,8 +1,9 @@
 # Build and Run
 
-## Native setup
+## Setup
 
-The measured implementation is C++20. Python 3.12 or newer is used only for coordination, artifact checks, and plotting. Linux and macOS are supported targets; Linux and CUDA builds have not been executed in the current Mac session.
+C++20 implementation; Python 3.12 or newer for orchestration and analysis
+only. Linux and macOS are supported.
 
 ```sh
 bash scripts/bootstrap.sh
@@ -11,16 +12,136 @@ cmake --build --preset dev
 ctest --preset dev --output-on-failure
 python3 -m venv .venv
 .venv/bin/python -m pip install -r tools/requirements.lock
-.venv/bin/python -m unittest discover -s tests -p test_labctl.py -v
+.venv/bin/python -m unittest discover -s tests -p "test_*.py"
 ```
 
-If the build directory was created before the vcpkg toolchain was selected, run `cmake --fresh --preset dev` once. This resets generated configuration, not source or datasets. Do not run another command in the same terminal while a long build is still active. Optional GPU hardware tests may be skipped when devices are unavailable; that is not a passed GPU gate.
+`scripts/bootstrap.sh` checks out a pinned vcpkg revision into `.deps/vcpkg`
+and builds dependencies in `~/.cache/lsm-lab` (OpenSSL cannot build in a path
+with spaces). It does not change system packages. If the build directory
+existed before the toolchain was selected, run `cmake --fresh --preset dev`
+once.
 
-The dependency bootstrap uses the fixed vcpkg revision and a whitespace-free user cache. It does not install system drivers or require elevated privileges. Linux needs a C++20 compiler, CMake, Make, Git, curl, zip/unzip, pkg-config, and the normal development utilities required by the vcpkg ports.
+### CUDA build
 
-## Local pilot
+On a Linux x86_64 host with an NVIDIA driver and CUDA 12 toolkit:
 
-All output names below must be new. The run creates and retains a baseline and separate trial copies. A completed run bundle is immutable; analysis writes elsewhere.
+```sh
+bash scripts/bootstrap.sh
+bash scripts/bootstrap-cuda.sh          # pinned nvCOMP 5.3.0.16, SHA-256 checked
+cmake --preset dev -DLSM_ENABLE_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=native -DLSM_ROCKSDB_PORTABLE=0
+cmake --build --preset dev -j
+build/dev/lsm_gpu_check cuda_batched --require
+ctest --preset dev --output-on-failure
+```
+
+`LSM_ROCKSDB_PORTABLE=0` builds RocksDB with `-march=native`. The default
+(`ON`) is RocksDB's portable build, which uses software CRC32C and makes
+native compaction about 16% slower; never compare GPU results against a
+portable CPU baseline. The CTest `worker.lifecycle` test exercises the GPU
+input path and fails if `LSM_DISABLE_GPU_INPUT` is exported in the shell.
+
+GPU offload modes and environment variables are documented in
+[gpu-compaction.md](gpu-compaction.md).
+
+## GPU compaction benchmarks
+
+Both benchmarks run inside one process and take `native_cpu`, `gpu_output`,
+`cpu_merge` and `cuda_merge` modes. Set the variables used in the published
+runs:
+
+```sh
+export LSM_DISABLE_GPU_INPUT=1 LSM_CUDA_SYNC=blocking LSM_GPU_OUTPUT_MIN_BLOCK_BYTES=1024
+```
+
+### Isolated compaction: `lsm_compaction_bench`
+
+Builds the same database for each mode (a base level with every key, then
+`--l0-files` overlapping flushes of overwrites and deletes, optional
+`--snapshots`), runs one full `CompactRange`, and prints one JSON line per
+mode and repetition: wall and whole-process CPU time, per-job statistics,
+transform statistics, and a digest of every internal version and of up to
+200,000 point lookups. It exits with status 3 if any mode's digest differs
+from the first mode's.
+
+```sh
+build/dev/lsm_compaction_bench --dir /dev/shm/$USER/cb --modes native_cpu,gpu_output,cuda_merge \
+  --records 4000000 --value-bytes 128 --l0-files 8 --block-bytes 4096 --delete-fraction 0 --repetitions 4
+```
+
+Other options: `--key-bytes`, `--overwrite-fraction`, `--compression
+lz4|zstd|none`, `--target-file-bytes`, `--subcompactions`, `--no-base`,
+`--seed`, `--keep`. Repetition 0 includes GPU buffer allocation and should be
+excluded. [publication/compaction_sweep.sh](../publication/compaction_sweep.sh)
+runs the published sweep.
+
+### Whole database: `lsm_system_bench` and `system_campaign.py`
+
+`--phase preload` builds and verifies a key space; `--phase run` opens a copy
+with the selected backend and runs closed-loop client threads for
+`--warmup-seconds` plus `--duration-seconds`. It then waits for all pending
+compaction and verifies every key and value. Each thread owns the keys
+congruent to its index and checks every read online.
+
+```sh
+build/dev/lsm_system_bench --phase preload --dir /dev/shm/$USER/sys/golden --records 50000000 --threads 8
+cp -r /dev/shm/$USER/sys/golden /dev/shm/$USER/sys/trial
+numactl --physcpubind=0,1,2,3 --membind=0 build/dev/lsm_system_bench --phase run --mode cuda_merge \
+  --dir /dev/shm/$USER/sys/trial --records 50000000 --threads 4 --batch-size 100 --disable-wal true \
+  --background-jobs 4 --warmup-seconds 30 --duration-seconds 120
+```
+
+The result reports throughput and latency during the measurement window and
+an `ingest_and_compact` section: all operations divided by the time to issue
+them **plus** the time to finish the compaction they caused, with total CPU
+and write amplification. Use `ingest_and_compact` to compare backends; window
+throughput rewards a backend that postpones compaction. Other options:
+`--read-percent`, `--value-bytes`, `--compression`, `--block-bytes`,
+`--write-buffer-bytes`, `--target-file-bytes`, `--max-bytes-for-level-base`,
+`--max-write-buffer-number`, `--subcompactions`, `--block-cache-bytes`,
+`--adaptive-yield` (on by default; keep one client thread per core), `--verify`.
+
+`publication/system_campaign.py` runs a grid in randomized blocks. Each trial
+copies a golden database, pins the benchmark to N physical cores of the GPU's
+NUMA node, and optionally runs `lsm_burn` background load on the same cores.
+It samples RAPL package and DRAM energy (`perf stat -a`) and GPU power
+(`nvidia-smi`) at 1 Hz.
+
+```sh
+LSM_BUILD_DIR=build/dev python3 publication/system_campaign.py OUT \
+  --golden /dev/shm/$USER/sys/golden --grid configs/system/batched-ingest.json --blocks 5 --seed 41
+```
+
+Grid entries set `mode`, `cores`, optional `burn_percent` and `node`, and
+benchmark `flags`; `common` holds flags shared by all trials. Results go to
+`OUT/results.jsonl`. `perf_event_paranoid` must allow system-wide RAPL
+events.
+
+### Figures
+
+`python3 publication/make_figures.py` regenerates `publication/figures/` and
+`publication/data/summary.md` from the raw results in `publication/data/`. It
+refuses data from a run that failed its correctness check.
+
+### Running on Rift (Zyra)
+
+See [rift-cluster-access.md](rift-cluster-access.md). On Zyra the RTX A6000 is
+attached to NUMA node 0. Keep databases on `/dev/shm`, and enable lingering
+once (`loginctl enable-linger $USER`); otherwise logind removes your
+`/dev/shm` files when your last session ends. The system CMake is too old;
+use the vcpkg-downloaded CMake under `.deps/vcpkg/downloads/tools/` and put
+`/usr/local/cuda-12.3/bin` on `PATH`.
+
+## Experiment harness (`labctl`)
+
+The harness runs the database, worker and load generator as separate native
+processes over gRPC, with frozen paired plans, open- or closed-loop load,
+resource telemetry and full offline verification. With the database limited
+to 4 cores, a write-heavy closed-loop pilot reached only about 3,800 ops/s for
+every backend: request handling, not compaction, used the cores. The GPU
+compaction results therefore use the in-process benchmarks above.
+
+All output names below must be new. A completed run bundle is immutable;
+analysis writes elsewhere.
 
 ```sh
 mkdir -p artifacts
@@ -30,9 +151,11 @@ mkdir -p artifacts
 .venv/bin/python tools/labctl.py analyze artifacts/pilot-run artifacts/pilot-analysis
 ```
 
-The checked-in profile has eight trials and a 300-second wall budget. It tests functionality rather than long-run stability. Existing evidence from this session is under `artifacts/local-cpu-run`; figures are under `artifacts/local-cpu-analysis-v3`. Those results predate the CRC32C/batch engine profile and must not be presented as measurements of the new GPU or CPU-batched path.
+Set `LSM_LAB_SCRATCH_ROOT` to place live databases on local storage;
+`LSM_LAB_PRIMARY_NUMA_NODE=N` runs `lsm_db` under `numactl` on node N. Every
+run records all `LSM_*` environment variables in `build.json`.
 
-Treatment names are `native_cpu` (compaction on the primary), `cpu_native` (native compaction on the remote worker), `cpu_batched`, `metal_batched`, and `cuda_batched`. The last three use the same bounded block-input path. A requested unavailable backend fails clearly. Local processes share one host and storage device, so they cannot qualify a cross-host claim.
+Treatment names are `native_cpu` (compaction on the primary), `cuda_local` (output-only GPU offload in the primary), `cuda_merge` (GPU merge and block building in the primary, see [gpu-compaction.md](gpu-compaction.md)), `cpu_native` (native compaction on a remote worker), and `cpu_batched`, `metal_batched`, `cuda_batched` (bounded block-input path on a remote worker). A requested unavailable backend fails clearly. Local processes share one host and storage device, so they cannot qualify a cross-host claim.
 
 Configuration contains integer units, explicit warmup/measurement durations, repetition count, SLOs, workload seed, rates, and budgets. The frozen plan includes its hash and exact randomized order. Logical-write budgets count user key/value bytes, not SSD writes or compaction amplification. The memory budget is a conservative admission estimate, not an OS-enforced memory quota. Artifact budgets include request logs and bounded resource streams; filesystem free-space checks and host quotas remain necessary for database copies and amplification.
 
@@ -42,158 +165,6 @@ The current workload implements uniform Get/update mixes, including pure reads o
 
 Analysis audits checksums and paired schedule hashes, retains unsuccessful outcomes, uses the contiguous qualifying rate prefix, and reports lower/upper capacity bounds. It requires at least three in-window compaction-debt samples and no observed debt growth for pilot qualification. This is not proof of steady state. Whole paired repetitions are bootstrapped; individual requests are not replicates. Censored capacities are never silently converted into exact ratios. GPU treatments require recorded useful GPU block work.
 
-## Resource collection
-
-Every new local trial has primary/load process logs, a worker log when used, and one host log shared by the local roles. Analysis includes lifetime and conservative in-window resource summaries, with no inferred readings for old bundles. The standalone `build/dev/lsm_telemetry` executable also runs on a storage host without a database or RPC service. Build it on all four hosts before remote qualification.
-
-See [telemetry.md](telemetry.md) for sources, sensor requirements, schema, individual-log analysis, and operator-managed macOS power capture. Missing power, energy, or Celsius readings are explicit. GPU memory may overlap host RSS, device bytes do not measure internal NAND traffic, and clocks from different machines cannot be substituted for each other.
-
-## GPU gates
-
-Metal is enabled by default on native macOS. The shader is compiled during the build and embedded into the host binary for runtime pipeline creation. The explicit hardware command is:
-
-```sh
-build/dev/lsm_gpu_check metal_batched --require
-```
-
-The hardware command and live compaction tests passed on Apple M3 in this session. `MTLCreateSystemDefaultDevice` returned no default device, so the backend selected the Apple M3 exposed by `MTLCopyAllDevices` and recorded its registry identity. There is no software device substitute. The current kernels favor bounded correctness over tuning, and no speedup is assumed. Run this gate on each actual worker before accepting its GPU results.
-
-[../configs/local-metal-experiment.json](../configs/local-metal-experiment.json) is a bounded eight-trial profile comparing primary CPU, remote native CPU, CPU-batched, and Metal on one machine. Its separate [../configs/local-compaction-smoke.json](../configs/local-compaction-smoke.json) dataset profile uses 64 KiB memtables and target SST sizes to exercise compaction during the offered-load interval. It uses one offered rate and cannot establish a capacity curve or cross-host speedup.
-
-The recorded run under `artifacts/local-metal-active-run` completed 48,000 measured requests and 6,000 warmup requests with full offline verification across all trials. The two Metal trials processed 513 and 511 blocks between in-window samples; each committed four remote compactions during that observed interval. Every treatment exceeded the declared 10 ms p99 SLO at 750 ops/s. See `artifacts/local-metal-active-analysis` for CSV/JSON and figures. The earlier `artifacts/local-metal-run` had GPU work only during post-load drain; its corrected analysis under `artifacts/local-metal-analysis-v3` marks the remote treatments unverified for foreground acceleration. Both runs remain preserved.
-
-CUDA uses the official nvCOMP 5.3.0.16 CUDA-12 package, pinned by SHA-256. The CUDA decompressor is selected explicitly; the dedicated hardware decompression mode is not used because its malformed-input guarantees differ. Input CRC32C is computed on-device before decoding, and both per-block status and output length are checked. Device copies, allocation, synchronization, and output materialization are real work inside worker elapsed time.
-
-`cuda_batched` always dispatches to CUDA and is retained for hardware
-qualification and crossover measurements. The in-process `cuda_local` mode
-uses `cuda_hybrid`: batches with fewer than 32 blocks, less than 2 MiB of
-decoded data, or less than 32 KiB average decoded block size remain on CPU.
-The selector records `cpu_fallback_batches`, `cpu_fallback_blocks`, and
-`cpu_fallback_bytes`. These thresholds come from RTX A6000 microbenchmarks;
-4 KiB blocks remained faster on CPU even at 256 blocks. Re-profile when the
-GPU, codec, or block-size distribution changes:
-
-```sh
-build/dev/lsm_gpu_check cpu_batched --blocks 256 --block-bytes 4096 --repetitions 100
-build/dev/lsm_gpu_check cuda_batched --require --blocks 256 --block-bytes 4096 --repetitions 100
-```
-
-On an approved native Linux x86_64 NVIDIA worker with an existing compatible driver and CUDA toolkit:
-
-```sh
-bash scripts/bootstrap.sh
-bash scripts/bootstrap-cuda.sh
-cmake --preset dev -DLSM_ENABLE_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=native
-cmake --build --preset dev
-build/dev/lsm_gpu_check cuda_batched --require
-ctest --preset dev -R 'blocks.transforms|worker.lifecycle|hardware.cuda' --output-on-failure
-```
-
-After the hardware gate passes, the bounded paired capacity sweep compares
-native CPU, CPU-batched, and CUDA-batched compaction at 750, 3,000, 6,000, and
-12,000 operations per second:
-
-```sh
-mkdir -p artifacts
-python3 tools/labctl.py plan configs/cuda-rate-sweep.json artifacts/cuda-rate-sweep-plan.json
-python3 tools/labctl.py run artifacts/cuda-rate-sweep-plan.json artifacts/cuda-rate-sweep-run
-python3 tools/labctl.py audit artifacts/cuda-rate-sweep-run
-python3 tools/labctl.py analyze artifacts/cuda-rate-sweep-run artifacts/cuda-rate-sweep-analysis
-```
-
-To qualify the in-process CUDA path without starting a remote worker, use
-`configs/cuda-local-smoke.json`. A valid write-bearing `cuda_local` trial must
-report nonzero `database_statistics.local_transform.blocks` during the
-measured window. On Rift machines, keep result artifacts under the persistent
-home directory but place the live RocksDB database on local storage:
-
-```sh
-mkdir -p /tmp/$USER/lsm-lab
-export LSM_LAB_SCRATCH_ROOT=/tmp/$USER/lsm-lab
-```
-
-The runner copies the verified database state into the sealed result bundle
-and removes its uniquely named scratch directory after the run.
-
-The sweep intentionally retains overload and SLO failures. Its three paired
-repetitions and increasing offered rates establish tested capacity brackets;
-they do not replace longer steady-state runs.
-
-The CUDA source has not been compiled or executed here. Its API calls were checked against the downloaded, hash-verified official headers. The Linux hardware gate must still establish compiler/runtime compatibility, real dispatch, malformed-input handling, and live-compaction correctness. Record the actual compiler, driver, toolkit, nvCOMP package, and GPU allocation before experiments. GPU selection currently uses the first visible device; use an exclusive allocation and `CUDA_VISIBLE_DEVICES` for CUDA. Do not pool CUDA and Metal speedup results across different hardware suites.
-
-## Cross-host qualification
-
-There are no approved remote hosts in this session. Fill an inventory from the example only after arranging separate load, primary, worker, and storage hosts. Install the same tested source version and pinned engine patch on the service hosts, and build native binaries on each architecture. Python host probes require Python 3.12 or newer. The required work parents and NFS mount must already exist and be writable by the experiment account.
-
-NFS source, canonical path, and observed protocol must match on primary and worker. Use hard mounts and a synchronous export with restricted private clients. Native Mac NFS support must be observed, not inferred from Linux capabilities. The example selects NFSv3 as a candidate, not as a validated deployment; NLM locking must pass the actual two-client test. No script formats disks, edits exports, changes mounts, or installs drivers.
-
-mTLS files are provisioned separately. The CA and certificate/key paths must exist on each host; private keys never enter a run bundle. Server certificates need SANs matching their configured private IP addresses. The primary certificate must permit both server and client authentication because it connects to the worker. SSH host keys must already be trusted; batch mode and strict host-key checking are enforced. Never put passwords or tokens in the inventory.
-
-```sh
-.venv/bin/python tools/labctl.py deployment-plan infra/inventory.local.json artifacts/deployment-plan-v1.json
-.venv/bin/python tools/labctl.py qualify infra/inventory.local.json artifacts/cluster-qualification --apply
-```
-
-The second command also requires `approved: true` and a nonempty `approval_id` in the inventory. It verifies distinct machine identities and the declared NFS mount, requires a real GPU dispatch, writes a full-byte probe, checks lock exclusion across clients, and tests rename visibility. It then runs native CPU, remote CPU, CPU-batched, and GPU smoke trials over the shared storage, with full-value verification on the primary after shutdown. It retains failures and attempts bounded cleanup of only the processes it started. Probe data and trial directories are preserved for inspection; there is no automatic recursive deletion.
-
-This is a functional deployment gate, not the long confirmation study. Physical power-loss durability, deliberate NFS server disconnection/reconnect, production load capacity, and the proposed hundreds-of-hours study remain separate approval and validation tasks. Missing devices or hosts remain unavailable; local loopback evidence is never promoted to cross-host evidence.
-
-## Result and failure handling
-
-Successful load execution exits zero. A fully recorded load with failed accounting/qualification exits 3. Invalid setup or execution failure exits 1. A GPU availability probe without `--require` exits 77 if unavailable, which CTest reports as skipped; with `--require`, unavailability is failure. Failed experiment rows remain in the run and analysis.
-
-Inspect `commands.json`, per-trial process logs, `primary.events.jsonl`, raw request files, and native worker journals. `output_ready`, `outputs_imported`, and `committed` are different phases. A nominal worker result alone is never treated as a committed primary database. Interrupted output directories are retained and cannot be reused as fresh attempts.
-## GPU compaction tail-latency sweep
-
-The confirmed compaction-pressure workload uses 128 KiB blocks, 1 KiB values,
-a 256 KiB write buffer, one background job, and a pure-write workload.
-
-```bash
-python3 tools/labctl.py plan \
-  configs/cuda-compaction-bottleneck-sweep.json \
-  /tmp/$USER/cuda-compaction-bottleneck-plan.json
-
-LSM_LAB_SCRATCH_ROOT=/tmp/$USER/lsm-lab \
-LSM_DISABLE_GPU_INPUT=1 \
-python3 tools/labctl.py run \
-  /tmp/$USER/cuda-compaction-bottleneck-plan.json \
-  /tmp/$USER/cuda-compaction-bottleneck-run
-
-python3 tools/labctl.py audit \
-  /tmp/$USER/cuda-compaction-bottleneck-run
-```
-
-The production output path submits 64-block or 8 MiB batches asynchronously,
-keeps at most two submissions in flight, and drains output in FIFO order.
-Do not set `LSM_FORCE_CPU_OUTPUT` or `LSM_DISABLE_GPU_OUTPUT` for the GPU
-qualification run.
-
-## Revision experiments: sync mode, NUMA placement, profiling
-
-`LSM_DISABLE_GPU_INPUT=1` is part of the published configuration: only output
-compression and checksums are offloaded. With the input path enabled, compaction
-jobs are slower than native CPU on Zyra. Every run now records all `LSM_*`
-environment variables in `build.json` under `lsm_environment`.
-
-Two opt-in controls support the placement and synchronization ablation:
-
-- `LSM_CUDA_SYNC=auto|spin|blocking` selects how host threads wait for the GPU
-  (`auto` is CUDA's default and the published behavior; `blocking` sets
-  `cudaDeviceScheduleBlockingSync` and blocking-sync events). The chosen mode is
-  appended to `local_transform.device` in each primary summary.
-- `LSM_LAB_PRIMARY_NUMA_NODE=N` launches only `lsm_db` under
-  `numactl --cpunodebind=N --membind=N`. On Zyra the GPU is attached to node 0.
-
-```bash
-export LSM_LAB_SCRATCH_ROOT=/tmp/$USER/lsm-lab
-# Randomized blocks: 2 workloads x 5 conditions + write-heavy 5,556 ops/s, with RAPL energy.
-.venv/bin/python publication/campaign.py /tmp/$USER/rev-campaign --blocks 6
-# Per-thread/per-symbol CPU attribution for one paired trial (fixed-period cpu-clock sampling).
-LSM_DISABLE_GPU_INPUT=1 publication/profile.sh /tmp/$USER/rev-profile-auto auto
-```
-
-`perf_event_paranoid` must allow system-wide sampling and RAPL events
-(`power/energy-pkg/`, `power/energy-ram/`).
 
 ## Harness options (all optional; defaults reproduce earlier behavior)
 
@@ -272,3 +243,55 @@ build/dev/lsm_admin create configs/my-large.json /scratch/$USER/large
 build/dev/lsm_loadgen --endpoint HOST:PORT --run-id RUN --output OUT \
   --closed-loop 32 --warmup-duration-seconds 30 --duration-seconds 120 --read-percent 50 --insert-percent 20
 ```
+
+## Resource collection
+
+Every trial has primary and load process logs, a worker log when used, and
+one host log. `build/dev/lsm_telemetry` also runs standalone on a storage
+host. See [telemetry.md](telemetry.md) for sources, schemas and accounting
+limits.
+
+## GPU hardware gates
+
+```sh
+build/dev/lsm_gpu_check cuda_batched --require     # Linux, NVIDIA
+build/dev/lsm_gpu_check metal_batched --require    # macOS
+```
+
+Without `--require` an unavailable device exits 77, which CTest reports as
+skipped; with it, unavailability fails. There is no software device
+substitute. CUDA uses the explicit nvCOMP CUDA decompressor, not the hardware
+decompression engine, because their malformed-input guarantees differ. Input
+CRC32C is checked on the device before decoding.
+
+[../configs/cuda-local-smoke.json](../configs/cuda-local-smoke.json) qualifies
+the in-process `cuda_local` path; a write-bearing trial must report nonzero
+`database_statistics.local_transform.blocks`.
+[../configs/cuda-rate-sweep.json](../configs/cuda-rate-sweep.json) compares
+native, CPU-batched and CUDA-batched remote compaction at four offered rates,
+and [../configs/local-metal-experiment.json](../configs/local-metal-experiment.json)
+does the same with Metal on one Mac. These are functional gates, not
+performance results.
+
+## Cross-host qualification
+
+Fill an inventory from the example only after arranging separate load, primary, worker, and storage hosts. Install the same tested source version and pinned engine patch on the service hosts, and build native binaries on each architecture. Python host probes require Python 3.12 or newer. The required work parents and NFS mount must already exist and be writable by the experiment account.
+
+NFS source, canonical path, and observed protocol must match on primary and worker. Use hard mounts and a synchronous export with restricted private clients. Native Mac NFS support must be observed, not inferred from Linux capabilities. The example selects NFSv3 as a candidate, not as a validated deployment; NLM locking must pass the actual two-client test. No script formats disks, edits exports, changes mounts, or installs drivers.
+
+mTLS files are provisioned separately. The CA and certificate/key paths must exist on each host; private keys never enter a run bundle. Server certificates need SANs matching their configured private IP addresses. The primary certificate must permit both server and client authentication because it connects to the worker. SSH host keys must already be trusted; batch mode and strict host-key checking are enforced. Never put passwords or tokens in the inventory.
+
+```sh
+.venv/bin/python tools/labctl.py deployment-plan infra/inventory.local.json artifacts/deployment-plan-v1.json
+.venv/bin/python tools/labctl.py qualify infra/inventory.local.json artifacts/cluster-qualification --apply
+```
+
+The second command also requires `approved: true` and a nonempty `approval_id` in the inventory. It verifies distinct machine identities and the declared NFS mount, requires a real GPU dispatch, writes a full-byte probe, checks lock exclusion across clients, and tests rename visibility. It then runs native CPU, remote CPU, CPU-batched, and GPU smoke trials over the shared storage, with full-value verification on the primary after shutdown. It retains failures and attempts bounded cleanup of only the processes it started. Probe data and trial directories are preserved for inspection; there is no automatic recursive deletion.
+
+This is a functional deployment gate, not the long confirmation study. Physical power-loss durability, deliberate NFS server disconnection/reconnect, production load capacity, and the proposed hundreds-of-hours study remain separate approval and validation tasks. Missing devices or hosts remain unavailable; local loopback evidence is never promoted to cross-host evidence.
+
+## Result and failure handling
+
+Successful load execution exits zero. A fully recorded load with failed accounting/qualification exits 3. Invalid setup or execution failure exits 1. A GPU availability probe without `--require` exits 77 if unavailable, which CTest reports as skipped; with `--require`, unavailability is failure. Failed experiment rows remain in the run and analysis.
+
+Inspect `commands.json`, per-trial process logs, `primary.events.jsonl`, raw request files, and native worker journals. `output_ready`, `outputs_imported`, and `committed` are different phases. A nominal worker result alone is never treated as a committed primary database. Interrupted output directories are retained and cannot be reused as fresh attempts.

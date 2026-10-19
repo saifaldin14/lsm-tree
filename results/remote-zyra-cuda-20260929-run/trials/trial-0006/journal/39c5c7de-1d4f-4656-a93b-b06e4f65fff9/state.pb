@@ -1,3 +1,0 @@
-
-f
-!remote-zyra-cuda-pilot-trial-0006$48ae4f6b-53d3-48a2-9393-f1b69d6ca093HNXR3TD41I2LUNTPLOCA(€€€€°$39c5c7de-1d4f-4656-a93b-b06e4f65fff9$03ea1e78-572b-49c4-bdae-91805147c804 (2 Ô¼ZNÄ+­Hœ 1´–Ò…øB;‚nÎcÎĞ@NSB1.lsm-staging/39c5c7de-1d4f-4656-a93b-b06e4f65fff9XÚÈš"`hÉ‡rcuda_batchedzÍ{"backend":"cuda_batched","batches":7,"blocks":129,"device":"NVIDIA RTX A6000; nvCOMP=5.3.0.16; CUDA=12030","dispatches":14,"input_bytes":295881,"kernel_ns":1876758,"output_bytes":493460,"wall_ns":5340045}

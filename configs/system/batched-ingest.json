@@ -1,0 +1,74 @@
+{
+ "common": {
+  "records": 50000000,
+  "read-percent": 0,
+  "warmup-seconds": 30,
+  "duration-seconds": 120,
+  "verify": true,
+  "threads": 4,
+  "adaptive-yield": true
+ },
+ "trials": [
+  {
+   "mode": "native_cpu",
+   "cores": 4,
+   "flags": {
+    "background-jobs": 2,
+    "batch-size": 100,
+    "disable-wal": true
+   }
+  },
+  {
+   "mode": "native_cpu",
+   "cores": 4,
+   "flags": {
+    "background-jobs": 4,
+    "batch-size": 100,
+    "disable-wal": true
+   }
+  },
+  {
+   "mode": "gpu_output",
+   "cores": 4,
+   "flags": {
+    "background-jobs": 2,
+    "batch-size": 100,
+    "disable-wal": true
+   }
+  },
+  {
+   "mode": "cuda_merge",
+   "cores": 4,
+   "flags": {
+    "background-jobs": 2,
+    "batch-size": 100,
+    "disable-wal": true
+   }
+  },
+  {
+   "mode": "cuda_merge",
+   "cores": 4,
+   "flags": {
+    "background-jobs": 4,
+    "batch-size": 100,
+    "disable-wal": true
+   }
+  },
+  {
+   "mode": "native_cpu",
+   "cores": 4,
+   "flags": {
+    "background-jobs": 2,
+    "batch-size": 1
+   }
+  },
+  {
+   "mode": "cuda_merge",
+   "cores": 4,
+   "flags": {
+    "background-jobs": 2,
+    "batch-size": 1
+   }
+  }
+ ]
+}

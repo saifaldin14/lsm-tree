@@ -1,28 +1,17 @@
+# Dependencies and builds
 /.deps/
 /build/
-/artifacts/
-/.venv/
 /vcpkg_installed/
 /CMakeUserPresets.json
+
+# Local experiment output and private inventory
+/artifacts/
 /infra/inventory.local.json
-__pycache__/
-.pytest_cache/
-.DS_Store
 *.pem
 *.key
-.DS_Store
-.venv/
-.pytest_cache/
+
+# Python and OS
+/.venv/
 __pycache__/
-build/
-results/*.csv
-results/*.json
-results/**/objects-*/
-results/**/source-*/
-paper/tables/pilot_results.tex
-paper/*.aux
-paper/*.bbl
-paper/*.blg
-paper/*.log
-paper/*.out
-paper/*.pdf
+.pytest_cache/
+.DS_Store

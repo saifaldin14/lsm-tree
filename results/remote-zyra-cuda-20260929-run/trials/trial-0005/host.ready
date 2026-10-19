@@ -1,1 +1,0 @@
-{"host":{"boot_id":"ed318800882234bd55dcf97cdd91543a4032b05f5937527646b9d456e316f987","host_id":"8fd1d82c5f77a197784a1243b642b84c01d79de088a3df7310152f07cd9b96d6","hostname":"zyra","identity_source":"/etc/machine-id,/proc/sys/kernel/random/boot_id","logical_cpus":144},"pid":1410216,"schema_version":1,"state":"ready"}

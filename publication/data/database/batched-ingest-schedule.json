@@ -1,0 +1,70 @@
+[
+ {
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "background-jobs": 2,
+   "batch-size": 100,
+   "disable-wal": true
+  },
+  "block": 0
+ },
+ {
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "background-jobs": 2,
+   "batch-size": 1
+  },
+  "block": 0
+ },
+ {
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "background-jobs": 2,
+   "batch-size": 1
+  },
+  "block": 0
+ },
+ {
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "background-jobs": 4,
+   "batch-size": 100,
+   "disable-wal": true
+  },
+  "block": 0
+ },
+ {
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "background-jobs": 4,
+   "batch-size": 100,
+   "disable-wal": true
+  },
+  "block": 0
+ },
+ {
+  "mode": "gpu_output",
+  "cores": 4,
+  "flags": {
+   "background-jobs": 2,
+   "batch-size": 100,
+   "disable-wal": true
+  },
+  "block": 0
+ },
+ {
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "background-jobs": 2,
+   "batch-size": 100,
+   "disable-wal": true
+  },
+  "block": 0
+ }
+]

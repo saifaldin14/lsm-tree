@@ -1,9 +1,0 @@
-trial,repetition,mode,rate,qualification,reason,throughput,read_p99_ms,write_p99_ms,schedule_sha256,read_slo_ms,write_slo_ms,remote_committed,in_window_remote_committed,in_window_gpu_blocks,backlog_first,backlog_last
-trial-0000,0,native_cpu,750,pass,"valid run, SLO satisfied, observed compaction debt did not increase",750.0,0.556543,1.196031,1e6a2c90a3e3f9b180a7ca69340de40b2a50ebafb636c7d742d5e08ec46a8799,10,10,0,0,0,0,0
-trial-0001,0,cpu_batched,750,pass,"valid run, SLO satisfied, observed compaction debt did not increase",750.0,0.555519,1.502207,1e6a2c90a3e3f9b180a7ca69340de40b2a50ebafb636c7d742d5e08ec46a8799,10,10,4,4,0,111599,0
-trial-0002,0,cuda_batched,750,pass,"valid run, SLO satisfied, observed compaction debt did not increase",750.0,0.552447,1.235967,1e6a2c90a3e3f9b180a7ca69340de40b2a50ebafb636c7d742d5e08ec46a8799,10,10,4,4,511,111599,0
-trial-0003,0,cpu_native,750,pass,"valid run, SLO satisfied, observed compaction debt did not increase",750.0,0.549887,1.274879,1e6a2c90a3e3f9b180a7ca69340de40b2a50ebafb636c7d742d5e08ec46a8799,10,10,4,4,0,111463,0
-trial-0004,1,native_cpu,750,pass,"valid run, SLO satisfied, observed compaction debt did not increase",750.0,0.557055,1.224703,bef48e137b47cb9a367642ad154f0f3892a8954dc3a6f665853949adf1bc69bc,10,10,0,0,0,0,0
-trial-0005,1,cpu_native,750,pass,"valid run, SLO satisfied, observed compaction debt did not increase",750.0,0.562175,1.235967,bef48e137b47cb9a367642ad154f0f3892a8954dc3a6f665853949adf1bc69bc,10,10,4,3,0,0,0
-trial-0006,1,cuda_batched,750,pass,"valid run, SLO satisfied, observed compaction debt did not increase",750.0,0.547327,1.209343,bef48e137b47cb9a367642ad154f0f3892a8954dc3a6f665853949adf1bc69bc,10,10,4,4,508,108868,0
-trial-0007,1,cpu_batched,750,pass,"valid run, SLO satisfied, observed compaction debt did not increase",750.0,0.553471,1.268735,bef48e137b47cb9a367642ad154f0f3892a8954dc3a6f665853949adf1bc69bc,10,10,4,3,0,0,0

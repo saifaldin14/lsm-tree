@@ -1,3 +1,0 @@
-‡
-_
-cuda-rate-sweep-trial-0009$57cae8af-ad27-4ca2-a2b3-b6940fe5100eYIHVCPP1YKIGFLGT1QEM(€€€€À$033e6082-0582-498b-be93-cd0bc66b3f13$1fd28ba4-5920-4d2f-9aa9-0b921541abdc (2 |ıDìÔi&Éøò\şEH(U*Êèú×ºªoB1.lsm-staging/033e6082-0582-498b-be93-cd0bc66b3f13XøÊÙrcpu_batchedzŸ{"backend":"cpu_batched","batches":7,"blocks":130,"device":"host_cpu","dispatches":0,"input_bytes":300344,"kernel_ns":0,"output_bytes":500822,"wall_ns":597071}
