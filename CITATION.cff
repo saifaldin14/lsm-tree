@@ -1,0 +1,14 @@
+cff-version: 1.2.0
+message: "If you use this software or data, please cite it as below."
+title: "LSM Lab: GPU-offloaded RocksDB compaction"
+authors:
+  - family-names: "Al-Din Ali"
+    given-names: "Saif"
+repository-code: "https://github.com/saifaldin14/lsm-tree"
+license: "UNLICENSED"
+keywords:
+  - RocksDB
+  - LSM-tree
+  - compaction
+  - GPU
+  - CUDA
