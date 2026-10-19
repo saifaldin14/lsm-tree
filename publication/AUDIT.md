@@ -26,6 +26,7 @@ while building and measuring the full GPU offload.
 | 10 | **Filters unchecked.** The version digest reads through iterators, which never consult Bloom filters. | A wrong GPU filter hash would have gone unnoticed. | Point-lookup digest over up to 200,000 keys; all runs match. |
 | 11 | **Scratch data deleted.** Zyra's `logind` removed `/dev/shm` files when the last session ended. | Runs failed part-way. | `loginctl enable-linger`; documented in the runbook. |
 | 12 | **Stale error flag.** A GPU eligibility flag shared the parser's error word, so jobs with deletes reported corruption on fallback. | Caught by the differential matrix before any measurement. | Separate flag; the delete cases match native. |
+| 13 | **Wrong codec in the output-only design.** The output-only GPU path compressed blocks with LZ4 even when the column family was configured for no compression or ZSTD. | Its "128 B, uncompressed" isolated result (136 MiB/s, 7.9 CPU-s/GiB) measured LZ4 compression, not the configured setting. Stored data was still correct. | The output-only path now applies only to LZ4 column families; the isolated sweep was re-run. |
 
 ## Data and provenance
 

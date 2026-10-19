@@ -1,0 +1,7 @@
+{
+  "source": "AWS EC2 on-demand, Linux, us-east-1, October 2026 (cloudprice.net, doit.com)",
+  "physical_core_hour": 0.0903,
+  "physical_core_hour_basis": "c7i.xlarge $0.1806/h for 4 vCPUs = 2 physical cores",
+  "gpu_hour": 0.6242,
+  "gpu_hour_basis": "g6.xlarge (NVIDIA L4) $0.8048/h minus its 2 physical cores; an approximation, since the measured GPU is an RTX A6000"
+}
