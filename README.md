@@ -87,6 +87,12 @@ caused.
 > Turning it off makes each write cheap, so compaction becomes most of the
 > work: the case where offloading compaction matters most.
 
+> **What is catch-up compaction?** While writes arrive, RocksDB may let
+> merging fall behind and leave unmerged files piling up. When the writes
+> stop, it still has to merge them; that leftover work is catch-up
+> compaction. We time it after every run and include it in throughput, so a
+> design cannot look faster just by postponing work.
+
 ![Whole database with batched writes](publication/figures/fig2_database_batched.png)
 
 **Figure 2.** Whole database with batched writes (100 puts per batch, WAL off) on 4 cores, 50 M keys with 128-byte values. (a) Throughput including the time to finish all resulting compaction; (b) compaction still pending when writes stop; (c) p99 write latency; (d) CPU time per operation. Background jobs: native 4, GPU compression only 2, GPU merge + block building 4. Single runs.

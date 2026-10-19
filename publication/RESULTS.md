@@ -90,7 +90,10 @@ against the first mode. Point lookups exercise the GPU-built Bloom filters.
 - **Metric:** after the run the benchmark waits for all pending compaction
   and reports *ingest-and-compact throughput*: all operations divided by the
   time to issue them plus the time to finish the compaction they caused.
-  CPU per operation covers the same interval.
+  CPU per operation covers the same interval. The pending work finished
+  after writes stop is *catch-up compaction*. RocksDB can let compaction fall
+  behind during a run and leave unmerged files to merge later, so counting
+  it prevents a design from looking faster by postponing work.
 - **Verification:** every key and value is checked after each run; reads are
   checked online.
 
