@@ -31,4 +31,4 @@ python3 publication/make_figures.py
 Grid for the whole-database run:
 [../configs/system/batched-ingest.json](../configs/system/batched-ingest.json).
 The earlier compression-only evaluation (figures, tables, analysis code) is
-in git history at commit `7bba12b`.
+in git history at commit `a97ae43`.

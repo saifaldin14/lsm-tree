@@ -85,5 +85,4 @@ python3 publication/make_figures.py                                      # figur
 - [docs/gpu-compaction.md](docs/gpu-compaction.md): what is offloaded, how it plugs into RocksDB, eligibility, configuration and limits
 - [docs/runbook.md](docs/runbook.md): building, benchmarks, the `labctl` harness, hardware gates
 - [docs/telemetry.md](docs/telemetry.md): resource and energy telemetry
-- [docs/rift-cluster-access.md](docs/rift-cluster-access.md): access to the Rift GPU machines
 - [publication/](publication/): results, methodology audit and data

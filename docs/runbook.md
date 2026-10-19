@@ -124,7 +124,7 @@ refuses data from a run that failed its correctness check.
 
 ### Running on Rift (Zyra)
 
-See [rift-cluster-access.md](rift-cluster-access.md). On Zyra the RTX A6000 is
+On Zyra the RTX A6000 is
 attached to NUMA node 0. Keep databases on `/dev/shm`, and enable lingering
 once (`loginctl enable-linger $USER`); otherwise logind removes your
 `/dev/shm` files when your last session ends. The system CMake is too old;

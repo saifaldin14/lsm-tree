@@ -15,3 +15,6 @@
 __pycache__/
 .pytest_cache/
 .DS_Store
+
+# Private cluster notes
+/docs/rift-cluster-access.md

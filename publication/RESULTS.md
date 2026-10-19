@@ -224,7 +224,7 @@ until then, no energy claim is made.
 
 The project first offloaded only output compression and checksums, and
 evaluated it with the gRPC harness (open-loop load, 122 trials). The full
-analysis is in git history (commit `7bba12b`, `publication/RESULTS.md`).
+analysis is in git history (commit `a97ae43`, `publication/RESULTS.md`).
 Its conclusions still hold and agree with 3.1:
 
 - compaction jobs were 16–21% faster;

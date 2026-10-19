@@ -2,7 +2,7 @@
 
 Every problem we found in our own measurements, what it did to the numbers,
 and how it is handled now. The first group affected the earlier,
-compression-only evaluation (git commit `7bba12b`); the second was found
+compression-only evaluation (git commit `a97ae43`); the second was found
 while building and measuring the full GPU offload.
 
 ## Problems in the earlier evaluation
@@ -37,7 +37,7 @@ while building and measuring the full GPU offload.
   environment and RocksDB engine fingerprint.
 - Raw bundles of the earlier evaluation (about 3.3 GB) are not in the
   repository. Their summary tables, figures and analysis code are in git
-  history at commit `7bba12b`.
+  history at commit `a97ae43`.
 
 ## Open items
 
