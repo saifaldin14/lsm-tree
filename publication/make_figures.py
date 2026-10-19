@@ -146,7 +146,7 @@ def figure_compaction_cpu():
         bars = ax.bar(xs, values, width, label=name, color=COLORS[name])
         label_bars(ax, bars, lambda v: f"{v:.1f}", size=8)
     ax.set_xticks(range(len(WORKLOADS)), WORKLOAD_LABELS)
-    ax.set_ylabel("CPU seconds per GiB compacted\n(lower is better)")
+    ax.set_ylabel("CPU seconds per GiB compacted")
     ax.set_title("CPU cost of compaction")
     ax.set_ylim(0, max(max(v) for v in CPU_PER_GIB.values()) * 1.15)
     ax.legend(ncol=2, loc="upper right")
@@ -164,7 +164,7 @@ def figure_compaction_speedup():
         label_bars(ax, bars, lambda v: f"{v:.1f}×", size=8.5)
     ax.axhline(1.0, color=GREY, linestyle="--", linewidth=1, label="Native RocksDB (1×)")
     ax.set_xticks(range(len(WORKLOADS)), WORKLOAD_LABELS)
-    ax.set_ylabel("Compaction speed-up over native\n(higher is better)")
+    ax.set_ylabel("Speed-up over native RocksDB")
     ax.set_title("Compaction speed")
     ax.set_ylim(0, max(max(v) for v in SPEEDUP.values()) * 1.15)
     ax.legend(loc="upper right")
@@ -179,9 +179,9 @@ def figure_database():
     short = ["Native\nRocksDB", "GPU compression\nonly", "GPU merge +\nblock building"]
     fig, axes = plt.subplots(1, 3, figsize=(11.5, 3.9))
     panels = [
-        ("Throughput\n(thousand ops/s, higher is better)", [BATCHED[n]["end_to_end"] / 1000 for n in names], lambda v: f"{v:.0f}k"),
-        ("p99 write latency\n(ms, lower is better)", [BATCHED[n]["p99_ms"] for n in names], lambda v: f"{v:.1f}"),
-        ("CPU per operation\n(µs, lower is better)", [BATCHED[n]["cpu_us"] for n in names], lambda v: f"{v:.1f}"),
+        ("Throughput (thousand ops/s)", [BATCHED[n]["end_to_end"] / 1000 for n in names], lambda v: f"{v:.0f}k"),
+        ("p99 write latency (ms)", [BATCHED[n]["p99_ms"] for n in names], lambda v: f"{v:.1f}"),
+        ("CPU per operation (µs)", [BATCHED[n]["cpu_us"] for n in names], lambda v: f"{v:.1f}"),
     ]
     for ax, (title, values, fmt) in zip(axes, panels):
         bars = ax.bar(range(len(names)), values, 0.62, color=colors)

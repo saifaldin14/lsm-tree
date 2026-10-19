@@ -57,7 +57,7 @@ level-0 files), with 16-byte keys. Median of 3 warm runs.
 
 | Values | Native | Compression only | Merge | **Merge + block building** |
 |---|---|---|---|---|
-| 32 B | 11.8 s, 16.6 CPU-s/GiB | 1.12× faster | 1.74× | **6.06× faster, 2.3 CPU-s/GiB (7.3× less)** |
+| 32 B | 11.8 s, 16.7 CPU-s/GiB | 1.12× faster | 1.74× | **6.06× faster, 2.3 CPU-s/GiB (7.3× less)** |
 | 128 B | 6.9 s, 10.5 CPU-s/GiB | 1.22× | 1.97× | **4.63×, 2.1 CPU-s/GiB (5.2× less)** |
 | 1 KB | 5.4 s, 5.5 CPU-s/GiB | 1.09× | 1.76× | **2.70×, 1.9 CPU-s/GiB (2.9× less)** |
 | 128 B, no compression | 5.6 s, 5.1 CPU-s/GiB | 0.99× | 1.54× | **2.32×, 1.8 CPU-s/GiB (2.9× less)** |
