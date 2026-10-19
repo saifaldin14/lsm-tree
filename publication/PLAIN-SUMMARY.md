@@ -31,6 +31,11 @@ We ran two kinds of test:
 - **The whole database:** four programs wrote 128-byte items into a
   50-million-item database as fast as they could, for two and a half minutes,
   on 4 CPU cores. They wrote either one item at a time or 100 items at a time.
+  When writing one at a time, the database also kept its safety log, a
+  file where every new item is noted first so it can be recovered after a
+  crash. When writing 100 at a time, the log was turned off, as is common
+  when loading data in bulk. That makes writing cheaper, so the background
+  merging becomes most of the work.
   We counted the time until the database had finished all the merging the
   writes caused, not just the writing time.
 

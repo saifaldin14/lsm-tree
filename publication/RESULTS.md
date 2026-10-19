@@ -82,7 +82,11 @@ against the first mode. Point lookups exercise the GPU-built Bloom filters.
 - **Load:** four closed-loop client threads (one per core) issue uniform
   random overwrites for 30 s of warm-up plus 120 s of measurement, either
   one put at a time with the write-ahead log on, or in batches of 100 puts
-  with it off.
+  with it off. The write-ahead log (WAL) is RocksDB's crash-recovery log:
+  every write is appended to it before being acknowledged, so writes not
+  yet in data files can be replayed after a crash. Disabling it, as bulk
+  loads and replicated systems do, removes that per-write cost and makes
+  compaction the dominant work.
 - **Metric:** after the run the benchmark waits for all pending compaction
   and reports *ingest-and-compact throughput*: all operations divided by the
   time to issue them plus the time to finish the compaction they caused.

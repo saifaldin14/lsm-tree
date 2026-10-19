@@ -76,6 +76,17 @@ measurement, writing 100 puts per batch with no write-ahead log. Throughput
 counts the time to issue the writes **and** finish all the compaction they
 caused.
 
+> **What is the WAL?** The write-ahead log (WAL) is a file RocksDB appends
+> every write to before acknowledging it. A new write lives only in memory
+> until RocksDB later writes it into its regular files, so after a crash
+> RocksDB replays the log to recover it. With the WAL **on** (RocksDB's
+> default), every write costs an extra log append. With it **off**, writes
+> are cheaper but anything still in memory is lost in a crash. Applications
+> turn it off when they can regenerate the data, as in bulk loading, or when
+> another layer, such as a replicated log, already guarantees durability.
+> Turning it off makes each write cheap, so compaction becomes most of the
+> work: the case where offloading compaction matters most.
+
 ![Whole database with batched writes](publication/figures/fig2_database_batched.png)
 
 **Figure 2.** Whole database with batched writes (100 puts per batch, WAL off) on 4 cores, 50 M keys with 128-byte values. (a) Throughput including the time to finish all resulting compaction; (b) compaction still pending when writes stop; (c) p99 write latency; (d) CPU time per operation. Background jobs: native 4, GPU compression only 2, GPU merge + block building 4. Single runs.
