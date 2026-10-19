@@ -130,20 +130,6 @@ afterwards. Measured only while writes are running, the GPU version looks
   (which correctly fall back to the merge-only path). The GPU code passes
   `compute-sanitizer` with no errors.
 
-### Not yet established
-
-- **Repetition:** whole-database results are single runs; five repetitions in
-  randomized order are needed.
-- **Energy:** measured only during the run, the GPU version uses about 15%
-  more energy per operation. That window excludes native RocksDB's catch-up,
-  so no energy claim is made until energy is measured through it.
-- **Scope:** results come from one machine with memory-backed storage,
-  synthetic uniform-random overwrites and no reads.
-- **Coverage gaps:**
-  - jobs with deletes use the merge-only path;
-  - ZSTD is not offloaded;
-  - very large jobs can fall back to the CPU when nvCOMP rejects the batch.
-
 ## Repository
 
 | Path | Contents |
