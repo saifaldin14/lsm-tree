@@ -7,7 +7,7 @@ Results of offloading RocksDB compaction to an NVIDIA GPU.
 | [RESULTS.md](RESULTS.md) | Setup, methods, results, correctness, threats to validity, next steps |
 | [PLAIN-SUMMARY.md](PLAIN-SUMMARY.md) | Non-technical summary |
 | [AUDIT.md](AUDIT.md) | Every measurement problem found and how it was fixed |
-| [figures/](figures/) | Four figures (PNG and PDF) |
+| [figures/](figures/) | Three figures (PDF and PNG) |
 | [data/compaction/](data/compaction/) | Raw `lsm_compaction_bench` output: one JSON line per design and repetition |
 | [data/database/](data/database/) | Raw `system_campaign.py` output (`batched-ingest.jsonl`) and its trial order |
 | [data/summary.md](data/summary.md) | Every number in the figures, generated from the raw data |
@@ -15,14 +15,15 @@ Results of offloading RocksDB compaction to an NVIDIA GPU.
 | [compaction_sweep.sh](compaction_sweep.sh) | Runs the isolated compaction sweep |
 | [system_campaign.py](system_campaign.py) | Runs whole-database grids with core pinning, background load and RAPL/GPU energy |
 
-Figures:
+Figures (vector PDF with embedded fonts, and 300 dpi PNG):
 
-1. `1_compaction_cpu`: CPU seconds per GiB compacted, by design and workload.
-2. `2_compaction_speedup`: compaction speed-up over native RocksDB.
-3. `3_database_batched`: whole-database throughput, p99 write latency and
-   CPU per operation with batched writes.
-4. `4_deferred_compaction`: throughput during the run vs including catch-up
-   compaction.
+1. `fig1_compaction`: isolated compaction throughput (MiB/s) and CPU time per
+   GiB, medians of 3 runs with min-max whiskers.
+2. `fig2_database_batched`: whole-database throughput including catch-up
+   (kops/s), catch-up time (s), p99 write latency (ms) and CPU per operation
+   (µs) with batched writes.
+3. `fig3_deferred_compaction`: throughput during the run vs including
+   catch-up compaction, single and batched writes.
 
 ```sh
 python3 publication/make_figures.py

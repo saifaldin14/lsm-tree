@@ -100,9 +100,9 @@ oversubscribed (see [AUDIT.md](AUDIT.md)).
 
 ### 3.1 Single compactions
 
-![CPU cost of compaction](figures/1_compaction_cpu.png)
+![Isolated compaction throughput and CPU cost](figures/fig1_compaction.png)
 
-![Compaction speed](figures/2_compaction_speedup.png)
+**Figure 1.** Isolated compaction. (a) Compaction throughput in MiB of input per second; (b) whole-process CPU time per GiB of input. Bars are medians of 3 warm runs; whiskers span min-max. 16-byte keys, 4 KiB blocks, LZ4 unless marked uncompressed.
 
 | Workload | Native CPU s/GiB | Full offload CPU s/GiB | Speed-up | CPU reduction |
 |---|---|---|---|---|
@@ -127,7 +127,9 @@ All designs: [data/summary.md](data/summary.md).
 
 ### 3.2 Whole database, batched writes
 
-![Whole database: batched writes](figures/3_database_batched.png)
+![Whole database with batched writes](figures/fig2_database_batched.png)
+
+**Figure 2.** Whole database with batched writes (100 puts per batch, WAL off) on 4 cores, 50 M keys with 128-byte values. (a) Throughput including the time to finish all resulting compaction; (b) compaction still pending when writes stop; (c) p99 write latency; (d) CPU time per operation. Background jobs: native 4, GPU compression only 2, GPU merge + block building 4. Single runs.
 
 | Design | Bg jobs | Ops/s incl. catch-up | Catch-up | CPU/op | p99 write | Writers stalled |
 |---|---|---|---|---|---|---|
@@ -146,7 +148,9 @@ setting it beat native (163k vs 124k ops/s); its 4-job setting was not run.
 
 ### 3.3 Deferred compaction and single writes
 
-![Short runs overstate native RocksDB](figures/4_deferred_compaction.png)
+![Throughput during the run vs including catch-up compaction](figures/fig3_deferred_compaction.png)
+
+**Figure 3.** Throughput measured only while writes run (light) and including catch-up compaction (solid), for (a) single writes with the WAL on and (b) batched writes with the WAL off.
 
 With single puts and the write-ahead log on, the GPU version looks only 13%
 faster than native RocksDB during the run (237k vs 210k ops/s). Counted to

@@ -51,16 +51,18 @@ Details: [docs/gpu-compaction.md](docs/gpu-compaction.md).
 One full compaction, reading 0.64–0.97 GiB (a bottom level plus 8 overlapping
 level-0 files), with 16-byte keys. Median of 3 warm runs.
 
-![CPU cost of compaction](publication/figures/1_compaction_cpu.png)
+![Isolated compaction throughput and CPU cost](publication/figures/fig1_compaction.png)
 
-![Compaction speed](publication/figures/2_compaction_speedup.png)
+**Figure 1.** Isolated compaction. (a) Compaction throughput in MiB of input per second; (b) whole-process CPU time per GiB of input. Bars are medians of 3 warm runs; whiskers span min-max. 16-byte keys, 4 KiB blocks, LZ4 unless marked uncompressed.
 
-| Values | Native | Compression only | Merge | **Merge + block building** |
+Throughput in MiB of input per second / CPU time in seconds per GiB:
+
+| Values | Native RocksDB | GPU compression only | GPU merge | **GPU merge + block building** |
 |---|---|---|---|---|
-| 32 B | 11.8 s, 16.7 CPU-s/GiB | 1.12× faster | 1.74× | **6.06× faster, 2.3 CPU-s/GiB (7.3× less)** |
-| 128 B | 6.9 s, 10.5 CPU-s/GiB | 1.22× | 1.97× | **4.63×, 2.1 CPU-s/GiB (5.2× less)** |
-| 1 KB | 5.4 s, 5.5 CPU-s/GiB | 1.09× | 1.76× | **2.70×, 1.9 CPU-s/GiB (2.9× less)** |
-| 128 B, no compression | 5.6 s, 5.1 CPU-s/GiB | 0.99× | 1.54× | **2.32×, 1.8 CPU-s/GiB (2.9× less)** |
+| 32 B | 61 MiB/s / 16.7 s | 69 / 15.3 | 107 / 9.7 | **371 MiB/s / 2.3 s** |
+| 128 B | 97 / 10.5 | 115 / 9.4 | 186 / 5.8 | **438 / 2.1** |
+| 1 KB | 184 / 5.5 | 199 / 5.7 | 322 / 3.8 | **493 / 1.9** |
+| 128 B, uncompressed | 201 / 5.1 | 136 / 7.9 | 211 / 5.0 | **466 / 1.8** |
 
 Native RocksDB's cost grows as values shrink, because most of its work is per
 key. With full offload the cost stays near 2 CPU-seconds per GiB for every
@@ -74,7 +76,9 @@ measurement, writing 100 puts per batch with no write-ahead log. Throughput
 counts the time to issue the writes **and** finish all the compaction they
 caused.
 
-![Whole database: batched writes on 4 CPU cores](publication/figures/3_database_batched.png)
+![Whole database with batched writes](publication/figures/fig2_database_batched.png)
+
+**Figure 2.** Whole database with batched writes (100 puts per batch, WAL off) on 4 cores, 50 M keys with 128-byte values. (a) Throughput including the time to finish all resulting compaction; (b) compaction still pending when writes stop; (c) p99 write latency; (d) CPU time per operation. Background jobs: native 4, GPU compression only 2, GPU merge + block building 4. Single runs.
 
 | Design | Bg jobs | Ops/s | Catch-up after run | CPU per op | p99 write | Writers stalled |
 |---|---|---|---|---|---|---|
@@ -88,7 +92,9 @@ background-job setting; GPU compression only was run with 2 jobs only.
 
 ### 3. Single writes and postponed compaction
 
-![Short runs overstate native RocksDB](publication/figures/4_deferred_compaction.png)
+![Throughput during the run vs including catch-up compaction](publication/figures/fig3_deferred_compaction.png)
+
+**Figure 3.** Throughput measured only while writes run (light) and including catch-up compaction (solid), for (a) single writes with the WAL on and (b) batched writes with the WAL off.
 
 | Writes | Design | Ops/s during run | Ops/s including catch-up | Catch-up | CPU per op |
 |---|---|---|---|---|---|
