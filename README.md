@@ -22,10 +22,7 @@ lookups.
   enough:** at most 1.2× faster, with no benefit to the database.
 
 Measured on Zyra: 4 × Xeon Gold 5220, RTX A6000, data on `/dev/shm`.
-Native RocksDB is built with hardware CRC32C. Full write-up:
-[publication/RESULTS.md](publication/RESULTS.md); plain-language version:
-[publication/PLAIN-SUMMARY.md](publication/PLAIN-SUMMARY.md); every number:
-[publication/data/summary.md](publication/data/summary.md).
+Native RocksDB is built with hardware CRC32C.
 
 ### Three levels of offload
 
