@@ -42,7 +42,7 @@ We ran two kinds of test:
 ## Results
 
 **One merge at a time.** With all three steps on the GPU, a merge was
-**2.3 to 6 times faster** and used **3 to 7 times less CPU time**. The
+**2.3 to 7 times faster** and used **3 to 9 times less CPU time**. The
 smaller the data items, the bigger the gain. Compression alone on the GPU
 helped very little (up to 1.2 times faster).
 

@@ -7,7 +7,7 @@ Results of offloading RocksDB compaction to an NVIDIA GPU.
 | [RESULTS.md](RESULTS.md) | Setup, methods, results, correctness, threats to validity, next steps |
 | [PLAIN-SUMMARY.md](PLAIN-SUMMARY.md) | Non-technical summary |
 | [AUDIT.md](AUDIT.md) | Every measurement problem found and how it was fixed |
-| [figures/](figures/) | Three figures (PDF and PNG) |
+| [figures/](figures/) | Figures (PDF and PNG) |
 | [data/compaction/](data/compaction/) | Raw `lsm_compaction_bench` output: one JSON line per design and repetition |
 | [data/database/](data/database/) | Raw `system_campaign.py` output (`batched-ingest.jsonl`) and its trial order |
 | [data/summary.md](data/summary.md) | Every number in the figures, generated from the raw data |
@@ -17,8 +17,9 @@ Results of offloading RocksDB compaction to an NVIDIA GPU.
 
 Figures (vector PDF with embedded fonts, and 300 dpi PNG):
 
-1. `fig1_compaction`: isolated compaction throughput (MiB/s) and CPU time per
-   GiB, medians of 3 runs with min-max whiskers.
+1. `fig1a_compaction_lz4` and `fig1b_compaction_other_codecs`: isolated
+   compaction throughput (MiB/s) and CPU time per GiB, medians of 3 runs with
+   min-max whiskers, for the LZ4 workloads and for ZSTD / no compression.
 2. `fig2_database_batched`: whole-database throughput including catch-up
    (kops/s), catch-up time (s), p99 write latency (ms) and CPU per operation
    (µs) with batched writes.

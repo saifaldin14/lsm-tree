@@ -197,27 +197,34 @@ def grouped_bars(ax, groups, designs, value, fmt, size=5.8):
 # ---------------------------------------------------------------- figures
 
 def figure_compaction():
-    """(a) compaction throughput, MiB/s of input; (b) CPU seconds per GiB of input."""
-    tags = [(tag, label) for tag, label in WORKLOAD_ORDER if tag in COMPACTION]
-    if not tags:
-        return
-    fig, axes = plt.subplots(2, 1, figsize=(DOUBLE_COLUMN, 4.1))
+    """Isolated compaction, (a) throughput (MiB/s of input) and (b) CPU seconds per GiB, in two images:
+    LZ4 workloads with all four designs, and the other codecs, where GPU compression only does not apply."""
+    images = [("fig1a_compaction_lz4", [t for t in WORKLOAD_ORDER if "lz4" in t[0]], DESIGNS),
+              ("fig1b_compaction_other_codecs", [t for t in WORKLOAD_ORDER if "lz4" not in t[0]],
+               (NATIVE, MERGE, FULL))]
     metrics = [("Throughput (MiB/s)", throughput_mib, lambda v: f"{v:.0f}"),
                ("CPU time (s per GiB)", cpu_per_gib, lambda v: f"{v:.1f}")]
-    for ax, letter, (ylabel, metric, fmt) in zip(axes, "ab", metrics):
-        groups = []
-        for tag, label in tags:
-            by_design = {}
-            for design, entry in COMPACTION[tag].items():
-                values = metric(entry)
-                by_design[design] = (statistics.median(values), min(values), max(values))
-            groups.append((label, by_design))
-        grouped_bars(ax, groups, DESIGNS, None, fmt, size=6.0)
-        finish_axis(ax, ylabel)
-        ax.text(-0.07, 1.02, f"({letter})", transform=ax.transAxes, fontsize=9, fontweight="bold", va="bottom")
-    fig.tight_layout(h_pad=1.2, rect=(0, 0, 1, 0.94))
-    design_legend(fig, DESIGNS, y=0.94)
-    save(fig, "fig1_compaction")
+    for name, workloads, designs in images:
+        tags = [(tag, label) for tag, label in workloads if tag in COMPACTION]
+        if not tags:
+            continue
+        width = DOUBLE_COLUMN if len(tags) > 2 else 4.6
+        fig, axes = plt.subplots(1, 2, figsize=(width, 2.4))
+        for ax, letter, (ylabel, metric, fmt) in zip(axes, "ab", metrics):
+            groups = []
+            for tag, label in tags:
+                by_design = {}
+                for design in designs:
+                    if design in COMPACTION[tag]:
+                        values = metric(COMPACTION[tag][design])
+                        by_design[design] = (statistics.median(values), min(values), max(values))
+                groups.append((label, by_design))
+            grouped_bars(ax, groups, designs, None, fmt, size=5.6)
+            finish_axis(ax, ylabel)
+            panel_label(ax, letter)
+        fig.tight_layout(w_pad=2.5, rect=(0, 0, 1, 0.86))
+        design_legend(fig, designs, y=0.86)
+        save(fig, name)
 
 
 def by_design(entries, metric, **match):

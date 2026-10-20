@@ -16,7 +16,7 @@ and up to 200,000 point lookups match.
    On a single compaction:
    - compression and checksums only: at most 1.22× faster;
    - adding the input merge: 1.5–2.0× faster;
-   - adding output block building: **2.3–6.1× faster, with 2.9–7.3× less
+   - adding output block building: **2.3–7.1× faster, with 2.7–9.0× less
      CPU**.
 
    The gain is largest for small values, where per-key CPU work dominates.
@@ -60,12 +60,13 @@ The designs compared ([docs/gpu-compaction.md](../docs/gpu-compaction.md)):
 **Isolated compaction (`lsm_compaction_bench`).** Each mode builds the same
 database: a bottom level holding every key, then 8 overlapping L0 files of
 random overwrites, each covering half the key space. One `CompactRange` merges
-them into the bottom level in two jobs, reading 0.64–0.97 GiB. Workloads:
+them into the bottom level in two jobs, reading 0.6–1.1 GiB. Workloads:
 
 - 10 M keys with 32 B values;
 - 4 M keys with 128 B values;
 - 1 M keys with 1 KB values;
-- 4 M keys with 128 B values and no compression.
+- 4 M keys with 128 B values, with ZSTD and with no compression;
+- 4 M keys with 128 B values and LZ4, where 10% of the L0 writes are deletes.
 
 Keys are 16 bytes. We measure wall time and whole-process CPU, so GPU helper
 threads are counted. Each mode runs 4 times; repetition 0 includes one-time
@@ -107,16 +108,22 @@ oversubscribed (see [AUDIT.md](AUDIT.md)).
 
 ### 3.1 Single compactions
 
-![Isolated compaction throughput and CPU cost](figures/fig1_compaction.png)
+![Isolated compaction, LZ4 workloads](figures/fig1a_compaction_lz4.png)
 
-**Figure 1.** Isolated compaction. (a) Compaction throughput in MiB of input per second; (b) whole-process CPU time per GiB of input. Bars are medians of 3 warm runs; whiskers span min-max. 16-byte keys, 4 KiB blocks, LZ4 unless marked uncompressed.
+**Figure 1a.** Isolated compaction, LZ4 workloads. (a) Compaction throughput in MiB of input per second; (b) whole-process CPU time per GiB of input. Bars are medians of 3 warm runs; whiskers span min-max. 16-byte keys, 4 KiB blocks.
+
+![Isolated compaction, ZSTD and no compression](figures/fig1b_compaction_other_codecs.png)
+
+**Figure 1b.** The same for ZSTD and no compression. GPU compression only offloads LZ4 alone; with these settings it runs exactly as native RocksDB, so it is not shown.
 
 | Workload | Native CPU s/GiB | Full offload CPU s/GiB | Speed-up | CPU reduction |
 |---|---|---|---|---|
-| 32 B values | 16.65 | 2.29 | 6.06× | 7.30× |
-| 128 B values | 10.51 | 2.09 | 4.63× | 5.19× |
-| 1 KB values | 5.55 | 1.94 | 2.70× | 2.89× |
-| 128 B, no compression | 5.09 | 1.77 | 2.32× | 2.87× |
+| 32 B values, LZ4 | 17.35 | 2.39 | 6.13× | 7.29× |
+| 128 B values, LZ4 | 11.19 | 2.21 | 4.73× | 5.22× |
+| 1 KB values, LZ4 | 5.90 | 2.05 | 2.77× | 2.91× |
+| 128 B values, ZSTD | 20.68 | 2.26 | 7.06× | 9.04× |
+| 128 B, no compression | 5.14 | 1.89 | 2.25× | 2.71× |
+| 128 B, LZ4, 10% deletes | 11.30 | 2.22 | 4.76× | 5.25× |
 
 All designs: [data/summary.md](data/summary.md).
 
@@ -126,8 +133,10 @@ All designs: [data/summary.md](data/summary.md).
   whatever the value size. What remains on the CPU is reading input files,
   writing output files, and one index entry and filter insertion per block.
 - **Compression alone is a small part of the work.** Offloading only LZ4 and
-  CRC32C cuts CPU by at most 14%, and costs more CPU than it saves when
-  there is nothing to compress (0.94×).
+  CRC32C cuts CPU by at most 18%. It applies only to LZ4; with ZSTD or no
+  compression it runs exactly as native RocksDB.
+- **ZSTD gains most.** Native ZSTD compaction is the most CPU-hungry case
+  (20.7 CPU-s/GiB); on the GPU it costs about the same as LZ4.
 - **Each stage adds a real gain.** Moving the merge doubles speed at most.
   Most of the gain comes from also building the output blocks, which removes
   RocksDB's per-key `CompactionIterator` and table-builder work.

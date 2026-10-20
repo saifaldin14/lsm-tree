@@ -9,7 +9,7 @@ lookups.
 
 ## Results at a glance
 
-- **Single compactions run 2.3–6.1× faster and use 2.9–7.3× less CPU**, with
+- **Single compactions run 2.3–7.1× faster and use 2.7–9.0× less CPU**, with
   output identical to native RocksDB.
 - **With batched writes the whole database handles 1.72× more writes**
   (602k vs 349k ops/s). p99 write latency drops from 7.1 ms to 1.1 ms, and
@@ -45,25 +45,32 @@ Details: [docs/gpu-compaction.md](docs/gpu-compaction.md).
 
 ### 1. Single compactions
 
-One full compaction, reading 0.64–0.97 GiB (a bottom level plus 8 overlapping
+One full compaction, reading 0.6–1.1 GiB (a bottom level plus 8 overlapping
 level-0 files), with 16-byte keys. Median of 3 warm runs.
 
-![Isolated compaction throughput and CPU cost](publication/figures/fig1_compaction.png)
+![Isolated compaction, LZ4 workloads](publication/figures/fig1a_compaction_lz4.png)
 
-**Figure 1.** Isolated compaction. (a) Compaction throughput in MiB of input per second; (b) whole-process CPU time per GiB of input. Bars are medians of 3 warm runs; whiskers span min-max. 16-byte keys, 4 KiB blocks, LZ4 unless marked uncompressed.
+**Figure 1a.** Isolated compaction, LZ4 workloads. (a) Compaction throughput in MiB of input per second; (b) whole-process CPU time per GiB of input. Bars are medians of 3 warm runs; whiskers span min-max. 16-byte keys, 4 KiB blocks.
+
+![Isolated compaction, ZSTD and no compression](publication/figures/fig1b_compaction_other_codecs.png)
+
+**Figure 1b.** The same for ZSTD and no compression. GPU compression only offloads LZ4 alone; with these settings it runs exactly as native RocksDB, so it is not shown.
 
 Throughput in MiB of input per second / CPU time in seconds per GiB:
 
-| Values | Native RocksDB | GPU compression only | GPU merge | **GPU merge + block building** |
+| Workload | Native RocksDB | GPU compression only | GPU merge | **GPU merge + block building** |
 |---|---|---|---|---|
-| 32 B | 61 MiB/s / 16.7 s | 69 / 15.3 | 107 / 9.7 | **371 MiB/s / 2.3 s** |
-| 128 B | 97 / 10.5 | 115 / 9.4 | 186 / 5.8 | **438 / 2.1** |
-| 1 KB | 184 / 5.5 | 199 / 5.7 | 322 / 3.8 | **493 / 1.9** |
-| 128 B, uncompressed | 201 / 5.1 | 136 / 7.9 | 211 / 5.0 | **466 / 1.8** |
+| 32 B, LZ4 | 59 MiB/s / 17.3 s | 68 / 15.4 | 105 / 9.9 | **361 MiB/s / 2.4 s** |
+| 128 B, LZ4 | 91 / 11.2 | 114 / 9.5 | 182 / 6.0 | **420 / 2.2** |
+| 1 KB, LZ4 | 174 / 5.9 | 203 / 5.6 | 311 / 3.9 | **475 / 2.0** |
+| 128 B, ZSTD | 49 / 20.7 | n/a | 67 / 15.1 | **353 / 2.3** |
+| 128 B, no compression | 199 / 5.1 | n/a | 263 / 3.5 | **447 / 1.9** |
+| 128 B, LZ4, 10% deletes | 91 / 11.3 | 114 / 9.5 | 174 / 6.4 | **418 / 2.2** |
 
 Native RocksDB's cost grows as values shrink, because most of its work is per
-key. With full offload the cost stays near 2 CPU-seconds per GiB for every
-value size. Compression alone is a small part of the work.
+key; ZSTD is the most expensive codec. With full offload the cost stays near
+2 CPU-seconds per GiB for every value size and codec, including jobs with
+deletes. Compression alone is a small part of the work.
 
 ### 2. Whole database, batched writes
 
