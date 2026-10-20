@@ -1,0 +1,248 @@
+[
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 50,
+   "background-jobs": 2,
+   "l0-trigger": 2,
+   "level-multiplier": 6,
+   "compression": "zstd"
+  },
+  "shape": "aggressive-zstd",
+  "block": 0
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 50,
+   "background-jobs": 2
+  },
+  "shape": "default",
+  "block": 0
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 50,
+   "background-jobs": 2,
+   "l0-trigger": 2,
+   "level-multiplier": 6
+  },
+  "shape": "aggressive",
+  "block": 0
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 50,
+   "background-jobs": 2
+  },
+  "shape": "default",
+  "block": 0
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 50,
+   "background-jobs": 2,
+   "l0-trigger": 2,
+   "level-multiplier": 6
+  },
+  "shape": "aggressive",
+  "block": 0
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 50,
+   "background-jobs": 2,
+   "l0-trigger": 2,
+   "level-multiplier": 6,
+   "compression": "zstd"
+  },
+  "shape": "aggressive-zstd",
+  "block": 0
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 50,
+   "background-jobs": 2,
+   "l0-trigger": 2,
+   "level-multiplier": 6
+  },
+  "shape": "aggressive",
+  "block": 1
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 50,
+   "background-jobs": 2
+  },
+  "shape": "default",
+  "block": 1
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 50,
+   "background-jobs": 2
+  },
+  "shape": "default",
+  "block": 1
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 50,
+   "background-jobs": 2,
+   "l0-trigger": 2,
+   "level-multiplier": 6
+  },
+  "shape": "aggressive",
+  "block": 1
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 50,
+   "background-jobs": 2,
+   "l0-trigger": 2,
+   "level-multiplier": 6,
+   "compression": "zstd"
+  },
+  "shape": "aggressive-zstd",
+  "block": 1
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 50,
+   "background-jobs": 2,
+   "l0-trigger": 2,
+   "level-multiplier": 6,
+   "compression": "zstd"
+  },
+  "shape": "aggressive-zstd",
+  "block": 1
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 50,
+   "background-jobs": 2,
+   "l0-trigger": 2,
+   "level-multiplier": 6,
+   "compression": "zstd"
+  },
+  "shape": "aggressive-zstd",
+  "block": 2
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 50,
+   "background-jobs": 2,
+   "l0-trigger": 2,
+   "level-multiplier": 6
+  },
+  "shape": "aggressive",
+  "block": 2
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 50,
+   "background-jobs": 2
+  },
+  "shape": "default",
+  "block": 2
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 50,
+   "background-jobs": 2,
+   "l0-trigger": 2,
+   "level-multiplier": 6,
+   "compression": "zstd"
+  },
+  "shape": "aggressive-zstd",
+  "block": 2
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 50,
+   "background-jobs": 2
+  },
+  "shape": "default",
+  "block": 2
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 50,
+   "background-jobs": 2,
+   "l0-trigger": 2,
+   "level-multiplier": 6
+  },
+  "shape": "aggressive",
+  "block": 2
+ }
+]

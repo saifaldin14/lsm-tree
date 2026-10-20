@@ -1,0 +1,686 @@
+[
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 0,
+   "rmw-percent": 50,
+   "distribution": "uniform",
+   "background-jobs": 2
+  },
+  "workload": "F",
+  "distribution": "uniform",
+  "block": 0
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 95,
+   "distribution": "uniform",
+   "background-jobs": 2
+  },
+  "workload": "B",
+  "distribution": "uniform",
+  "block": 0
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 95,
+   "distribution": "uniform",
+   "background-jobs": 2
+  },
+  "workload": "B",
+  "distribution": "uniform",
+  "block": 0
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 95,
+   "distribution": "zipfian",
+   "background-jobs": 2
+  },
+  "workload": "B",
+  "distribution": "zipfian",
+  "block": 0
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 50,
+   "distribution": "uniform",
+   "background-jobs": 2
+  },
+  "workload": "A",
+  "distribution": "uniform",
+  "block": 0
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 50,
+   "distribution": "zipfian",
+   "background-jobs": 2
+  },
+  "workload": "A",
+  "distribution": "zipfian",
+  "block": 0
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 0,
+   "rmw-percent": 50,
+   "distribution": "zipfian",
+   "background-jobs": 2
+  },
+  "workload": "F",
+  "distribution": "zipfian",
+  "block": 0
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 95,
+   "distribution": "zipfian",
+   "background-jobs": 2
+  },
+  "workload": "B",
+  "distribution": "zipfian",
+  "block": 0
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 0,
+   "rmw-percent": 50,
+   "distribution": "uniform",
+   "background-jobs": 2
+  },
+  "workload": "F",
+  "distribution": "uniform",
+  "block": 0
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 50,
+   "distribution": "uniform",
+   "background-jobs": 2
+  },
+  "workload": "A",
+  "distribution": "uniform",
+  "block": 0
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 50,
+   "distribution": "zipfian",
+   "background-jobs": 2
+  },
+  "workload": "A",
+  "distribution": "zipfian",
+  "block": 0
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 0,
+   "distribution": "uniform",
+   "background-jobs": 2
+  },
+  "workload": "W",
+  "distribution": "uniform",
+  "block": 0
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 0,
+   "distribution": "uniform",
+   "background-jobs": 2
+  },
+  "workload": "W",
+  "distribution": "uniform",
+  "block": 0
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 0,
+   "rmw-percent": 50,
+   "distribution": "zipfian",
+   "background-jobs": 2
+  },
+  "workload": "F",
+  "distribution": "zipfian",
+  "block": 0
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 0,
+   "distribution": "zipfian",
+   "background-jobs": 2
+  },
+  "workload": "W",
+  "distribution": "zipfian",
+  "block": 0
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 0,
+   "distribution": "zipfian",
+   "background-jobs": 2
+  },
+  "workload": "W",
+  "distribution": "zipfian",
+  "block": 0
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 95,
+   "distribution": "zipfian",
+   "background-jobs": 2
+  },
+  "workload": "B",
+  "distribution": "zipfian",
+  "block": 1
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 0,
+   "rmw-percent": 50,
+   "distribution": "uniform",
+   "background-jobs": 2
+  },
+  "workload": "F",
+  "distribution": "uniform",
+  "block": 1
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 0,
+   "rmw-percent": 50,
+   "distribution": "zipfian",
+   "background-jobs": 2
+  },
+  "workload": "F",
+  "distribution": "zipfian",
+  "block": 1
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 0,
+   "distribution": "zipfian",
+   "background-jobs": 2
+  },
+  "workload": "W",
+  "distribution": "zipfian",
+  "block": 1
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 0,
+   "rmw-percent": 50,
+   "distribution": "zipfian",
+   "background-jobs": 2
+  },
+  "workload": "F",
+  "distribution": "zipfian",
+  "block": 1
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 95,
+   "distribution": "uniform",
+   "background-jobs": 2
+  },
+  "workload": "B",
+  "distribution": "uniform",
+  "block": 1
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 0,
+   "distribution": "zipfian",
+   "background-jobs": 2
+  },
+  "workload": "W",
+  "distribution": "zipfian",
+  "block": 1
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 95,
+   "distribution": "uniform",
+   "background-jobs": 2
+  },
+  "workload": "B",
+  "distribution": "uniform",
+  "block": 1
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 50,
+   "distribution": "zipfian",
+   "background-jobs": 2
+  },
+  "workload": "A",
+  "distribution": "zipfian",
+  "block": 1
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 50,
+   "distribution": "uniform",
+   "background-jobs": 2
+  },
+  "workload": "A",
+  "distribution": "uniform",
+  "block": 1
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 50,
+   "distribution": "zipfian",
+   "background-jobs": 2
+  },
+  "workload": "A",
+  "distribution": "zipfian",
+  "block": 1
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 0,
+   "distribution": "uniform",
+   "background-jobs": 2
+  },
+  "workload": "W",
+  "distribution": "uniform",
+  "block": 1
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 50,
+   "distribution": "uniform",
+   "background-jobs": 2
+  },
+  "workload": "A",
+  "distribution": "uniform",
+  "block": 1
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 0,
+   "distribution": "uniform",
+   "background-jobs": 2
+  },
+  "workload": "W",
+  "distribution": "uniform",
+  "block": 1
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 0,
+   "rmw-percent": 50,
+   "distribution": "uniform",
+   "background-jobs": 2
+  },
+  "workload": "F",
+  "distribution": "uniform",
+  "block": 1
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 95,
+   "distribution": "zipfian",
+   "background-jobs": 2
+  },
+  "workload": "B",
+  "distribution": "zipfian",
+  "block": 1
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 0,
+   "rmw-percent": 50,
+   "distribution": "zipfian",
+   "background-jobs": 2
+  },
+  "workload": "F",
+  "distribution": "zipfian",
+  "block": 2
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 50,
+   "distribution": "uniform",
+   "background-jobs": 2
+  },
+  "workload": "A",
+  "distribution": "uniform",
+  "block": 2
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 95,
+   "distribution": "zipfian",
+   "background-jobs": 2
+  },
+  "workload": "B",
+  "distribution": "zipfian",
+  "block": 2
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 0,
+   "rmw-percent": 50,
+   "distribution": "zipfian",
+   "background-jobs": 2
+  },
+  "workload": "F",
+  "distribution": "zipfian",
+  "block": 2
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 50,
+   "distribution": "uniform",
+   "background-jobs": 2
+  },
+  "workload": "A",
+  "distribution": "uniform",
+  "block": 2
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 0,
+   "distribution": "zipfian",
+   "background-jobs": 2
+  },
+  "workload": "W",
+  "distribution": "zipfian",
+  "block": 2
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 0,
+   "distribution": "zipfian",
+   "background-jobs": 2
+  },
+  "workload": "W",
+  "distribution": "zipfian",
+  "block": 2
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 95,
+   "distribution": "uniform",
+   "background-jobs": 2
+  },
+  "workload": "B",
+  "distribution": "uniform",
+  "block": 2
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 95,
+   "distribution": "zipfian",
+   "background-jobs": 2
+  },
+  "workload": "B",
+  "distribution": "zipfian",
+  "block": 2
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 0,
+   "rmw-percent": 50,
+   "distribution": "uniform",
+   "background-jobs": 2
+  },
+  "workload": "F",
+  "distribution": "uniform",
+  "block": 2
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 0,
+   "distribution": "uniform",
+   "background-jobs": 2
+  },
+  "workload": "W",
+  "distribution": "uniform",
+  "block": 2
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 0,
+   "distribution": "uniform",
+   "background-jobs": 2
+  },
+  "workload": "W",
+  "distribution": "uniform",
+  "block": 2
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 0,
+   "rmw-percent": 50,
+   "distribution": "uniform",
+   "background-jobs": 2
+  },
+  "workload": "F",
+  "distribution": "uniform",
+  "block": 2
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 50,
+   "distribution": "zipfian",
+   "background-jobs": 2
+  },
+  "workload": "A",
+  "distribution": "zipfian",
+  "block": 2
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 95,
+   "distribution": "uniform",
+   "background-jobs": 2
+  },
+  "workload": "B",
+  "distribution": "uniform",
+  "block": 2
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "read-percent": 50,
+   "distribution": "zipfian",
+   "background-jobs": 2
+  },
+  "workload": "A",
+  "distribution": "zipfian",
+  "block": 2
+ }
+]

@@ -1,0 +1,422 @@
+[
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4,
+   "threads": 4
+  },
+  "burn_percent": 40,
+  "writes": "batched",
+  "block": 0
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 16,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4,
+   "threads": 16
+  },
+  "burn_percent": 0,
+  "writes": "batched",
+  "block": 0
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 16,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4,
+   "threads": 16
+  },
+  "burn_percent": 0,
+  "writes": "batched",
+  "block": 0
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 2,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 2,
+   "threads": 2
+  },
+  "burn_percent": 0,
+  "writes": "batched",
+  "block": 0
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4,
+   "threads": 4
+  },
+  "burn_percent": 80,
+  "writes": "batched",
+  "block": 0
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 8,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4,
+   "threads": 8
+  },
+  "burn_percent": 0,
+  "writes": "batched",
+  "block": 0
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4,
+   "threads": 4
+  },
+  "burn_percent": 40,
+  "writes": "batched",
+  "block": 0
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4,
+   "threads": 4
+  },
+  "burn_percent": 80,
+  "writes": "batched",
+  "block": 0
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 8,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4,
+   "threads": 8
+  },
+  "burn_percent": 0,
+  "writes": "batched",
+  "block": 0
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 2,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 2,
+   "threads": 2
+  },
+  "burn_percent": 0,
+  "writes": "batched",
+  "block": 0
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4,
+   "threads": 4
+  },
+  "burn_percent": 40,
+  "writes": "batched",
+  "block": 1
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4,
+   "threads": 4
+  },
+  "burn_percent": 40,
+  "writes": "batched",
+  "block": 1
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 8,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4,
+   "threads": 8
+  },
+  "burn_percent": 0,
+  "writes": "batched",
+  "block": 1
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 16,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4,
+   "threads": 16
+  },
+  "burn_percent": 0,
+  "writes": "batched",
+  "block": 1
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4,
+   "threads": 4
+  },
+  "burn_percent": 80,
+  "writes": "batched",
+  "block": 1
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 16,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4,
+   "threads": 16
+  },
+  "burn_percent": 0,
+  "writes": "batched",
+  "block": 1
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 2,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 2,
+   "threads": 2
+  },
+  "burn_percent": 0,
+  "writes": "batched",
+  "block": 1
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4,
+   "threads": 4
+  },
+  "burn_percent": 80,
+  "writes": "batched",
+  "block": 1
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 8,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4,
+   "threads": 8
+  },
+  "burn_percent": 0,
+  "writes": "batched",
+  "block": 1
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 2,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 2,
+   "threads": 2
+  },
+  "burn_percent": 0,
+  "writes": "batched",
+  "block": 1
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4,
+   "threads": 4
+  },
+  "burn_percent": 80,
+  "writes": "batched",
+  "block": 2
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 2,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 2,
+   "threads": 2
+  },
+  "burn_percent": 0,
+  "writes": "batched",
+  "block": 2
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 16,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4,
+   "threads": 16
+  },
+  "burn_percent": 0,
+  "writes": "batched",
+  "block": 2
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4,
+   "threads": 4
+  },
+  "burn_percent": 40,
+  "writes": "batched",
+  "block": 2
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 2,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 2,
+   "threads": 2
+  },
+  "burn_percent": 0,
+  "writes": "batched",
+  "block": 2
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4,
+   "threads": 4
+  },
+  "burn_percent": 80,
+  "writes": "batched",
+  "block": 2
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 8,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4,
+   "threads": 8
+  },
+  "burn_percent": 0,
+  "writes": "batched",
+  "block": 2
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4,
+   "threads": 4
+  },
+  "burn_percent": 40,
+  "writes": "batched",
+  "block": 2
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 16,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4,
+   "threads": 16
+  },
+  "burn_percent": 0,
+  "writes": "batched",
+  "block": 2
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 8,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4,
+   "threads": 8
+  },
+  "burn_percent": 0,
+  "writes": "batched",
+  "block": 2
+ }
+]

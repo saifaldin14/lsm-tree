@@ -1,0 +1,982 @@
+[
+ {
+  "design": "merge",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "background-jobs": 2
+  },
+  "env": {
+   "LSM_DISABLE_GPU_BUILD": "1"
+  },
+  "writes": "single",
+  "block": 0
+ },
+ {
+  "design": "compression_only",
+  "mode": "gpu_output",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "background-jobs": 2
+  },
+  "writes": "single",
+  "block": 0
+ },
+ {
+  "design": "merge",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 2
+  },
+  "env": {
+   "LSM_DISABLE_GPU_BUILD": "1"
+  },
+  "writes": "batched",
+  "block": 0
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "background-jobs": 4
+  },
+  "writes": "single",
+  "block": 0
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "writes": "batched",
+  "block": 0
+ },
+ {
+  "design": "compression_only",
+  "mode": "gpu_output",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "background-jobs": 4
+  },
+  "writes": "single",
+  "block": 0
+ },
+ {
+  "design": "compression_only",
+  "mode": "gpu_output",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 2
+  },
+  "writes": "batched",
+  "block": 0
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "background-jobs": 4
+  },
+  "writes": "single",
+  "block": 0
+ },
+ {
+  "design": "compression_only",
+  "mode": "gpu_output",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "writes": "batched",
+  "block": 0
+ },
+ {
+  "design": "merge",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "background-jobs": 4
+  },
+  "env": {
+   "LSM_DISABLE_GPU_BUILD": "1"
+  },
+  "writes": "single",
+  "block": 0
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 2
+  },
+  "writes": "batched",
+  "block": 0
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "writes": "batched",
+  "block": 0
+ },
+ {
+  "design": "merge",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "env": {
+   "LSM_DISABLE_GPU_BUILD": "1"
+  },
+  "writes": "batched",
+  "block": 0
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "background-jobs": 2
+  },
+  "writes": "single",
+  "block": 0
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "background-jobs": 2
+  },
+  "writes": "single",
+  "block": 0
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 2
+  },
+  "writes": "batched",
+  "block": 0
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "background-jobs": 4
+  },
+  "writes": "single",
+  "block": 1
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 2
+  },
+  "writes": "batched",
+  "block": 1
+ },
+ {
+  "design": "merge",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 2
+  },
+  "env": {
+   "LSM_DISABLE_GPU_BUILD": "1"
+  },
+  "writes": "batched",
+  "block": 1
+ },
+ {
+  "design": "compression_only",
+  "mode": "gpu_output",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "background-jobs": 2
+  },
+  "writes": "single",
+  "block": 1
+ },
+ {
+  "design": "merge",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "background-jobs": 2
+  },
+  "env": {
+   "LSM_DISABLE_GPU_BUILD": "1"
+  },
+  "writes": "single",
+  "block": 1
+ },
+ {
+  "design": "merge",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "background-jobs": 4
+  },
+  "env": {
+   "LSM_DISABLE_GPU_BUILD": "1"
+  },
+  "writes": "single",
+  "block": 1
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 2
+  },
+  "writes": "batched",
+  "block": 1
+ },
+ {
+  "design": "compression_only",
+  "mode": "gpu_output",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "background-jobs": 4
+  },
+  "writes": "single",
+  "block": 1
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "background-jobs": 2
+  },
+  "writes": "single",
+  "block": 1
+ },
+ {
+  "design": "merge",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "env": {
+   "LSM_DISABLE_GPU_BUILD": "1"
+  },
+  "writes": "batched",
+  "block": 1
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "background-jobs": 4
+  },
+  "writes": "single",
+  "block": 1
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "writes": "batched",
+  "block": 1
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "writes": "batched",
+  "block": 1
+ },
+ {
+  "design": "compression_only",
+  "mode": "gpu_output",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 2
+  },
+  "writes": "batched",
+  "block": 1
+ },
+ {
+  "design": "compression_only",
+  "mode": "gpu_output",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "writes": "batched",
+  "block": 1
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "background-jobs": 2
+  },
+  "writes": "single",
+  "block": 1
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "background-jobs": 4
+  },
+  "writes": "single",
+  "block": 2
+ },
+ {
+  "design": "merge",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "background-jobs": 4
+  },
+  "env": {
+   "LSM_DISABLE_GPU_BUILD": "1"
+  },
+  "writes": "single",
+  "block": 2
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 2
+  },
+  "writes": "batched",
+  "block": 2
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "background-jobs": 2
+  },
+  "writes": "single",
+  "block": 2
+ },
+ {
+  "design": "compression_only",
+  "mode": "gpu_output",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "background-jobs": 2
+  },
+  "writes": "single",
+  "block": 2
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "background-jobs": 2
+  },
+  "writes": "single",
+  "block": 2
+ },
+ {
+  "design": "compression_only",
+  "mode": "gpu_output",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "background-jobs": 4
+  },
+  "writes": "single",
+  "block": 2
+ },
+ {
+  "design": "merge",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "background-jobs": 2
+  },
+  "env": {
+   "LSM_DISABLE_GPU_BUILD": "1"
+  },
+  "writes": "single",
+  "block": 2
+ },
+ {
+  "design": "merge",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "env": {
+   "LSM_DISABLE_GPU_BUILD": "1"
+  },
+  "writes": "batched",
+  "block": 2
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "background-jobs": 4
+  },
+  "writes": "single",
+  "block": 2
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "writes": "batched",
+  "block": 2
+ },
+ {
+  "design": "compression_only",
+  "mode": "gpu_output",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "writes": "batched",
+  "block": 2
+ },
+ {
+  "design": "merge",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 2
+  },
+  "env": {
+   "LSM_DISABLE_GPU_BUILD": "1"
+  },
+  "writes": "batched",
+  "block": 2
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "writes": "batched",
+  "block": 2
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 2
+  },
+  "writes": "batched",
+  "block": 2
+ },
+ {
+  "design": "compression_only",
+  "mode": "gpu_output",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 2
+  },
+  "writes": "batched",
+  "block": 2
+ },
+ {
+  "design": "merge",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 2
+  },
+  "env": {
+   "LSM_DISABLE_GPU_BUILD": "1"
+  },
+  "writes": "batched",
+  "block": 3
+ },
+ {
+  "design": "compression_only",
+  "mode": "gpu_output",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "background-jobs": 4
+  },
+  "writes": "single",
+  "block": 3
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "background-jobs": 4
+  },
+  "writes": "single",
+  "block": 3
+ },
+ {
+  "design": "merge",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "background-jobs": 2
+  },
+  "env": {
+   "LSM_DISABLE_GPU_BUILD": "1"
+  },
+  "writes": "single",
+  "block": 3
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 2
+  },
+  "writes": "batched",
+  "block": 3
+ },
+ {
+  "design": "compression_only",
+  "mode": "gpu_output",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "background-jobs": 2
+  },
+  "writes": "single",
+  "block": 3
+ },
+ {
+  "design": "compression_only",
+  "mode": "gpu_output",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 2
+  },
+  "writes": "batched",
+  "block": 3
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "background-jobs": 2
+  },
+  "writes": "single",
+  "block": 3
+ },
+ {
+  "design": "merge",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "env": {
+   "LSM_DISABLE_GPU_BUILD": "1"
+  },
+  "writes": "batched",
+  "block": 3
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "writes": "batched",
+  "block": 3
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "background-jobs": 2
+  },
+  "writes": "single",
+  "block": 3
+ },
+ {
+  "design": "compression_only",
+  "mode": "gpu_output",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "writes": "batched",
+  "block": 3
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "writes": "batched",
+  "block": 3
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "background-jobs": 4
+  },
+  "writes": "single",
+  "block": 3
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 2
+  },
+  "writes": "batched",
+  "block": 3
+ },
+ {
+  "design": "merge",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "background-jobs": 4
+  },
+  "env": {
+   "LSM_DISABLE_GPU_BUILD": "1"
+  },
+  "writes": "single",
+  "block": 3
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "background-jobs": 4
+  },
+  "writes": "single",
+  "block": 4
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "background-jobs": 2
+  },
+  "writes": "single",
+  "block": 4
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 2
+  },
+  "writes": "batched",
+  "block": 4
+ },
+ {
+  "design": "compression_only",
+  "mode": "gpu_output",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "background-jobs": 2
+  },
+  "writes": "single",
+  "block": 4
+ },
+ {
+  "design": "merge",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "background-jobs": 2
+  },
+  "env": {
+   "LSM_DISABLE_GPU_BUILD": "1"
+  },
+  "writes": "single",
+  "block": 4
+ },
+ {
+  "design": "compression_only",
+  "mode": "gpu_output",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "writes": "batched",
+  "block": 4
+ },
+ {
+  "design": "compression_only",
+  "mode": "gpu_output",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "background-jobs": 4
+  },
+  "writes": "single",
+  "block": 4
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "writes": "batched",
+  "block": 4
+ },
+ {
+  "design": "merge",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "env": {
+   "LSM_DISABLE_GPU_BUILD": "1"
+  },
+  "writes": "batched",
+  "block": 4
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "background-jobs": 2
+  },
+  "writes": "single",
+  "block": 4
+ },
+ {
+  "design": "merge",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "background-jobs": 4
+  },
+  "env": {
+   "LSM_DISABLE_GPU_BUILD": "1"
+  },
+  "writes": "single",
+  "block": 4
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 1,
+   "background-jobs": 4
+  },
+  "writes": "single",
+  "block": 4
+ },
+ {
+  "design": "merge",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 2
+  },
+  "env": {
+   "LSM_DISABLE_GPU_BUILD": "1"
+  },
+  "writes": "batched",
+  "block": 4
+ },
+ {
+  "design": "compression_only",
+  "mode": "gpu_output",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 2
+  },
+  "writes": "batched",
+  "block": 4
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 2
+  },
+  "writes": "batched",
+  "block": 4
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "writes": "batched",
+  "block": 4
+ }
+]
