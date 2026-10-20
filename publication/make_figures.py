@@ -4,7 +4,9 @@
 Inputs (publication/data/):
   compaction/v<value>-<codec>[-del<f>]-s3.jsonl  lsm_compaction_bench: native_cpu, gpu_output, cuda_merge (full)
   compaction/v<value>-<codec>[-del<f>]-s2.jsonl  lsm_compaction_bench: cuda_merge, LSM_DISABLE_GPU_BUILD=1 (merge)
+  prior-compaction/<tag>-{s3,s2,sortmerge,pipeline}.jsonl  prior_compaction_sweep.sh (earlier designs)
   campaigns/<campaign>.jsonl                      system_campaign.py (see PREREGISTRATION.md)
+  campaigns/gparakv/                              gparakv/run.sh (gParaKV head-to-head)
 Isolated compaction bars are medians of repetitions 1-3 (repetition 0 is a cold
 start) with min-max whiskers. Whole-database bars are medians over repetition
 blocks with 95% bootstrap CIs; each design is shown at its best background-job
@@ -34,13 +36,19 @@ OUT = HERE / "figures"
 # Okabe-Ito colourblind-safe palette; hatches keep designs distinct in greyscale.
 NATIVE, OUTPUT_ONLY, MERGE, FULL = ("Native RocksDB", "GPU compression only", "GPU merge",
                                     "GPU merge + block building")
+# Earlier designs rebuilt in our system (PREREGISTRATION.md, H8-H11).
+SORT_MERGE = "GPU sort/merge (as gLSM, gParaKV)"
+PIPELINE = "GPU pipeline, CPU compression (as LUDA, MSST'24)"
 DESIGNS = (NATIVE, OUTPUT_ONLY, MERGE, FULL)
-KEY = {"native": NATIVE, "compression_only": OUTPUT_ONLY, "merge": MERGE, "full": FULL}
+KEY = {"native": NATIVE, "compression_only": OUTPUT_ONLY, "merge": MERGE, "full": FULL,
+       "sort_merge": SORT_MERGE, "pipeline_no_compression": PIPELINE}
 STYLE = {
     NATIVE: {"color": "#8c8c8c", "hatch": ""},
     OUTPUT_ONLY: {"color": "#56B4E9", "hatch": "///"},
     MERGE: {"color": "#0072B2", "hatch": "..."},
     FULL: {"color": "#D55E00", "hatch": ""},
+    SORT_MERGE: {"color": "#009E73", "hatch": "xxx"},
+    PIPELINE: {"color": "#CC79A7", "hatch": "\\\\\\"},
 }
 INK = "#1a1a1a"
 GRID = "#e6e6e6"
@@ -165,10 +173,11 @@ def save(fig, name):
     plt.close(fig)
 
 
-def design_legend(fig, designs, y=0.9):
-    handles = [Patch(facecolor=STYLE[d]["color"], hatch=STYLE[d]["hatch"], edgecolor="white", linewidth=0.4, label=d)
-               for d in designs]
-    fig.legend(handles=handles, loc="lower center", ncol=len(designs), bbox_to_anchor=(0.5, y),
+def design_legend(fig, designs, y=0.9, labels=None, ncol=None):
+    labels = labels or {}
+    handles = [Patch(facecolor=STYLE[d]["color"], hatch=STYLE[d]["hatch"], edgecolor="white", linewidth=0.4,
+                     label=labels.get(d, d)) for d in designs]
+    fig.legend(handles=handles, loc="lower center", ncol=ncol or len(designs), bbox_to_anchor=(0.5, y),
                handlelength=1.6, columnspacing=1.4)
 
 
@@ -451,6 +460,167 @@ def figure_ssd(entries):
     save(fig, "fig9_ssd")
 
 
+# ---------------------------------------------------------------- earlier designs (H8-H12)
+
+PRIOR_DESIGNS = (NATIVE, SORT_MERGE, PIPELINE, FULL)
+PRIOR_LABELS = {FULL: "GPU merge + block building, GPU compression (ours)"}
+PRIOR_FILES = {"s3": None, "s2": MERGE, "sortmerge": SORT_MERGE, "pipeline": PIPELINE}
+CODEC_LABEL = {"lz4": "LZ4", "zstd": "ZSTD", "none": "No compression"}
+
+
+def load_prior_compaction():
+    """Like load_compaction, for data/prior-compaction (prior_compaction_sweep.sh)."""
+    result = {}
+    for tag, _ in WORKLOAD_ORDER:
+        runs = {}
+        for suffix, fixed in PRIOR_FILES.items():
+            path = DATA / "prior-compaction" / f"{tag}-{suffix}.jsonl"
+            if not path.exists():
+                continue
+            for line in path.read_text().splitlines():
+                run = json.loads(line)
+                if not run["matches_reference"]:
+                    raise SystemExit(f"{tag}-{suffix}: {run['mode']} repetition {run['repetition']} differs from native")
+                if run["repetition"] == 0:
+                    continue
+                design = fixed or {"native_cpu": NATIVE, "gpu_output": OUTPUT_ONLY}.get(run["mode"], FULL)
+                entry = runs.setdefault(design, {"wall": [], "cpu": [], "input_bytes": []})
+                entry["wall"].append(run["wall_seconds"])
+                entry["cpu"].append(run["process_cpu_seconds"])
+                entry["input_bytes"].append(run["input_bytes"])
+        if "lz4" not in tag:
+            runs.pop(OUTPUT_ONLY, None)
+        if runs:
+            result[tag] = runs
+    return result
+
+
+PRIOR_COMPACTION = load_prior_compaction()
+
+
+def figure_prior_compaction():
+    """Isolated compaction for the rebuilt earlier designs: (a) throughput, (b) CPU per GiB."""
+    tags = [(tag, label) for tag, label in WORKLOAD_ORDER if tag in PRIOR_COMPACTION]
+    if not tags:
+        return
+    metrics = [("Throughput (MiB/s)", throughput_mib, lambda v: f"{v:.0f}"),
+               ("CPU time (s per GiB)", cpu_per_gib, lambda v: f"{v:.1f}")]
+    fig, axes = plt.subplots(2, 1, figsize=(DOUBLE_COLUMN, 4.4))
+    for ax, letter, (ylabel, metric, fmt) in zip(axes, "ab", metrics):
+        groups = []
+        for tag, label in tags:
+            by = {}
+            for design in PRIOR_DESIGNS:
+                if design in PRIOR_COMPACTION[tag]:
+                    values = metric(PRIOR_COMPACTION[tag][design])
+                    by[design] = (statistics.median(values), min(values), max(values))
+            groups.append((label.replace("\n", " "), by))
+        grouped_bars(ax, groups, PRIOR_DESIGNS, None, fmt, size=5.4)
+        finish_axis(ax, ylabel)
+        panel_label(ax, letter)
+    fig.tight_layout(h_pad=1.6, rect=(0, 0, 1, 0.9))
+    design_legend(fig, PRIOR_DESIGNS, y=0.9, labels=PRIOR_LABELS, ncol=2)
+    save(fig, "fig10_prior_compaction")
+
+
+def figure_prior_database(by_codec):
+    """Whole database, 4 cores, per codec: throughput, CPU per op and energy per op, for batched
+    (top) and single (bottom) writes. by_codec: {codec: summarised entries}."""
+    codecs = [c for c in ("lz4", "zstd", "none") if by_codec.get(c)]
+    if not codecs:
+        return
+    designs = (NATIVE, OUTPUT_ONLY, SORT_MERGE, PIPELINE, FULL)
+    panels = [("Throughput (kops/s)", "ops_per_second", 1e-3, lambda v: f"{v:.0f}"),
+              ("CPU time per op (µs)", "cpu_us_per_op", 1.0, lambda v: f"{v:.1f}"),
+              ("Energy per op (µJ)", "energy_uj_per_op", 1.0, lambda v: f"{v:.0f}")]
+    rows = [("batched", "Batched writes"), ("single", "Single writes")]
+    fig, axes = plt.subplots(len(rows), len(panels), figsize=(DOUBLE_COLUMN, 4.6))
+    letters = iter("abcdef")
+    for row, (writes, title) in zip(axes, rows):
+        for ax, (ylabel, metric, scale, fmt) in zip(row, panels):
+            groups = []
+            for codec in codecs:
+                entries = [e for e in by_codec[codec] if e["config"].get("writes") == writes]
+                values = by_design(entries, metric)
+                groups.append((CODEC_LABEL[codec], {d: tuple(v * scale for v in ci) for d, ci in values.items()}))
+            grouped_bars(ax, groups, designs, None, fmt, size=4.6)
+            finish_axis(ax, ylabel)
+            panel_label(ax, next(letters))
+            if ax is row[0]:
+                ax.set_title(title, loc="left", fontsize=8, color=INK, pad=10)
+    fig.tight_layout(h_pad=2.0, w_pad=1.2, rect=(0, 0, 1, 0.89))
+    design_legend(fig, designs, y=0.89, labels=PRIOR_LABELS, ncol=3)
+    save(fig, "fig11_prior_database")
+
+
+def figure_prior_equal_cost(entries):
+    """Batched LZ4 writes: native on 8 and 32 cores against the pipeline rebuild and full offload on 8."""
+    if not entries:
+        return
+    bars = []
+    for key, cores in (("native", 8), ("native", 32), ("pipeline_no_compression", 8), ("full", 8)):
+        match = [e for e in entries if e["design"] == key and e["config"].get("cores") == cores]
+        if match:
+            bars.append((f"{KEY[key]}\n{cores} cores", KEY[key], match[0]))
+    if not bars:
+        return
+    panels = [("Throughput (kops/s)", "ops_per_second", 1e-3, lambda v: f"{v:.0f}"),
+              ("p99 write latency (ms)", "p99_write_ms", 1.0, lambda v: f"{v:.1f}")]
+    fig, axes = plt.subplots(1, 2, figsize=(DOUBLE_COLUMN, 2.5))
+    for ax, letter, (ylabel, metric, scale, fmt) in zip(axes, "ab", panels):
+        xs = list(range(len(bars)))
+        cis = [tuple(v * scale for v in entry[metric]) for _, _, entry in bars]
+        for x, (_, design, _), ci in zip(xs, bars, cis):
+            rects = bar(ax, [x], [ci[0]], 0.6, design)
+            tops = whiskers(ax, [x], [ci])
+            value_labels(ax, rects, fmt, size=6.2, offsets=tops)
+        ax.set_xticks(xs, [label.replace(" (as ", "\n(as ") for label, _, _ in bars], fontsize=5.8)
+        ax.set_ylim(0, max(c[2] for c in cis) * 1.18)
+        finish_axis(ax, ylabel)
+        panel_label(ax, letter)
+    fig.tight_layout(w_pad=2.5)
+    save(fig, "fig12_prior_equal_cost")
+
+
+def load_gparakv():
+    """{(system, value_bytes): [{"load_kops", "a_kops", "cpu_s"}...]} from campaigns/gparakv/."""
+    root = DATA / "campaigns" / "gparakv"
+    result = {}
+    if not root.exists():
+        return result
+    for done in sorted(root.glob("*.done")):
+        tag = done.name[:-len(".done")]
+        system, value, _ = tag.rsplit("-", 2)
+        err = (root / f"{tag}.err").read_text()
+        loads = [float(line.split(":")[1]) for line in err.splitlines() if line.startswith("Loading throughput")]
+        runs = [float(line.split(":")[1]) for line in err.splitlines() if line.startswith("Transaction throughput")]
+        wall, user, system_cpu = (float(v) for v in (root / f"{tag}.time").read_text().split()[-3:])
+        if loads and runs:
+            result.setdefault((system, int(value[1:])), []).append(
+                {"load_kops": loads[-1], "a_kops": runs[-1], "cpu_s": user + system_cpu, "wall_s": wall})
+    return result
+
+
+GPARAKV_LABELS = {"gparakv": "gParaKV (SC'25)", "rocksdb_native": "RocksDB", "rocksdb_blobdb": "RocksDB BlobDB",
+                  "rocksdb_gpu_full": "RocksDB + full offload (ours)", "rocksdb_native_lz4": "RocksDB, LZ4",
+                  "rocksdb_gpu_full_lz4": "RocksDB + full offload, LZ4 (ours)"}
+
+
+def gparakv_table():
+    runs = load_gparakv()
+    if not runs:
+        return []
+    lines = ["", "## gParaKV head-to-head (gParaKV's YCSB driver, one client; median [min-max] of repetitions)", "",
+             "| Value | System | Runs | Load kops/s | YCSB A kops/s | CPU s (whole run) |", "|---|---|---|---|---|---|"]
+    for (system, value), entries in sorted(runs.items(), key=lambda item: (item[0][1], list(GPARAKV_LABELS).index(item[0][0]))):
+        def cell(key, digits):
+            values = [e[key] for e in entries]
+            return f"{statistics.median(values):.{digits}f} [{min(values):.{digits}f}-{max(values):.{digits}f}]"
+        lines.append(f"| {value} B | {GPARAKV_LABELS.get(system, system)} | {len(entries)} | {cell('load_kops', 0)} | "
+                     f"{cell('a_kops', 0)} | {cell('cpu_s', 0)} |")
+    return lines
+
+
 # ---------------------------------------------------------------- tables
 
 def write_summary(summaries):
@@ -475,6 +645,23 @@ def write_summary(summaries):
                              f"[{min(mib):.0f}-{max(mib):.0f}] | {statistics.median(base['wall']) / wall:.2f}x | {cpu:.2f} | "
                              f"{statistics.median(gib):.2f} [{min(gib):.2f}-{max(gib):.2f}] | "
                              f"{statistics.median(base['cpu']) / cpu:.2f}x |")
+    if PRIOR_COMPACTION:
+        lines += ["", "## Isolated compaction, earlier designs rebuilt (median of 3 warm repetitions)", "",
+                  "| Workload | Design | Wall s | Speed-up | CPU s/GiB [min-max] | CPU reduction |", "|---|---|---|---|---|---|"]
+        for tag, label in WORKLOAD_ORDER:
+            if tag not in PRIOR_COMPACTION or NATIVE not in PRIOR_COMPACTION[tag]:
+                continue
+            base = PRIOR_COMPACTION[tag][NATIVE]
+            for design in (NATIVE, OUTPUT_ONLY, SORT_MERGE, MERGE, PIPELINE, FULL):
+                if design not in PRIOR_COMPACTION[tag]:
+                    continue
+                entry = PRIOR_COMPACTION[tag][design]
+                wall = statistics.median(entry["wall"])
+                cpu = statistics.median(entry["cpu"])
+                gib = cpu_per_gib(entry)
+                lines.append(f"| {label.replace(chr(10), ' ')} | {design} | {wall:.2f} | "
+                             f"{statistics.median(base['wall']) / wall:.2f}x | {statistics.median(gib):.2f} "
+                             f"[{min(gib):.2f}-{max(gib):.2f}] | {statistics.median(base['cpu']) / cpu:.2f}x |")
     for name, entries in summaries.items():
         if not entries:
             continue
@@ -495,6 +682,7 @@ def write_summary(summaries):
                          f"{campaigns.fmt(e['energy_uj_per_op'], 0)} | {campaigns.fmt(e.get('ratio_energy_uj_per_op'), 2)} | "
                          f"{campaigns.fmt(e['drain_seconds'], 1)} | {campaigns.fmt(e['stall_percent'], 0)} |")
     lines += cost_table(summaries)
+    lines += gparakv_table()
     (DATA / "summary.md").write_text("\n".join(lines) + "\n")
 
 
@@ -518,7 +706,8 @@ def cost_table(summaries):
 
 
 if __name__ == "__main__":
-    names = ("main", "equal-cost", "ycsb", "contention", "read-tradeoff", "shared-gpu", "ssd-scale")
+    names = ("main", "equal-cost", "ycsb", "contention", "read-tradeoff", "shared-gpu", "ssd-scale",
+             "prior-lz4", "prior-zstd", "prior-none", "prior-equal-cost")
     summaries = {name: campaigns.summarise(campaigns.load(name)) for name in names}
     write_summary(summaries)
     figure_compaction()
@@ -530,4 +719,7 @@ if __name__ == "__main__":
     figure_read_tradeoff(summaries["read-tradeoff"])
     figure_shared_gpu(summaries["shared-gpu"])
     figure_ssd(summaries["ssd-scale"])
+    figure_prior_compaction()
+    figure_prior_database({codec: summaries[f"prior-{codec}"] for codec in ("lz4", "zstd", "none")})
+    figure_prior_equal_cost(summaries["prior-equal-cost"])
     print("wrote", sorted(p.name for p in OUT.glob("*.pdf")))

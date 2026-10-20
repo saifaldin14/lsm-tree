@@ -172,6 +172,17 @@ target_link_libraries(lsm_system_bench PRIVATE lsm_blocks lsm_runtime)
 target_include_directories(lsm_system_bench SYSTEM PRIVATE "${rocksdb_SOURCE_DIR}" "${rocksdb_BINARY_DIR}")
 target_compile_definitions(lsm_system_bench PRIVATE $<TARGET_PROPERTY:rocksdb,COMPILE_DEFINITIONS>)
 target_compile_options(lsm_system_bench PRIVATE -Wall -Wextra -Wpedantic -Werror)
+
+# Head-to-head with gParaKV (publication/gparakv/): RocksDB behind gParaKV's own YCSB driver.
+set(LSM_YCSBC_DIR "" CACHE PATH "gParaKV's ycsbc source directory; builds lsm_ycsbc when set")
+if(LSM_YCSBC_DIR)
+  add_executable(lsm_ycsbc bench/ycsbc/rocksdb_db.cc "${LSM_YCSBC_DIR}/ycsbc.cc"
+                 "${LSM_YCSBC_DIR}/core/core_workload.cc")
+  target_include_directories(lsm_ycsbc PRIVATE bench/ycsbc "${LSM_YCSBC_DIR}" "${LSM_YCSBC_DIR}/core")
+  target_include_directories(lsm_ycsbc SYSTEM PRIVATE "${rocksdb_SOURCE_DIR}" "${rocksdb_BINARY_DIR}")
+  target_link_libraries(lsm_ycsbc PRIVATE lsm_blocks lsm_runtime)
+  target_compile_definitions(lsm_ycsbc PRIVATE $<TARGET_PROPERTY:rocksdb,COMPILE_DEFINITIONS>)
+endif()
 target_include_directories(lsm_gpu_check SYSTEM PRIVATE "${rocksdb_SOURCE_DIR}" "${rocksdb_BINARY_DIR}")
 target_compile_definitions(lsm_gpu_check PRIVATE $<TARGET_PROPERTY:rocksdb,COMPILE_DEFINITIONS>)
 target_compile_options(lsm_gpu_check PRIVATE -Wall -Wextra -Wpedantic -Werror)

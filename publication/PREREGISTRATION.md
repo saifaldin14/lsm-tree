@@ -127,10 +127,14 @@ Hypotheses:
 - **H11 (equal cost):** on 8 cores with batched LZ4 writes, the pipeline
   rebuild's throughput is below native's on 32 cores, while full offload's is
   not.
-- **H12 (gParaKV, descriptive):** gParaKV, its base LevelDB 1.23, native
-  RocksDB, RocksDB with BlobDB, and full offload are run on the same 4 cores
-  and GPU, with matched key count, value size, WAL setting and client
-  threads. No directional hypothesis; reported as measured.
+- **H12 (gParaKV, descriptive):** all systems run under gParaKV's own YCSB
+  driver, on the same 4 cores and GPU with data on tmpfs (gParaKV's
+  persistent-memory pool is emulated in DRAM). The systems are gParaKV,
+  native RocksDB, RocksDB with BlobDB (its own key/value separation) and full
+  offload. Block compression is off, as in gParaKV's driver; native and full
+  offload are also run with LZ4. Each run loads the records with one client,
+  then runs YCSB A (Zipfian), with 128-byte and 1-KiB values. We report load
+  and YCSB A throughput and CPU time, with no directional hypothesis.
 
 Runs:
 
@@ -141,7 +145,7 @@ Runs:
 | Database, ZSTD | `prior-zstd.json` (golden built with `--compression zstd`) | 3 | 112 |
 | Database, no compression | `prior-none.json` (golden built with `--compression none`) | 3 | 113 |
 | Equal cost, earlier designs | `prior-equal-cost.json` | 5 | 114 |
-| gParaKV head-to-head | `gparakv_bench.sh` | 3 | n/a |
+| gParaKV head-to-head | `gparakv/setup.sh`, `gparakv/run.sh` | 3 | fixed per repetition |
 
 Analysis, statistics and exclusions are as above. Native and full offload are
 re-run inside these campaigns so that every ratio is paired within a block.

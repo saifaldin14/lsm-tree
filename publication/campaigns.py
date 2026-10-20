@@ -17,7 +17,9 @@ from stats import bootstrap_ci, paired_ratios
 
 DATA = Path(__file__).resolve().parent / "data" / "campaigns"
 DESIGN_NAMES = {"native": "Native RocksDB", "compression_only": "GPU compression only", "merge": "GPU merge",
-                "full": "GPU merge + block building"}
+                "full": "GPU merge + block building",
+                "sort_merge": "GPU sort/merge (as gLSM, gParaKV)",
+                "pipeline_no_compression": "GPU pipeline, CPU compression (as LUDA, MSST'24)"}
 # Trial fields that describe the configuration (besides flags); design-specific ones are excluded.
 CONFIG_FIELDS = ("writes", "workload", "distribution", "shape", "instances", "burn_percent", "cores")
 FLAG_EXCLUDE = {"background-jobs", "subcompactions"}
