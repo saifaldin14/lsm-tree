@@ -444,6 +444,8 @@ namespace lsm_lab
             merge_built_jobs_ += (*output && (*output)->built_output() != nullptr) ? 1 : 0;
             merge_built_blocks_ += stats.built_blocks;
             merge_built_bytes_ += stats.built_bytes;
+            merge_host_compressed_blocks_ += stats.host_compressed_blocks;
+            merge_cpu_decoded_bytes_ += stats.cpu_decoded_bytes;
             merge_wall_ns_ += static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
                 std::chrono::steady_clock::now() - started).count());
             return rocksdb::Status::OK();
@@ -476,7 +478,7 @@ namespace lsm_lab
     nlohmann::json BatchTransform::statistics() const
     {
         const std::lock_guard guard(mutex_);
-        return {{"backend", name()}, {"device", device()}, {"batches", batches_}, {"blocks", blocks_}, {"input_bytes", input_bytes_}, {"output_bytes", output_bytes_}, {"wall_ns", wall_ns_}, {"kernel_ns", kernel_ns_.load()}, {"dispatches", dispatches_.load()}, {"cpu_fallback_batches", cpu_fallback_batches_.load()}, {"cpu_fallback_blocks", cpu_fallback_blocks_.load()}, {"cpu_fallback_bytes", cpu_fallback_bytes_.load()}, {"compaction_sessions", compaction_sessions_.load()}, {"output_batches", output_batches_.load()}, {"output_blocks", output_blocks_.load()}, {"output_gpu_batches", output_gpu_batches_.load()}, {"merged_input", merged_input_}, {"merge_jobs", merge_jobs_}, {"merge_fallbacks", merge_fallbacks_}, {"merge_last_fallback", merge_last_fallback_}, {"merge_entries", merge_entries_}, {"merge_blocks", merge_blocks_}, {"merge_input_bytes", merge_input_bytes_}, {"merge_decoded_bytes", merge_decoded_bytes_}, {"merge_wall_ns", merge_wall_ns_}, {"merge_read_ns", merge_read_ns_}, {"merge_device_ns", merge_device_ns_}, {"merge_built_jobs", merge_built_jobs_}, {"merge_built_blocks", merge_built_blocks_}, {"merge_built_bytes", merge_built_bytes_}};
+        return {{"backend", name()}, {"device", device()}, {"batches", batches_}, {"blocks", blocks_}, {"input_bytes", input_bytes_}, {"output_bytes", output_bytes_}, {"wall_ns", wall_ns_}, {"kernel_ns", kernel_ns_.load()}, {"dispatches", dispatches_.load()}, {"cpu_fallback_batches", cpu_fallback_batches_.load()}, {"cpu_fallback_blocks", cpu_fallback_blocks_.load()}, {"cpu_fallback_bytes", cpu_fallback_bytes_.load()}, {"compaction_sessions", compaction_sessions_.load()}, {"output_batches", output_batches_.load()}, {"output_blocks", output_blocks_.load()}, {"output_gpu_batches", output_gpu_batches_.load()}, {"merged_input", merged_input_}, {"merge_jobs", merge_jobs_}, {"merge_fallbacks", merge_fallbacks_}, {"merge_last_fallback", merge_last_fallback_}, {"merge_entries", merge_entries_}, {"merge_blocks", merge_blocks_}, {"merge_input_bytes", merge_input_bytes_}, {"merge_decoded_bytes", merge_decoded_bytes_}, {"merge_wall_ns", merge_wall_ns_}, {"merge_read_ns", merge_read_ns_}, {"merge_device_ns", merge_device_ns_}, {"merge_built_jobs", merge_built_jobs_}, {"merge_built_blocks", merge_built_blocks_}, {"merge_built_bytes", merge_built_bytes_}, {"merge_host_compressed_blocks", merge_host_compressed_blocks_}, {"merge_cpu_decoded_bytes", merge_cpu_decoded_bytes_}};
     }
 
     std::shared_ptr<BatchTransform> make_cpu_transform() { return std::make_shared<CpuTransform>(); }

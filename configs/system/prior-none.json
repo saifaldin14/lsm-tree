@@ -1,0 +1,218 @@
+{
+ "common": {
+  "records": 50000000,
+  "read-percent": 0,
+  "warmup-seconds": 30,
+  "duration-seconds": 120,
+  "verify": true,
+  "threads": 4,
+  "adaptive-yield": true,
+  "compression": "none"
+ },
+ "trials": [
+  {
+   "design": "native",
+   "mode": "native_cpu",
+   "cores": 4,
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 2
+   },
+   "writes": "batched"
+  },
+  {
+   "design": "native",
+   "mode": "native_cpu",
+   "cores": 4,
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 4
+   },
+   "writes": "batched"
+  },
+  {
+   "design": "native",
+   "mode": "native_cpu",
+   "cores": 4,
+   "flags": {
+    "batch-size": 1,
+    "background-jobs": 2
+   },
+   "writes": "single"
+  },
+  {
+   "design": "native",
+   "mode": "native_cpu",
+   "cores": 4,
+   "flags": {
+    "batch-size": 1,
+    "background-jobs": 4
+   },
+   "writes": "single"
+  },
+  {
+   "design": "sort_merge",
+   "mode": "cuda_merge",
+   "cores": 4,
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 2
+   },
+   "env": {
+    "LSM_DISABLE_GPU_BUILD": "1",
+    "LSM_GPU_CPU_DECOMPRESS": "1",
+    "LSM_DISABLE_GPU_OUTPUT": "1"
+   },
+   "writes": "batched"
+  },
+  {
+   "design": "sort_merge",
+   "mode": "cuda_merge",
+   "cores": 4,
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 4
+   },
+   "env": {
+    "LSM_DISABLE_GPU_BUILD": "1",
+    "LSM_GPU_CPU_DECOMPRESS": "1",
+    "LSM_DISABLE_GPU_OUTPUT": "1"
+   },
+   "writes": "batched"
+  },
+  {
+   "design": "sort_merge",
+   "mode": "cuda_merge",
+   "cores": 4,
+   "flags": {
+    "batch-size": 1,
+    "background-jobs": 2
+   },
+   "env": {
+    "LSM_DISABLE_GPU_BUILD": "1",
+    "LSM_GPU_CPU_DECOMPRESS": "1",
+    "LSM_DISABLE_GPU_OUTPUT": "1"
+   },
+   "writes": "single"
+  },
+  {
+   "design": "sort_merge",
+   "mode": "cuda_merge",
+   "cores": 4,
+   "flags": {
+    "batch-size": 1,
+    "background-jobs": 4
+   },
+   "env": {
+    "LSM_DISABLE_GPU_BUILD": "1",
+    "LSM_GPU_CPU_DECOMPRESS": "1",
+    "LSM_DISABLE_GPU_OUTPUT": "1"
+   },
+   "writes": "single"
+  },
+  {
+   "design": "pipeline_no_compression",
+   "mode": "cuda_merge",
+   "cores": 4,
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 2
+   },
+   "env": {
+    "LSM_GPU_CPU_DECOMPRESS": "1",
+    "LSM_GPU_CPU_COMPRESS": "1"
+   },
+   "writes": "batched"
+  },
+  {
+   "design": "pipeline_no_compression",
+   "mode": "cuda_merge",
+   "cores": 4,
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 4
+   },
+   "env": {
+    "LSM_GPU_CPU_DECOMPRESS": "1",
+    "LSM_GPU_CPU_COMPRESS": "1"
+   },
+   "writes": "batched"
+  },
+  {
+   "design": "pipeline_no_compression",
+   "mode": "cuda_merge",
+   "cores": 4,
+   "flags": {
+    "batch-size": 1,
+    "background-jobs": 2
+   },
+   "env": {
+    "LSM_GPU_CPU_DECOMPRESS": "1",
+    "LSM_GPU_CPU_COMPRESS": "1"
+   },
+   "writes": "single"
+  },
+  {
+   "design": "pipeline_no_compression",
+   "mode": "cuda_merge",
+   "cores": 4,
+   "flags": {
+    "batch-size": 1,
+    "background-jobs": 4
+   },
+   "env": {
+    "LSM_GPU_CPU_DECOMPRESS": "1",
+    "LSM_GPU_CPU_COMPRESS": "1"
+   },
+   "writes": "single"
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 4,
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 2
+   },
+   "writes": "batched"
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 4,
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 4
+   },
+   "writes": "batched"
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 4,
+   "flags": {
+    "batch-size": 1,
+    "background-jobs": 2
+   },
+   "writes": "single"
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 4,
+   "flags": {
+    "batch-size": 1,
+    "background-jobs": 4
+   },
+   "writes": "single"
+  }
+ ]
+}

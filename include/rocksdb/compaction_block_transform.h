@@ -114,7 +114,10 @@ namespace ROCKSDB_NAMESPACE
         std::uint32_t entries = 0;
         std::uint32_t hash_count = 0;
         std::uint32_t deletions = 0;
-        std::uint32_t reserved = 0;
+        // kCompressOnHost: contents are the uncompressed block and checksum is unset; the table
+        // builder compresses and checksums it as for any block it builds (earlier-design emulation).
+        std::uint32_t flags = 0;
+        static constexpr std::uint32_t kCompressOnHost = 1;
         std::uint64_t hash_offset = 0;
         std::uint64_t raw_key_bytes = 0;
         std::uint64_t raw_value_bytes = 0;

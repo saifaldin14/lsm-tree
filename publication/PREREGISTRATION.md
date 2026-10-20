@@ -83,6 +83,79 @@ share, GPU fallbacks.
   on the SSD. Each run has 30 s of warm-up, then 120 s of measurement
   (/dev/shm) or 1,800 s (SSD scale runs).
 
+## Comparison with earlier designs (added before these runs)
+
+Earlier GPU and FPGA compaction systems run on other stores (LevelDB, X-Engine,
+key-value-separated stores), so their published speedups are not comparable
+with ours. We rebuild each design inside our system. Each rebuild uses our GPU
+code for the steps that design offloads, and RocksDB's own CPU code for every
+step it does not. Every rebuild passes the same exact differential check as
+native RocksDB.
+
+| Name | Stands in for | Settings | GPU | CPU (RocksDB code) |
+|---|---|---|---|---|
+| Sort/merge offload (`sort_merge`) | gLSM, gParaKV | `cuda_merge` + `LSM_DISABLE_GPU_BUILD=1 LSM_GPU_CPU_DECOMPRESS=1 LSM_DISABLE_GPU_OUTPUT=1` | unpack, sort, merge, drop hidden versions | checksum check and decompression of input; `CompactionIterator`; block building, compression and checksums |
+| Pipeline offload without compression (`pipeline_no_compression`) | LUDA, MSST'24, FPGA (FAST'20) | `cuda_merge` + `LSM_GPU_CPU_DECOMPRESS=1 LSM_GPU_CPU_COMPRESS=1` | unpack, sort, merge, deletions, block building, filter hashes | checksum check and decompression of input; compression and checksum of output |
+
+Fairness rules:
+
+- **Checksums follow compression.** RocksDB checksums a block after
+  compressing it, so wherever compression stays on the CPU, its checksum does
+  too. Compactions whose input has no compressed block keep input checksums on
+  the GPU. With no compression, the pipeline rebuild is therefore identical to
+  full offload.
+- **Generous to the earlier designs.**
+  - Input decompression in the rebuilds runs on the 4 parallel read threads.
+  - LUDA's CPU-assisted sort is replaced by our GPU sort.
+- **Not reproduced:**
+  - MSST'24's direct SSD-to-GPU transfers, which cannot help on /dev/shm.
+  - gLSM/gParaKV's separate value storage, which our GPU path does not
+    support. This is covered by running gParaKV's own code (H12).
+
+Hypotheses:
+
+- **H8 (no compression):** with no compression, the pipeline rebuild's
+  isolated compaction time is within 15% of full offload's.
+- **H9 (isolated, compressed):** with LZ4 and with ZSTD, full offload uses less
+  CPU per GiB than the pipeline rebuild, which uses less than the sort/merge
+  rebuild. The gap between full offload and the pipeline rebuild is larger
+  for ZSTD than for LZ4.
+- **H10 (database, compressed):** with batched writes on 4 cores and LZ4, full
+  offload's paired throughput ratio against native exceeds every rebuild's.
+  The pipeline rebuild's gain over native (ratio − 1) is less than half of
+  full offload's.
+- **H11 (equal cost):** on 8 cores with batched LZ4 writes, the pipeline
+  rebuild's throughput is below native's on 32 cores, while full offload's is
+  not.
+- **H12 (gParaKV, descriptive):** gParaKV, its base LevelDB 1.23, native
+  RocksDB, RocksDB with BlobDB, and full offload are run on the same 4 cores
+  and GPU, with matched key count, value size, WAL setting and client
+  threads. No directional hypothesis; reported as measured.
+
+Runs:
+
+| Campaign | Grid / script | Repetitions | Seed |
+|---|---|---|---|
+| Isolated, earlier designs | `prior_compaction_sweep.sh` (same workloads as the isolated sweep) | 3 warm runs | n/a |
+| Database, LZ4 | `prior-lz4.json` (golden `golden-50m`) | 5 | 111 |
+| Database, ZSTD | `prior-zstd.json` (golden built with `--compression zstd`) | 3 | 112 |
+| Database, no compression | `prior-none.json` (golden built with `--compression none`) | 3 | 113 |
+| Equal cost, earlier designs | `prior-equal-cost.json` | 5 | 114 |
+| gParaKV head-to-head | `gparakv_bench.sh` | 3 | n/a |
+
+Analysis, statistics and exclusions are as above. Native and full offload are
+re-run inside these campaigns so that every ratio is paired within a block.
+
 ## Changes after data collection
 
-None yet.
+- **Shared GPU, first attempt (discarded, kept as `shared-gpu-attempt1`):** all
+  4- and 8-instance trials failed. Native instances were killed by the kernel
+  because every instance's memory was bound to NUMA node 0 (about 48 GB). GPU
+  instances failed because a failed GPU allocation left a buffer reporting its
+  old size, which led to an illegal memory access, and because the output path
+  failed the compaction on GPU out-of-memory instead of falling back to the
+  CPU. Fixes: multi-instance trials use `numactl --preferred` (prefer the
+  GPU's node, allow spilling); allocation failures reset the buffer; GPU
+  out-of-memory falls back to CPU compression and is counted. The fixes touch
+  only failure paths. A full re-run is pending; single-instance results were
+  unaffected.

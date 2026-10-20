@@ -160,14 +160,25 @@ Status BlockBasedTableBuilder::LsmAddBuiltBlock(const CompactionBuiltBlock &bloc
         r->filter_builder->OnDataBlockFinalized(r->props.num_data_blocks);
     // Only the size of the uncompressed form is used (warm cache is off).
     const Slice uncompressed(contents, block.uncompressed_bytes);
-    const Slice stored(contents, block.contents_bytes);
     bool skip_delta_encoding = false;
-    WriteMaybeCompressedBlock(stored, static_cast<CompressionType>(block.compressed), &r->pending_handle,
-                              BlockType::kData, &uncompressed, &skip_delta_encoding, &block.checksum);
-    if (!ok())
-        return status();
-    r->props.data_size = r->get_offset();
-    r->props.uncompressed_data_size += block.uncompressed_bytes;
+    if (block.flags & CompactionBuiltBlock::kCompressOnHost)
+    {
+        // RocksDB's own compression, max_compressed_bytes_per_kb rule and checksum (also sets the
+        // data size properties).
+        WriteBlock(uncompressed, &r->pending_handle, BlockType::kData, &skip_delta_encoding);
+        if (!ok())
+            return status();
+    }
+    else
+    {
+        const Slice stored(contents, block.contents_bytes);
+        WriteMaybeCompressedBlock(stored, static_cast<CompressionType>(block.compressed), &r->pending_handle,
+                                  BlockType::kData, &uncompressed, &skip_delta_encoding, &block.checksum);
+        if (!ok())
+            return status();
+        r->props.data_size = r->get_offset();
+        r->props.uncompressed_data_size += block.uncompressed_bytes;
+    }
     r->last_ikey.assign(last_key.data(), last_key.size());
     lsm_pending_index_key_.assign(last_key.data(), last_key.size());
     lsm_pending_index_ = true;

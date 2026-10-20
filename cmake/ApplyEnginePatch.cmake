@@ -55,9 +55,16 @@ endif()
 lsm_replace("table/block_based/block_based_table_iterator.cc"
   "namespace ROCKSDB_NAMESPACE {"
   "namespace ROCKSDB_NAMESPACE {\n\n#include \"lsm_lab/compaction_batch.hpp\"")
-lsm_replace("table/block_based/block_based_table_iterator.cc"
+# Migrates trees patched before LSM_DISABLE_GPU_INPUT existed; fresh sources get it from the
+# InitDataBlock insertion below.
+file(READ "${iterator_path}" iterator_content)
+string(REPLACE
   "  if (lookup_context_.caller == TableReaderCaller::kCompaction &&\n      table_->get_rep()->table_options.compaction_block_transform) {"
-  "  if (lookup_context_.caller == TableReaderCaller::kCompaction &&\n      std::getenv(\"LSM_DISABLE_GPU_INPUT\") == nullptr &&\n      table_->get_rep()->table_options.compaction_block_transform) {")
+  "  if (lookup_context_.caller == TableReaderCaller::kCompaction &&\n      std::getenv(\"LSM_DISABLE_GPU_INPUT\") == nullptr &&\n      table_->get_rep()->table_options.compaction_block_transform) {"
+  migrated_iterator "${iterator_content}")
+if(NOT iterator_content STREQUAL migrated_iterator)
+  file(WRITE "${iterator_path}" "${migrated_iterator}")
+endif()
 lsm_replace("table/block_based/block_based_table_iterator.cc"
   "void BlockBasedTableIterator::InitDataBlock() {"
   [=[void BlockBasedTableIterator::InitDataBlock() {
@@ -293,6 +300,7 @@ lsm_replace("db/compaction/compaction_job.cc"
                         !sub_compact->compaction->SupportsPerKeyPlacement();
     lsm_build.zero_sequences = sub_compact->compaction->bottommost_level();
     lsm_build.zero_limit = std::min(earliest_snapshot_, preserve_seqno_after_);
+    lsm_build.earliest_snapshot = earliest_snapshot_;
     const Status lsm_status = LsmMaybeCreateMergedInput(
         sub_compact->compaction, cfd, boundaries.start, boundaries.end,
         read_options,
@@ -406,7 +414,8 @@ lsm_replace("db/compaction/compaction_job.cc"
   "  status = ProcessKeyValue(sub_compact, cfd, c_iter.get(), open_file_func,\n                           close_file_func, prev_cpu_micros);"
   "  if (const auto* lsm_built = LsmBuiltOutputOf(lsm_merged_input.get())) {\n    status = LsmProcessBuiltOutput(*lsm_built, sub_compact, cfd, open_file_func,\n                                   close_file_func, compaction_aborted_);\n  } else {\n    status = ProcessKeyValue(sub_compact, cfd, c_iter.get(), open_file_func,\n                             close_file_func, prev_cpu_micros);\n  }")
 
-# Deletions on the built-output path need CompactionIterator's earliest snapshot.
+# Deletions on the built-output path need CompactionIterator's earliest snapshot. Fresh trees
+# get the line with the merged-input block above; this migrates trees patched before it existed.
 lsm_replace("db/compaction/compaction_job.cc"
   "    lsm_build.zero_limit = std::min(earliest_snapshot_, preserve_seqno_after_);\n"
   "    lsm_build.zero_limit = std::min(earliest_snapshot_, preserve_seqno_after_);\n    lsm_build.earliest_snapshot = earliest_snapshot_;\n")

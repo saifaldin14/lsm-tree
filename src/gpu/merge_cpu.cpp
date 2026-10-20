@@ -164,8 +164,29 @@ namespace lsm_lab
             return rocksdb::Status::OK();
         }
 
-        rocksdb::Status decode_block(const char *serialized, const rocksdb::CompactionMergeBlock &block,
-                                     std::string *decoded)
+        // Uncompressed size of a serialized block (contents plus trailer), from its type byte and,
+        // for compressed blocks, the varint32 size prefix.
+        rocksdb::Status block_decoded_bytes(const char *serialized, const rocksdb::CompactionMergeBlock &block,
+                                            std::uint32_t *decoded_bytes)
+        {
+            const auto type = static_cast<unsigned char>(serialized[block.size]);
+            if (type == 0)
+            {
+                *decoded_bytes = static_cast<std::uint32_t>(block.size);
+                return rocksdb::Status::OK();
+            }
+            if (type != 4 && type != 7)
+                return rocksdb::Status::NotSupported("merged input supports only uncompressed, LZ4 and ZSTD blocks");
+            rocksdb::Slice compressed(serialized, block.size);
+            if (!rocksdb::GetVarint32(&compressed, decoded_bytes) || *decoded_bytes == 0 ||
+                *decoded_bytes > rocksdb::CompactionBlockTransform::max_block_bytes)
+                return rocksdb::Status::Corruption("merged-input invalid compressed size prefix");
+            return rocksdb::Status::OK();
+        }
+
+        // Verifies the block checksum and writes its decoded_bytes uncompressed bytes to destination.
+        rocksdb::Status decode_block_into(const char *serialized, const rocksdb::CompactionMergeBlock &block,
+                                          char *destination, std::uint32_t decoded_bytes)
         {
             const auto type = static_cast<unsigned char>(serialized[block.size]);
             const auto stored = rocksdb::DecodeFixed32(serialized + block.size + 1) - block.checksum_modifier;
@@ -173,28 +194,77 @@ namespace lsm_lab
                 return rocksdb::Status::Corruption("merged-input block CRC32C mismatch");
             if (type == 0)
             {
-                decoded->assign(serialized, block.size);
+                std::memcpy(destination, serialized, block.size);
                 return rocksdb::Status::OK();
             }
-            if (type != 4 && type != 7)
-                return rocksdb::Status::NotSupported("merged input supports only uncompressed, LZ4 and ZSTD blocks");
             rocksdb::Slice compressed(serialized, block.size);
-            std::uint32_t decoded_bytes = 0;
-            if (!rocksdb::GetVarint32(&compressed, &decoded_bytes) || decoded_bytes == 0 ||
-                decoded_bytes > rocksdb::CompactionBlockTransform::max_block_bytes)
-                return rocksdb::Status::Corruption("merged-input invalid compressed size prefix");
-            decoded->resize(decoded_bytes);
+            std::uint32_t prefix = 0;
+            rocksdb::GetVarint32(&compressed, &prefix);
             if (type == 4)
             {
-                if (LZ4_decompress_safe(compressed.data(), decoded->data(), static_cast<int>(compressed.size()),
+                if (LZ4_decompress_safe(compressed.data(), destination, static_cast<int>(compressed.size()),
                                         static_cast<int>(decoded_bytes)) != static_cast<int>(decoded_bytes))
                     return rocksdb::Status::Corruption("merged-input LZ4 decoding failed");
             }
-            else if (ZSTD_decompress(decoded->data(), decoded_bytes, compressed.data(), compressed.size()) != decoded_bytes)
+            else if (ZSTD_decompress(destination, decoded_bytes, compressed.data(), compressed.size()) != decoded_bytes)
             {
                 return rocksdb::Status::Corruption("merged-input ZSTD decoding failed");
             }
             return rocksdb::Status::OK();
+        }
+
+        rocksdb::Status decode_block(const char *serialized, const rocksdb::CompactionMergeBlock &block,
+                                     std::string *decoded)
+        {
+            std::uint32_t decoded_bytes = 0;
+            auto status = block_decoded_bytes(serialized, block, &decoded_bytes);
+            if (!status.ok())
+                return status;
+            decoded->resize(decoded_bytes);
+            return decode_block_into(serialized, block, decoded->data(), decoded_bytes);
+        }
+
+        std::size_t merge_read_threads()
+        {
+            static const std::size_t configured = [] {
+                const char *value = std::getenv("LSM_MERGE_READ_THREADS");
+                return value == nullptr ? std::size_t{4} : std::max<std::size_t>(1, std::strtoull(value, nullptr, 10));
+            }();
+            return configured;
+        }
+
+        // Runs work(index) for every index in [0, count) on up to threads threads (the caller is one of
+        // them) and returns the first error.
+        template <typename Work>
+        rocksdb::Status run_parallel(std::size_t count, std::size_t threads, const Work &work)
+        {
+            threads = std::min(threads, std::max<std::size_t>(1, count));
+            std::atomic<std::size_t> next{0};
+            const auto worker = [&]() -> rocksdb::Status {
+                for (auto index = next++; index < count; index = next++)
+                {
+                    auto status = work(index);
+                    if (!status.ok())
+                        return status;
+                }
+                return rocksdb::Status::OK();
+            };
+            std::vector<std::future<rocksdb::Status>> helpers;
+            for (std::size_t helper = 1; helper < threads; ++helper)
+                helpers.push_back(std::async(std::launch::async, [&worker] {
+#if defined(__linux__)
+                    pthread_setname_np(pthread_self(), "lsm-merge-read");
+#endif
+                    return worker();
+                }));
+            auto status = worker();
+            for (auto &helper : helpers)
+            {
+                auto helper_status = helper.get();
+                if (status.ok())
+                    status = helper_status;
+            }
+            return status;
         }
     }
 
@@ -259,38 +329,48 @@ namespace lsm_lab
             blocks += request.files[index].blocks.size();
         }
         offsets->assign(blocks, 0);
-        static const std::size_t configured = [] {
-            const char *value = std::getenv("LSM_MERGE_READ_THREADS");
-            return value == nullptr ? std::size_t{4} : std::max<std::size_t>(1, std::strtoull(value, nullptr, 10));
-        }();
-        const auto threads = std::min(configured, std::max<std::size_t>(1, request.files.size()));
-        std::atomic<std::size_t> next{0};
-        const auto worker = [&]() -> rocksdb::Status {
-            for (auto index = next++; index < request.files.size(); index = next++)
+        return run_parallel(request.files.size(), merge_read_threads(), [&](std::size_t index) {
+            return read_file_blocks(request.files[index], destination, file_position[index],
+                                    offsets->data() + file_first_block[index]);
+        });
+    }
+
+    rocksdb::Status decoded_merge_layout(const rocksdb::CompactionMergeRequest &request, const char *serialized,
+                                         const std::vector<std::uint64_t> &offsets,
+                                         std::vector<std::uint64_t> *decoded_offsets, std::uint64_t *decoded_total)
+    {
+        decoded_offsets->assign(offsets.size(), 0);
+        std::uint64_t total = 0;
+        std::size_t index = 0;
+        for (const auto &file : request.files)
+            for (const auto &block : file.blocks)
             {
-                auto status = read_file_blocks(request.files[index], destination, file_position[index],
-                                               offsets->data() + file_first_block[index]);
+                std::uint32_t bytes = 0;
+                auto status = block_decoded_bytes(serialized + offsets[index], block, &bytes);
                 if (!status.ok())
                     return status;
+                (*decoded_offsets)[index++] = total;
+                total += bytes;
             }
-            return rocksdb::Status::OK();
-        };
-        std::vector<std::future<rocksdb::Status>> helpers;
-        for (std::size_t helper = 1; helper < threads; ++helper)
-            helpers.push_back(std::async(std::launch::async, [&worker] {
-#if defined(__linux__)
-                pthread_setname_np(pthread_self(), "lsm-merge-read");
-#endif
-                return worker();
-            }));
-        auto status = worker();
-        for (auto &helper : helpers)
-        {
-            auto helper_status = helper.get();
-            if (status.ok())
-                status = helper_status;
-        }
-        return status;
+        *decoded_total = total;
+        return rocksdb::Status::OK();
+    }
+
+    rocksdb::Status decode_merge_blocks(const rocksdb::CompactionMergeRequest &request, const char *serialized,
+                                        const std::vector<std::uint64_t> &offsets,
+                                        const std::vector<std::uint64_t> &decoded_offsets, std::uint64_t decoded_total,
+                                        char *destination)
+    {
+        std::vector<const rocksdb::CompactionMergeBlock *> blocks;
+        blocks.reserve(offsets.size());
+        for (const auto &file : request.files)
+            for (const auto &block : file.blocks)
+                blocks.push_back(&block);
+        return run_parallel(blocks.size(), merge_read_threads(), [&](std::size_t index) {
+            const auto end = index + 1 < blocks.size() ? decoded_offsets[index + 1] : decoded_total;
+            return decode_block_into(serialized + offsets[index], *blocks[index], destination + decoded_offsets[index],
+                                     static_cast<std::uint32_t>(end - decoded_offsets[index]));
+        });
     }
 
     rocksdb::Status execute_cpu_merge(const rocksdb::CompactionMergeRequest &request,
@@ -604,7 +684,10 @@ namespace lsm_lab
             out.contents_offset = buffers->contents.size();
             bool use_compressed = false;
             const char codec = spec.zstd ? 7 : (spec.lz4 ? 4 : 0);
-            if (codec != 0)
+            // Earlier-design emulation: compression and its checksum are left to the table builder.
+            static const bool cpu_compress = std::getenv("LSM_GPU_CPU_COMPRESS") != nullptr;
+            const bool host_compress = cpu_compress && codec != 0;
+            if (codec != 0 && !host_compress)
             {
                 compressed.clear();
                 rocksdb::PutVarint32(&compressed, static_cast<std::uint32_t>(raw.size()));
@@ -635,8 +718,11 @@ namespace lsm_lab
             buffers->contents.append(contents);
             out.contents_bytes = static_cast<std::uint32_t>(contents.size());
             out.compressed = static_cast<unsigned char>(type);
-            out.checksum = rocksdb::crc32c::Mask(
-                rocksdb::crc32c::Extend(rocksdb::crc32c::Value(contents.data(), contents.size()), &type, 1));
+            if (host_compress)
+                out.flags = rocksdb::CompactionBuiltBlock::kCompressOnHost;
+            else
+                out.checksum = rocksdb::crc32c::Mask(
+                    rocksdb::crc32c::Extend(rocksdb::crc32c::Value(contents.data(), contents.size()), &type, 1));
             out.keys_offset = buffers->keys.size();
             out.first_key_bytes = static_cast<std::uint32_t>(keys[begin].size());
             out.last_key_bytes = static_cast<std::uint32_t>(keys[end - 1].size());
@@ -655,6 +741,10 @@ namespace lsm_lab
         {
             stats->built_blocks = buffers->blocks.size();
             stats->built_bytes = buffers->contents.size();
+            stats->host_compressed_blocks = static_cast<std::uint64_t>(std::count_if(
+                buffers->blocks.begin(), buffers->blocks.end(), [](const rocksdb::CompactionBuiltBlock &block) {
+                    return (block.flags & rocksdb::CompactionBuiltBlock::kCompressOnHost) != 0;
+                }));
         }
         *output = std::make_unique<BuiltMergedInput>(std::move(buffers), result, dropped);
         *built = true;

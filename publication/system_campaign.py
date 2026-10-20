@@ -173,7 +173,10 @@ def run_trial(out: Path, golden: Path, scratch: Path, trial: dict, common: dict,
         # Reflink copies are instant on btrfs/XFS; tmpfs falls back to a full copy.
         subprocess.run(["cp", "-a", "--reflink=auto", str(golden), str(database)], check=True)
         cpus = all_cpus[instance * trial["cores"]:(instance + 1) * trial["cores"]]
-        command = ["numactl", f"--physcpubind={','.join(map(str, cpus))}", f"--membind={','.join(map(str, nodes))}",
+        # Several databases do not fit in one node's memory: prefer the GPU's node but allow spilling.
+        memory = (f"--preferred={trial.get('node', 0)}" if instances > 1
+                  else f"--membind={','.join(map(str, nodes))}")
+        command = ["numactl", f"--physcpubind={','.join(map(str, cpus))}", memory,
                    str(BENCH), "--phase", "run", "--mode", trial["mode"], "--dir", str(database)]
         for name, value in flags.items():
             command += [f"--{name}", str(value).lower() if isinstance(value, bool) else str(value)]

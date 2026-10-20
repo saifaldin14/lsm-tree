@@ -69,7 +69,8 @@ namespace lsm_lab
         bool merged_input_ = false;
         std::uint64_t merge_jobs_ = 0, merge_fallbacks_ = 0, merge_entries_ = 0, merge_blocks_ = 0,
                       merge_input_bytes_ = 0, merge_decoded_bytes_ = 0, merge_wall_ns_ = 0, merge_read_ns_ = 0,
-                      merge_device_ns_ = 0, merge_built_jobs_ = 0, merge_built_blocks_ = 0, merge_built_bytes_ = 0;
+                      merge_device_ns_ = 0, merge_built_jobs_ = 0, merge_built_blocks_ = 0, merge_built_bytes_ = 0,
+                      merge_host_compressed_blocks_ = 0, merge_cpu_decoded_bytes_ = 0;
         std::string merge_last_fallback_;
     };
 

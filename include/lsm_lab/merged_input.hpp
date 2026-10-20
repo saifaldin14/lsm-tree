@@ -81,6 +81,10 @@ namespace lsm_lab
         // Stage 3: finished data blocks returned (0 when the entry stream was returned).
         std::uint64_t built_blocks = 0;
         std::uint64_t built_bytes = 0;
+        // Earlier-design emulation: blocks left to the table builder to compress, and input bytes
+        // decompressed on the CPU.
+        std::uint64_t host_compressed_blocks = 0;
+        std::uint64_t cpu_decoded_bytes = 0;
     };
 
     // Total bytes of all listed blocks including their 5-byte trailers.
@@ -91,6 +95,18 @@ namespace lsm_lab
     // offsets[i] is the start of block i in destination.
     rocksdb::Status read_merge_blocks(const rocksdb::CompactionMergeRequest &request, char *destination,
                                       std::vector<std::uint64_t> *offsets);
+
+    // Earlier-design emulation (LSM_GPU_CPU_DECOMPRESS): the CPU verifies and decompresses the blocks
+    // read by read_merge_blocks. decoded_merge_layout places block i's uncompressed contents at
+    // (*decoded_offsets)[i] in a buffer of *decoded_total bytes; decode_merge_blocks fills it using
+    // LSM_MERGE_READ_THREADS threads.
+    rocksdb::Status decoded_merge_layout(const rocksdb::CompactionMergeRequest &request, const char *serialized,
+                                         const std::vector<std::uint64_t> &offsets,
+                                         std::vector<std::uint64_t> *decoded_offsets, std::uint64_t *decoded_total);
+    rocksdb::Status decode_merge_blocks(const rocksdb::CompactionMergeRequest &request, const char *serialized,
+                                        const std::vector<std::uint64_t> &offsets,
+                                        const std::vector<std::uint64_t> &decoded_offsets, std::uint64_t decoded_total,
+                                        char *destination);
 
     // Reference block builder: encodes the kept entries (internal-key order) as
     // finished data blocks per spec. Sets *built = false and leaves *output

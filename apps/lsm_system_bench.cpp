@@ -83,6 +83,9 @@ namespace
         // Compaction shape (0 keeps RocksDB defaults).
         std::uint32_t l0_trigger = 0;
         double level_multiplier = 0;
+        // RocksDB's integrated key/value separation (BlobDB): values of at least this many bytes
+        // go to blob files, with blob garbage collection (0 disables).
+        std::uint32_t blob_min_bytes = 0;
         bool verify = true;
         std::uint64_t seed = 1;
     };
@@ -205,6 +208,12 @@ namespace
             options.max_bytes_for_level_multiplier = config.level_multiplier;
         options.use_direct_reads = config.use_direct_io;
         options.use_direct_io_for_flush_and_compaction = config.use_direct_io;
+        if (config.blob_min_bytes > 0)
+        {
+            options.enable_blob_files = true;
+            options.min_blob_size = config.blob_min_bytes;
+            options.enable_blob_garbage_collection = true;
+        }
         // With more writers than cores, adaptive yield spins waiting writers and burns the CPU budget.
         options.enable_write_thread_adaptive_yield = config.adaptive_yield;
         options.statistics = rocksdb::CreateDBStatistics();
@@ -878,6 +887,8 @@ namespace
                 config.l0_trigger = static_cast<std::uint32_t>(number());
             else if (name == "--level-multiplier")
                 config.level_multiplier = std::stod(value());
+            else if (name == "--blob-min-bytes")
+                config.blob_min_bytes = static_cast<std::uint32_t>(number());
             else if (name == "--use-direct-io")
                 config.use_direct_io = value() == "true";
             else if (name == "--batch-size")
@@ -924,7 +935,7 @@ int main(int argc, char **argv)
                             {"rmw_percent", config.rmw_percent}, {"delete_percent", config.delete_percent},
                             {"distribution", config.distribution}, {"zipf_theta", config.zipf_theta},
                             {"use_direct_io", config.use_direct_io}, {"l0_trigger", config.l0_trigger},
-                            {"level_multiplier", config.level_multiplier},
+                            {"level_multiplier", config.level_multiplier}, {"blob_min_bytes", config.blob_min_bytes},
                             {"warmup_seconds", config.warmup_seconds}, {"duration_seconds", config.duration_seconds},
                             {"seed", config.seed}};
         result["engine_fingerprint"] = lsm_lab::engine_fingerprint();

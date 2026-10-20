@@ -816,7 +816,26 @@ namespace lsm_lab
                     [](std::size_t total, const rocksdb::Slice &block) { return total + block.size(); });
                 if (std::getenv("LSM_FORCE_CPU_OUTPUT") != nullptr)
                     return execute_cpu_output(input, output);
+                try
+                {
+                    return execute_gpu_output(input, output, total_bytes);
+                }
+                catch (const std::exception &)
+                {
+                    // e.g. the GPU is out of memory because other processes share it: compress on
+                    // the CPU instead of failing the compaction.
+                    ++cpu_fallback_batches_;
+                    cpu_fallback_blocks_ += input.size();
+                    cpu_fallback_bytes_ += total_bytes;
+                    output->clear();
+                    return execute_cpu_output(input, output);
+                }
+            }
 
+            rocksdb::Status execute_gpu_output(const std::vector<rocksdb::Slice> &input,
+                                               std::vector<rocksdb::CompactionOutputBlock> *output,
+                                               std::size_t total_bytes)
+            {
                 cuda_check(cudaSetDevice(0));
                 ++output_gpu_batches_;
                 SlotLease lease(this);
