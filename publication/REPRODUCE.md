@@ -34,6 +34,10 @@ it is interrupted.
 bash publication/run_all.sh /tmp/$USER/campaigns
 ```
 
+`configs/system/ssd-scale.json` names the SSD golden database and scratch
+directory by absolute path (`/tmp/sa29ali/ssd`); change both entries for
+another user or host.
+
 | Campaign | Trials | Approximate machine time |
 |---|---|---|
 | Isolated compaction | 6 workloads × 4 designs × 4 runs | 1.2 h |
