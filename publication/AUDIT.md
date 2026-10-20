@@ -27,6 +27,8 @@ while building and measuring the full GPU offload.
 | 11 | **Scratch data deleted.** Zyra's `logind` removed `/dev/shm` files when the last session ended. | Runs failed part-way. | `loginctl enable-linger`; documented in the runbook. |
 | 12 | **Stale error flag.** A GPU eligibility flag shared the parser's error word, so jobs with deletes reported corruption on fallback. | Caught by the differential matrix before any measurement. | Separate flag; the delete cases match native. |
 | 13 | **Wrong codec in the output-only design.** The output-only GPU path compressed blocks with LZ4 even when the column family was configured for no compression or ZSTD. | Its "128 B, uncompressed" isolated result (136 MiB/s, 7.9 CPU-s/GiB) measured LZ4 compression, not the configured setting. Stored data was still correct. | The output-only path now applies only to LZ4 column families; the isolated sweep was re-run. |
+| 14 | **Shared-GPU failures.** With 4 and 8 instances, native instances were killed for lack of memory (every instance bound to NUMA node 0), and GPU instances hit an illegal memory access: a failed GPU allocation left the buffer reporting its old capacity. GPU out-of-memory on the output path also failed the compaction instead of falling back. | The first shared-GPU campaign is unusable (kept as `shared-gpu-attempt1`); single-instance campaigns were unaffected. | Multi-instance trials prefer node 0 but may spill (`numactl --preferred`); buffers forget their capacity before reallocating; GPU errors on the output path fall back to CPU compression and are counted. Re-run pending. |
+| 15 | **Engine patch not idempotent.** One patch step inserted a block that later steps edited, so re-running CMake inserted it again; another anchored on text that only an already-patched tree contains. | A fresh checkout failed to configure, and an old local tree failed to compile. Zyra's long-lived tree was correct, so no measurement was affected. | The inserted block now carries its final text and the old step is a migration; a fresh configure followed by a second configure leaves the patched sources byte-identical. |
 
 ## Data and provenance
 
@@ -42,10 +44,6 @@ while building and measuring the full GPU offload.
 
 ## Open items
 
-- Whole-database results are single runs; repeat 5 times in randomized order.
-- Energy must be integrated through catch-up compaction (see
-  [RESULTS.md](RESULTS.md) §3.4).
-- Native single writes with 4 background jobs, and GPU compression only with 4
-  background jobs, are not yet measured.
-- Very large jobs can fall back to the CPU when nvCOMP rejects the batch.
+- Shared-GPU campaign: re-run with the fixes in item 14.
+- SATA SSD scale campaign and the `db_bench` cross-check: not yet run.
 - Archive raw data in a DOI-backed store before submission.

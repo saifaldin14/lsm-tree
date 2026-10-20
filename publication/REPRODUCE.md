@@ -50,12 +50,38 @@ another user or host.
 | SSD scale | 12 | 4 h |
 | `db_bench` cross-check | 6 | 1 h |
 
+### Earlier-design comparison
+
+[`run_prior.sh`](run_prior.sh) runs the comparison with rebuilt earlier designs (H8–H12 in
+[PREREGISTRATION.md](PREREGISTRATION.md)). It builds the ZSTD and uncompressed golden databases
+itself. The gParaKV step needs gParaKV and the `lsm_ycsbc` driver first:
+
+```sh
+bash publication/gparakv/setup.sh /tmp/$USER          # PMDK + gParaKV (pinned commit)
+cmake -S . -B build/ycsbc <same options as above> -DLSM_YCSBC_DIR=/tmp/$USER/gparakv/ycsbc
+cmake --build build/ycsbc --target lsm_ycsbc
+YCSBC_BUILD_DIR=build/ycsbc bash publication/run_prior.sh /tmp/$USER/campaigns
+```
+
+| Campaign | Trials | Approximate machine time |
+|---|---|---|
+| Isolated, earlier designs | 6 workloads × 6 designs × 4 runs | 2.5 h |
+| Database, LZ4 | 125 | 9 h |
+| Equal cost | 40 | 3 h |
+| Database, ZSTD | 48 | 3.5 h |
+| Database, no compression | 48 | 3.5 h |
+| gParaKV head-to-head | 36 | 4 h |
+
 ## 4. Figures and tables
 
 ```sh
 publication/fetch_campaigns.sh zyra /tmp/$USER/campaigns   # or copy results.jsonl files into publication/data/campaigns/
 python3 publication/make_figures.py
 ```
+
+`fetch_campaigns.sh` also copies the earlier-design isolated runs into
+`publication/data/prior-compaction/` and the gParaKV runs into
+`publication/data/campaigns/gparakv/`.
 
 `make_figures.py` refuses any run that failed verification and writes
 `publication/data/summary.md` with every number in the figures.

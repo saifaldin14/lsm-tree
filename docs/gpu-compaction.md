@@ -114,13 +114,16 @@ error fails the compaction as RocksDB would.
 | `LSM_NVCOMP_BATCH` | Largest number of blocks per nvCOMP call (default 16,384); larger jobs are split. |
 | `LSM_GPU_OUTPUT_MIN_BLOCK_BYTES` | Smallest block sent to the output-only GPU path (default 32 KiB; 1024 in published runs). |
 | `LSM_DISABLE_GPU_OUTPUT=1`, `LSM_FORCE_CPU_OUTPUT=1` | Keep output-only compression on the CPU. |
+| `LSM_GPU_CPU_DECOMPRESS=1` | Earlier-design emulation: when a merge's input contains compressed blocks, the CPU checks and decompresses every input block (on the read threads) and the GPU receives them uncompressed. |
+| `LSM_GPU_CPU_COMPRESS=1` | Earlier-design emulation: Stage 3 returns uncompressed blocks flagged `kCompressOnHost`, and RocksDB's own `WriteBlock` compresses and checksums them in the compaction thread. No effect with no compression. |
 | `LSM_CUDA_SYNC=auto\|spin\|blocking` | How host threads wait for the GPU; `blocking` is used in published runs. |
 | `LSM_MERGE_TRACE=1` | Prints per-phase timings of each merge to stderr. |
 | `LSM_DISABLE_JOB_PREFETCH=1` | Disables block prefetch in the batched input path. |
 
 The transform's `statistics()` (in `lsm_db` summaries and benchmark output)
 reports `merge_jobs`, `merge_fallbacks`, `merge_last_fallback`,
-`merge_built_jobs`, `merge_built_blocks`, `merge_built_bytes`, entry and byte
+`merge_built_jobs`, `merge_built_blocks`, `merge_built_bytes`,
+`merge_host_compressed_blocks`, `merge_cpu_decoded_bytes`, entry and byte
 counts, and read, device and wall time.
 
 ## Limits
