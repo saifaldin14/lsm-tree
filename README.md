@@ -25,94 +25,10 @@ lookups.
   2–6.5× less CPU than the best earlier design. In the whole database its gain
   over native is 1.7–3× that of the best earlier design, with 4× lower p99
   write latency and the least energy per write
-  ([details](#compared-with-earlier-gpu-and-fpga-designs)).
+  ([details](#4-compared-with-earlier-gpu-and-fpga-designs)).
 
 Measured on Zyra: 4 × Xeon Gold 5220, RTX A6000, data on `/dev/shm`.
 Native RocksDB is built with hardware CRC32C.
-
-### Compared with earlier GPU and FPGA designs
-
-Earlier GPU and FPGA compaction systems (LUDA 2020, Zhou et al. MSST'24, gLSM
-TOS'24, gParaKV SC'25, Alibaba's FPGA design FAST'20) run on other stores and
-hardware, so their published speedups cannot be compared with ours directly.
-We rebuilt each design inside this RocksDB:
-
-- **GPU work:** each rebuild uses our GPU code for the steps that design
-  offloads.
-- **CPU work:** every step it does not offload uses RocksDB's own CPU code,
-  including compression, which none of these designs puts on the GPU.
-- **Benefit of the doubt:** where the choice matters, the rebuild is set up
-  to favour the earlier design. Its input is decompressed on 4 parallel
-  threads, and LUDA's CPU-assisted sort is replaced by our GPU sort.
-- **Same checks:** every design passes the same exact check against native
-  RocksDB.
-
-| Design | Stands in for | GPU | CPU (RocksDB's code) |
-|---|---|---|---|
-| GPU sort/merge | gLSM, gParaKV | unpack, sort, merge | decompress input, block building, compression, checksums |
-| GPU pipeline, CPU compression | LUDA, MSST'24, FPGA (FAST'20) | unpack, sort, merge, deletes, block building, filter hashes | decompress input, compress and checksum output |
-| **Ours** | | all of the above, plus LZ4/ZSTD decompression and compression and checksums | file cuts, index, footer, file writes |
-
-![Single compaction, earlier designs rebuilt](publication/figures/fig10_prior_compaction.png)
-
-**Figure 10.** One full compaction (0.6–1.1 GiB of input) for each rebuilt design. (a) Throughput in MiB of input per second; (b) whole-process CPU time per GiB of input. Medians of 3 warm runs; whiskers span min-max.
-
-Throughput in MiB/s / CPU seconds per GiB (CPU saved compared with native):
-
-| Workload | Native RocksDB | GPU sort/merge | GPU pipeline, CPU compression | **Ours** |
-|---|---|---|---|---|
-| 32 B, LZ4 | 60 / 16.9 | 86 / 12.4 (1.4×) | 182 / 6.1 (2.8×) | **369 / 2.3 (7.3×)** |
-| 128 B, LZ4 | 93 / 11.0 | 132 / 8.2 (1.3×) | 205 / 5.4 (2.0×) | **436 / 2.1 (5.3×)** |
-| 1 KB, LZ4 | 180 / 5.7 | 247 / 4.6 (1.2×) | 293 / 3.9 (1.4×) | **491 / 2.0 (2.9×)** |
-| 128 B, ZSTD | 50 / 20.5 | 65 / 17.3 (1.2×) | 81 / 14.2 (1.4×) | **360 / 2.2 (9.3×)** |
-| 128 B, LZ4, 10% deletes | 94 / 10.9 | 131 / 8.3 (1.3×) | 205 / 5.4 (2.0×) | **430 / 2.1 (5.1×)** |
-| 128 B, no compression | 201 / 5.1 | 268 / 3.4 (1.5×) | 460 / 1.8 (2.8×) | 462 / 1.8 (2.8×) |
-
-With no compression, the GPU pipeline design and ours are identical: in
-their own setting, the earlier designs are as good as ours. Once compression
-is on, as in a normal RocksDB setup, compression dominates what is left on
-the CPU, and only moving it to the GPU removes it. The gap is widest with
-ZSTD (9.3× against 1.4×).
-
-![Whole database, earlier designs rebuilt](publication/figures/fig11_prior_database.png)
-
-**Figure 11.** Whole database on 4 cores (50 M keys, 128-byte values, LZ4), with (a–c) batched writes and (d–f) single writes: throughput including catch-up compaction, CPU time per operation, and energy per operation (CPU package, DRAM and GPU). Medians with 95% bootstrap CIs; each design at its best background-job setting. **Preliminary:** 2 of 5 planned repetitions.
-
-![Tail latency, earlier designs rebuilt](publication/figures/fig13_prior_latency.png)
-
-**Figure 13.** p99 write latency with batched writes (a) and p99 update latency on YCSB A (b), same setup and status as Figure 11.
-
-| Workload | Metric | Native RocksDB | GPU sort/merge | GPU pipeline, CPU compression | **Ours** |
-|---|---|---|---|---|---|
-| Batched writes | kops/s | 353 | 416 (1.18×) | 504 (1.43×) | **614 (1.74×)** |
-| | p99 write | 6.2 ms | 5.5 ms | 4.9 ms | **1.2 ms** |
-| | Energy per write | 637 µJ | 708 µJ | 602 µJ | **557 µJ** |
-| Single writes | kops/s | 176 | 187 (1.06×) | 197 (1.12×) | **238 (1.36×)** |
-| | Energy per write | 1,279 µJ | 1,566 µJ | 1,518 µJ | 1,299 µJ |
-| YCSB A | kops/s | 189 | 215 (1.14×) | 237 (1.26×) | **275 (1.46×)** |
-| | p99 update | 0.28 ms | 0.23 ms | 0.19 ms | **0.11 ms** |
-| | Energy per op | 1,191 µJ | 1,355 µJ | 1,240 µJ | **1,096 µJ** |
-
-Ratios are paired against native within each repetition.
-
-- **Throughput:** ours gains 1.7–3× more over native than the best earlier
-  design.
-- **Tail latency:** ours is the only design that cuts p99 write latency
-  substantially.
-- **Energy:** the earlier designs add GPU power without enough speedup, so
-  they use up to 23% more energy per operation than plain RocksDB; ours uses
-  the least, or about the same as native with single writes.
-- **Reads:** p99 read latency on YCSB A is about 0.03 ms for every design.
-
-Still running:
-
-- the remaining repetitions;
-- the same comparison with ZSTD and with no compression;
-- an equal-cost run against native RocksDB on 32 cores;
-- a head-to-head with gParaKV's own code under its own YCSB driver.
-
-The plan and hypotheses are in
-[publication/PREREGISTRATION.md](publication/PREREGISTRATION.md) (H8–H12).
 
 ### Three levels of offload
 
@@ -217,6 +133,90 @@ background-job setting; GPU compression only was run with 2 jobs only.
 Native RocksDB lets compaction fall behind during a run and pays for it
 afterwards. Measured only while writes are running, the GPU version looks
 13–31% faster; counted to the end of catch-up it is 1.7–1.9× faster.
+
+### 4. Compared with earlier GPU and FPGA designs
+
+Earlier GPU and FPGA compaction systems (LUDA 2020, Zhou et al. MSST'24, gLSM
+TOS'24, gParaKV SC'25, Alibaba's FPGA design FAST'20) run on other stores and
+hardware, so their published speedups cannot be compared with ours directly.
+We rebuilt each design inside this RocksDB:
+
+- **GPU work:** each rebuild uses our GPU code for the steps that design
+  offloads.
+- **CPU work:** every step it does not offload uses RocksDB's own CPU code,
+  including compression, which none of these designs puts on the GPU.
+- **Benefit of the doubt:** where the choice matters, the rebuild is set up
+  to favour the earlier design. Its input is decompressed on 4 parallel
+  threads, and LUDA's CPU-assisted sort is replaced by our GPU sort.
+- **Same checks:** every design passes the same exact check against native
+  RocksDB.
+
+| Design | Stands in for | GPU | CPU (RocksDB's code) |
+|---|---|---|---|
+| GPU sort/merge | gLSM, gParaKV | unpack, sort, merge | decompress input, block building, compression, checksums |
+| GPU pipeline, CPU compression | LUDA, MSST'24, FPGA (FAST'20) | unpack, sort, merge, deletes, block building, filter hashes | decompress input, compress and checksum output |
+| **Ours** | | all of the above, plus LZ4/ZSTD decompression and compression and checksums | file cuts, index, footer, file writes |
+
+![Single compaction, earlier designs rebuilt](publication/figures/fig10_prior_compaction.png)
+
+**Figure 10.** One full compaction (0.6–1.1 GiB of input) for each rebuilt design. (a) Throughput in MiB of input per second; (b) whole-process CPU time per GiB of input. Medians of 3 warm runs; whiskers span min-max.
+
+Throughput in MiB/s / CPU seconds per GiB (CPU saved compared with native):
+
+| Workload | Native RocksDB | GPU sort/merge | GPU pipeline, CPU compression | **Ours** |
+|---|---|---|---|---|
+| 32 B, LZ4 | 60 / 16.9 | 86 / 12.4 (1.4×) | 182 / 6.1 (2.8×) | **369 / 2.3 (7.3×)** |
+| 128 B, LZ4 | 93 / 11.0 | 132 / 8.2 (1.3×) | 205 / 5.4 (2.0×) | **436 / 2.1 (5.3×)** |
+| 1 KB, LZ4 | 180 / 5.7 | 247 / 4.6 (1.2×) | 293 / 3.9 (1.4×) | **491 / 2.0 (2.9×)** |
+| 128 B, ZSTD | 50 / 20.5 | 65 / 17.3 (1.2×) | 81 / 14.2 (1.4×) | **360 / 2.2 (9.3×)** |
+| 128 B, LZ4, 10% deletes | 94 / 10.9 | 131 / 8.3 (1.3×) | 205 / 5.4 (2.0×) | **430 / 2.1 (5.1×)** |
+| 128 B, no compression | 201 / 5.1 | 268 / 3.4 (1.5×) | 460 / 1.8 (2.8×) | 462 / 1.8 (2.8×) |
+
+With no compression, the GPU pipeline design and ours are identical: in
+their own setting, the earlier designs are as good as ours. Once compression
+is on, as in a normal RocksDB setup, compression dominates what is left on
+the CPU, and only moving it to the GPU removes it. The gap is widest with
+ZSTD (9.3× against 1.4×).
+
+![Whole database, earlier designs rebuilt](publication/figures/fig11_prior_database.png)
+
+**Figure 11.** Whole database on 4 cores (50 M keys, 128-byte values, LZ4), with (a–c) batched writes and (d–f) single writes: throughput including catch-up compaction, CPU time per operation, and energy per operation (CPU package, DRAM and GPU). Medians with 95% bootstrap CIs; each design at its best background-job setting. **Preliminary:** 2 of 5 planned repetitions.
+
+![Tail latency, earlier designs rebuilt](publication/figures/fig13_prior_latency.png)
+
+**Figure 13.** p99 write latency with batched writes (a) and p99 update latency on YCSB A (b), same setup and status as Figure 11.
+
+| Workload | Metric | Native RocksDB | GPU sort/merge | GPU pipeline, CPU compression | **Ours** |
+|---|---|---|---|---|---|
+| Batched writes | kops/s | 353 | 416 (1.18×) | 504 (1.43×) | **614 (1.74×)** |
+| | p99 write | 6.2 ms | 5.5 ms | 4.9 ms | **1.2 ms** |
+| | Energy per write | 637 µJ | 708 µJ | 602 µJ | **557 µJ** |
+| Single writes | kops/s | 176 | 187 (1.06×) | 197 (1.12×) | **238 (1.36×)** |
+| | Energy per write | 1,279 µJ | 1,566 µJ | 1,518 µJ | 1,299 µJ |
+| YCSB A | kops/s | 189 | 215 (1.14×) | 237 (1.26×) | **275 (1.46×)** |
+| | p99 update | 0.28 ms | 0.23 ms | 0.19 ms | **0.11 ms** |
+| | Energy per op | 1,191 µJ | 1,355 µJ | 1,240 µJ | **1,096 µJ** |
+
+Ratios are paired against native within each repetition.
+
+- **Throughput:** ours gains 1.7–3× more over native than the best earlier
+  design.
+- **Tail latency:** ours is the only design that cuts p99 write latency
+  substantially.
+- **Energy:** the earlier designs add GPU power without enough speedup, so
+  they use up to 23% more energy per operation than plain RocksDB; ours uses
+  the least, or about the same as native with single writes.
+- **Reads:** p99 read latency on YCSB A is about 0.03 ms for every design.
+
+Still running:
+
+- the remaining repetitions;
+- the same comparison with ZSTD and with no compression;
+- an equal-cost run against native RocksDB on 32 cores;
+- a head-to-head with gParaKV's own code under its own YCSB driver.
+
+The plan and hypotheses are in
+[publication/PREREGISTRATION.md](publication/PREREGISTRATION.md) (H8–H12).
 
 ### Correctness
 
