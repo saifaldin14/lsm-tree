@@ -505,7 +505,7 @@ def figure_prior_compaction():
         return
     metrics = [("Throughput (MiB/s)", throughput_mib, lambda v: f"{v:.0f}"),
                ("CPU time (s per GiB)", cpu_per_gib, lambda v: f"{v:.1f}")]
-    fig, axes = plt.subplots(2, 1, figsize=(DOUBLE_COLUMN, 4.4))
+    fig, axes = plt.subplots(2, 1, figsize=(DOUBLE_COLUMN, 4.7))
     for ax, letter, (ylabel, metric, fmt) in zip(axes, "ab", metrics):
         groups = []
         for tag, label in tags:
@@ -514,7 +514,7 @@ def figure_prior_compaction():
                 if design in PRIOR_COMPACTION[tag]:
                     values = metric(PRIOR_COMPACTION[tag][design])
                     by[design] = (statistics.median(values), min(values), max(values))
-            groups.append((label.replace("\n", " "), by))
+            groups.append((label, by))
         grouped_bars(ax, groups, PRIOR_DESIGNS, None, fmt, size=5.4)
         finish_axis(ax, ylabel)
         panel_label(ax, letter)
