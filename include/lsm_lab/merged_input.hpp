@@ -97,17 +97,19 @@ namespace lsm_lab
                                       std::vector<std::uint64_t> *offsets);
 
     // Earlier-design emulation (LSM_GPU_CPU_DECOMPRESS): the CPU verifies and decompresses the blocks
-    // read by read_merge_blocks. decoded_merge_layout places block i's uncompressed contents at
-    // (*decoded_offsets)[i] of a decoded stream of *decoded_total bytes; decode_merge_blocks decodes
-    // blocks [first, last) into destination (which holds the stream from decoded_offsets[first]) using
-    // LSM_MERGE_READ_THREADS threads.
+    // read by read_merge_blocks. decoded_merge_layout places block i's (*decoded_sizes)[i] uncompressed
+    // bytes at (*decoded_offsets)[i], each start aligned to alignment, in a stream of *decoded_total
+    // bytes; decode_merge_blocks decodes blocks [first, last) into destination (which holds the stream
+    // from decoded_offsets[first]) using LSM_MERGE_READ_THREADS threads.
     rocksdb::Status decoded_merge_layout(const rocksdb::CompactionMergeRequest &request, const char *serialized,
-                                         const std::vector<std::uint64_t> &offsets,
-                                         std::vector<std::uint64_t> *decoded_offsets, std::uint64_t *decoded_total);
+                                         const std::vector<std::uint64_t> &offsets, std::uint64_t alignment,
+                                         std::vector<std::uint64_t> *decoded_offsets,
+                                         std::vector<std::uint32_t> *decoded_sizes, std::uint64_t *decoded_total);
     rocksdb::Status decode_merge_blocks(const rocksdb::CompactionMergeRequest &request, const char *serialized,
                                         const std::vector<std::uint64_t> &offsets,
-                                        const std::vector<std::uint64_t> &decoded_offsets, std::uint64_t decoded_total,
-                                        std::size_t first, std::size_t last, char *destination);
+                                        const std::vector<std::uint64_t> &decoded_offsets,
+                                        const std::vector<std::uint32_t> &decoded_sizes, std::size_t first,
+                                        std::size_t last, char *destination);
 
     // Reference block builder: encodes the kept entries (internal-key order) as
     // finished data blocks per spec. Sets *built = false and leaves *output

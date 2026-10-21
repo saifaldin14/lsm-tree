@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
+#include <numeric>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -36,6 +37,8 @@ namespace lsm_lab
         constexpr std::uint64_t kMaxBlockBytes = rocksdb::CompactionBlockTransform::max_block_bytes;
         // Masked CRC32C of zero bytes (CRC 0); verify_blocks accepts any block whose range is empty.
         constexpr std::uint32_t kEmptyMaskedCrc32c = 0xa282ead8u;
+        // GpuBlock::compression for blocks the CPU already decoded into the decoded buffer.
+        constexpr std::uint32_t kInPlaceBlock = 0xffu;
 
         enum : unsigned int
         {
@@ -1263,25 +1266,28 @@ namespace lsm_lab
                         for (const auto &source : file.blocks)
                             cpu_decompress = cpu_decompress || host_serialized[offsets[index++] + source.size] != 0;
                 }
+                const std::uint64_t output_alignment =
+                    std::max<std::uint64_t>({8, alignments_.output, zstd_alignments_.output});
+                // The CPU-decoded stream has the same layout as the GPU's decoded buffer, so it is uploaded
+                // straight into place.
                 std::vector<std::uint64_t> host_decoded_offsets;
+                std::vector<std::uint32_t> host_decoded_sizes;
                 std::uint64_t host_decoded_total = 0;
-                std::uint64_t upload_bytes = serialized_bytes;
                 if (cpu_decompress)
                 {
-                    status = decoded_merge_layout(request, host_serialized, offsets, &host_decoded_offsets,
-                                                  &host_decoded_total);
+                    status = decoded_merge_layout(request, host_serialized, offsets, output_alignment,
+                                                  &host_decoded_offsets, &host_decoded_sizes, &host_decoded_total);
                     if (!status.ok())
                         return status;
-                    upload_bytes = host_decoded_total;
                 }
+                const auto host_decoded_bytes = std::accumulate(host_decoded_sizes.begin(), host_decoded_sizes.end(),
+                                                                std::uint64_t{0});
                 const auto device_started = std::chrono::steady_clock::now();
                 const auto *bytes = reinterpret_cast<const unsigned char *>(host_serialized);
                 std::vector<GpuBlock> blocks;
                 blocks.reserve(offsets.size());
                 std::vector<std::uint32_t> compressed;
                 std::uint64_t decoded_total = 0;
-                const std::uint64_t output_alignment =
-                    std::max<std::uint64_t>({8, alignments_.output, zstd_alignments_.output});
                 const std::uint64_t input_alignment = std::max<std::uint64_t>(alignments_.input, zstd_alignments_.input);
                 std::size_t block_index = 0;
                 for (const auto &file : request.files)
@@ -1290,24 +1296,18 @@ namespace lsm_lab
                     {
                         if (cpu_decompress)
                         {
-                            const auto offset = host_decoded_offsets[block_index];
-                            const auto end = block_index + 1 < host_decoded_offsets.size()
-                                                 ? host_decoded_offsets[block_index + 1]
-                                                 : host_decoded_total;
                             GpuBlock block{};
-                            block.serialized_offset = offset;
-                            // Already verified on the CPU: an empty checksum range always matches.
+                            // Already verified on the CPU (an empty checksum range always matches) and
+                            // already in place in the decoded buffer.
                             block.checksum_bytes = 0;
                             block.expected_checksum = kEmptyMaskedCrc32c;
-                            block.compression = 0;
-                            block.compressed_offset = offset;
-                            block.compressed_bytes = static_cast<std::uint32_t>(end - offset);
-                            block.decoded_bytes = block.compressed_bytes;
+                            block.compression = kInPlaceBlock;
+                            block.decoded_offset = host_decoded_offsets[block_index];
+                            block.decoded_bytes = host_decoded_sizes[block_index];
+                            block.compressed_bytes = block.decoded_bytes;
                             if (block.decoded_bytes == 0 || block.decoded_bytes > kMaxBlockBytes)
                                 return rocksdb::Status::Corruption("GPU merged-input block size out of range");
-                            decoded_total = align_up(decoded_total, output_alignment);
-                            block.decoded_offset = decoded_total;
-                            decoded_total += block.decoded_bytes;
+                            decoded_total = block.decoded_offset + block.decoded_bytes;
                             blocks.push_back(block);
                             ++block_index;
                             continue;
@@ -1359,7 +1359,7 @@ namespace lsm_lab
                 }
 
                 // 2. Upload, verify checksums, decompress.
-                auto *d_serialized = d_serialized_.reserve(upload_bytes);
+                auto *d_serialized = d_serialized_.reserve(cpu_decompress ? 1 : serialized_bytes);
                 auto *d_blocks = d_blocks_.reserve(block_count);
                 auto *d_decoded = d_decoded_.reserve(decoded_total);
                 auto *d_crc_status = d_crc_status_.reserve(block_count);
@@ -1370,8 +1370,9 @@ namespace lsm_lab
                     // Decode and upload in bounded chunks so the extra pinned memory stays small.
                     constexpr std::uint64_t kChunkBytes = 256ULL << 20;
                     const auto count = host_decoded_offsets.size();
+                    // End of block index - 1's contents.
                     const auto end_of = [&](std::size_t index) {
-                        return index < count ? host_decoded_offsets[index] : host_decoded_total;
+                        return host_decoded_offsets[index - 1] + host_decoded_sizes[index - 1];
                     };
                     char *staging = host_decoded_.reserve(std::max<std::uint64_t>(
                         std::min(host_decoded_total, kChunkBytes), kMaxBlockBytes));
@@ -1381,11 +1382,11 @@ namespace lsm_lab
                         while (last < count && end_of(last + 1) - host_decoded_offsets[first] <= kChunkBytes)
                             ++last;
                         status = decode_merge_blocks(request, host_serialized, offsets, host_decoded_offsets,
-                                                     host_decoded_total, first, last, staging);
+                                                     host_decoded_sizes, first, last, staging);
                         if (!status.ok())
                             return status;
                         const auto bytes_in_chunk = end_of(last) - host_decoded_offsets[first];
-                        cuda_ok(cudaMemcpyAsync(d_serialized + host_decoded_offsets[first], staging, bytes_in_chunk,
+                        cuda_ok(cudaMemcpyAsync(d_decoded + host_decoded_offsets[first], staging, bytes_in_chunk,
                                                 cudaMemcpyHostToDevice, stream_),
                                 "upload decoded blocks");
                         cuda_ok(cudaStreamSynchronize(stream_), "synchronize decoded upload");
@@ -1717,7 +1718,7 @@ namespace lsm_lab
                             stats->blocks = block_count;
                             stats->input_bytes = serialized_bytes;
                             stats->decoded_bytes = decoded_total;
-                            stats->cpu_decoded_bytes = cpu_decompress ? host_decoded_total : 0;
+                            stats->cpu_decoded_bytes = cpu_decompress ? host_decoded_bytes : 0;
                             stats->entries = sorted_count;
                             stats->dropped = dropped.entries;
                             stats->read_ns = static_cast<std::uint64_t>(
@@ -1774,7 +1775,7 @@ namespace lsm_lab
                     stats->blocks = block_count;
                     stats->input_bytes = serialized_bytes;
                     stats->decoded_bytes = decoded_total;
-                    stats->cpu_decoded_bytes = cpu_decompress ? host_decoded_total : 0;
+                    stats->cpu_decoded_bytes = cpu_decompress ? host_decoded_bytes : 0;
                     stats->entries = sorted_count;
                     stats->dropped = dropped.entries;
                     stats->read_ns = static_cast<std::uint64_t>(

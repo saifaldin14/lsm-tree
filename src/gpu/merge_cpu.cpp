@@ -336,10 +336,12 @@ namespace lsm_lab
     }
 
     rocksdb::Status decoded_merge_layout(const rocksdb::CompactionMergeRequest &request, const char *serialized,
-                                         const std::vector<std::uint64_t> &offsets,
-                                         std::vector<std::uint64_t> *decoded_offsets, std::uint64_t *decoded_total)
+                                         const std::vector<std::uint64_t> &offsets, std::uint64_t alignment,
+                                         std::vector<std::uint64_t> *decoded_offsets,
+                                         std::vector<std::uint32_t> *decoded_sizes, std::uint64_t *decoded_total)
     {
         decoded_offsets->assign(offsets.size(), 0);
+        decoded_sizes->assign(offsets.size(), 0);
         std::uint64_t total = 0;
         std::size_t index = 0;
         for (const auto &file : request.files)
@@ -349,7 +351,9 @@ namespace lsm_lab
                 auto status = block_decoded_bytes(serialized + offsets[index], block, &bytes);
                 if (!status.ok())
                     return status;
-                (*decoded_offsets)[index++] = total;
+                total = (total + alignment - 1) / alignment * alignment;
+                (*decoded_offsets)[index] = total;
+                (*decoded_sizes)[index++] = bytes;
                 total += bytes;
             }
         *decoded_total = total;
@@ -358,8 +362,9 @@ namespace lsm_lab
 
     rocksdb::Status decode_merge_blocks(const rocksdb::CompactionMergeRequest &request, const char *serialized,
                                         const std::vector<std::uint64_t> &offsets,
-                                        const std::vector<std::uint64_t> &decoded_offsets, std::uint64_t decoded_total,
-                                        std::size_t first, std::size_t last, char *destination)
+                                        const std::vector<std::uint64_t> &decoded_offsets,
+                                        const std::vector<std::uint32_t> &decoded_sizes, std::size_t first,
+                                        std::size_t last, char *destination)
     {
         std::vector<const rocksdb::CompactionMergeBlock *> blocks;
         blocks.reserve(offsets.size());
@@ -369,10 +374,8 @@ namespace lsm_lab
         const auto base = decoded_offsets[first];
         return run_parallel(last - first, merge_read_threads(), [&](std::size_t offset) {
             const auto index = first + offset;
-            const auto end = index + 1 < blocks.size() ? decoded_offsets[index + 1] : decoded_total;
             return decode_block_into(serialized + offsets[index], *blocks[index],
-                                     destination + (decoded_offsets[index] - base),
-                                     static_cast<std::uint32_t>(end - decoded_offsets[index]));
+                                     destination + (decoded_offsets[index] - base), decoded_sizes[index]);
         });
     }
 

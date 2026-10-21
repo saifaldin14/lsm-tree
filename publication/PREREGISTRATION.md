@@ -178,3 +178,14 @@ re-run inside these campaigns so that every ratio is paired within a block.
     (`"memory": "preferred"`).
   - Both campaigns were restarted from scratch with the fixed build. The
     isolated sweep was re-run as well, so all designs use the same binary.
+- **Earlier-design campaigns, second attempt (stopped, kept as
+  `prior-isolated-attempt2` and `prior-lz4-attempt2`):**
+  - What happened: all 115 completed trials exited cleanly. However, two
+    pipeline-rebuild trials (batched writes, 4 background jobs) fell back to
+    the CPU for 2–3% of jobs because the GPU ran out of memory.
+  - Cause: the CPU-decompressed input was held on the GPU twice (as uploaded
+    and as copied into place), which handicapped the rebuilds.
+  - Change: the CPU-decoded blocks are now uploaded straight into place. Peak
+    GPU memory of the pipeline rebuild fell to 24 GB (full offload: 13 GB),
+    with no fallbacks.
+  - Both campaigns were restarted from scratch with this build.
