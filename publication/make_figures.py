@@ -582,6 +582,37 @@ def figure_prior_equal_cost(entries):
     save(fig, "fig12_prior_equal_cost")
 
 
+def figure_prior_latency(entries):
+    """LZ4, 4 cores: (a) p99 write latency with batched writes, (b) p99 update latency on YCSB A
+    (p99 read latency is the same for every design and is in the summary table)."""
+    if not entries:
+        return
+    designs = (NATIVE, OUTPUT_ONLY, SORT_MERGE, PIPELINE, FULL)
+    panels = [("p99 write latency (ms)", "p99_write_ms", {"writes": "batched"}, "Batched writes",
+               lambda v: f"{v:.1f}"),
+              ("p99 update latency (ms)", "p99_write_ms", {"workload": "A"}, "YCSB A (50% reads, 50% updates)",
+               lambda v: f"{v:.2f}")]
+    fig, axes = plt.subplots(1, 2, figsize=(DOUBLE_COLUMN, 2.4))
+    drawn = False
+    for ax, letter, (ylabel, metric, match, title, fmt) in zip(axes, "ab", panels):
+        values = by_design(entries, metric, **match)
+        if not values:
+            ax.set_visible(False)
+            continue
+        drawn = True
+        grouped_bars(ax, [("", values)], designs, None, fmt, size=6.0)
+        ax.set_xticks([])
+        ax.set_title(title, loc="left", fontsize=8, color=INK, pad=9)
+        finish_axis(ax, ylabel)
+        panel_label(ax, letter)
+    if not drawn:
+        plt.close(fig)
+        return
+    fig.tight_layout(w_pad=2.5, rect=(0, 0, 1, 0.8))
+    design_legend(fig, designs, y=0.8, labels=PRIOR_LABELS, ncol=3)
+    save(fig, "fig13_prior_latency")
+
+
 def load_gparakv():
     """{(system, value_bytes): [{"load_kops", "a_kops", "cpu_s"}...]} from campaigns/gparakv/."""
     root = DATA / "campaigns" / "gparakv"
@@ -722,4 +753,5 @@ if __name__ == "__main__":
     figure_prior_compaction()
     figure_prior_database({codec: summaries[f"prior-{codec}"] for codec in ("lz4", "zstd", "none")})
     figure_prior_equal_cost(summaries["prior-equal-cost"])
+    figure_prior_latency(summaries["prior-lz4"])
     print("wrote", sorted(p.name for p in OUT.glob("*.pdf")))
