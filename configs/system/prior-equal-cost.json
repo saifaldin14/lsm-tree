@@ -20,7 +20,8 @@
     "threads": 8,
     "subcompactions": 4
    },
-   "writes": "batched"
+   "writes": "batched",
+   "memory": "preferred"
   },
   {
    "design": "native",
@@ -33,7 +34,8 @@
     "threads": 8,
     "subcompactions": 4
    },
-   "writes": "batched"
+   "writes": "batched",
+   "memory": "preferred"
   },
   {
    "design": "native",
@@ -46,7 +48,8 @@
     "threads": 32,
     "subcompactions": 4
    },
-   "writes": "batched"
+   "writes": "batched",
+   "memory": "preferred"
   },
   {
    "design": "native",
@@ -59,7 +62,8 @@
     "threads": 32,
     "subcompactions": 4
    },
-   "writes": "batched"
+   "writes": "batched",
+   "memory": "preferred"
   },
   {
    "design": "pipeline_no_compression",
@@ -76,7 +80,8 @@
     "LSM_GPU_CPU_DECOMPRESS": "1",
     "LSM_GPU_CPU_COMPRESS": "1"
    },
-   "writes": "batched"
+   "writes": "batched",
+   "memory": "preferred"
   },
   {
    "design": "pipeline_no_compression",
@@ -93,7 +98,8 @@
     "LSM_GPU_CPU_DECOMPRESS": "1",
     "LSM_GPU_CPU_COMPRESS": "1"
    },
-   "writes": "batched"
+   "writes": "batched",
+   "memory": "preferred"
   },
   {
    "design": "full",
@@ -106,7 +112,8 @@
     "threads": 8,
     "subcompactions": 4
    },
-   "writes": "batched"
+   "writes": "batched",
+   "memory": "preferred"
   },
   {
    "design": "full",
@@ -119,7 +126,8 @@
     "threads": 8,
     "subcompactions": 4
    },
-   "writes": "batched"
+   "writes": "batched",
+   "memory": "preferred"
   }
  ]
 }

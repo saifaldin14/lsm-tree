@@ -98,7 +98,8 @@ namespace lsm_lab
 
     // Earlier-design emulation (LSM_GPU_CPU_DECOMPRESS): the CPU verifies and decompresses the blocks
     // read by read_merge_blocks. decoded_merge_layout places block i's uncompressed contents at
-    // (*decoded_offsets)[i] in a buffer of *decoded_total bytes; decode_merge_blocks fills it using
+    // (*decoded_offsets)[i] of a decoded stream of *decoded_total bytes; decode_merge_blocks decodes
+    // blocks [first, last) into destination (which holds the stream from decoded_offsets[first]) using
     // LSM_MERGE_READ_THREADS threads.
     rocksdb::Status decoded_merge_layout(const rocksdb::CompactionMergeRequest &request, const char *serialized,
                                          const std::vector<std::uint64_t> &offsets,
@@ -106,7 +107,7 @@ namespace lsm_lab
     rocksdb::Status decode_merge_blocks(const rocksdb::CompactionMergeRequest &request, const char *serialized,
                                         const std::vector<std::uint64_t> &offsets,
                                         const std::vector<std::uint64_t> &decoded_offsets, std::uint64_t decoded_total,
-                                        char *destination);
+                                        std::size_t first, std::size_t last, char *destination);
 
     // Reference block builder: encodes the kept entries (internal-key order) as
     // finished data blocks per spec. Sets *built = false and leaves *output

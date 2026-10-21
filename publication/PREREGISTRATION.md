@@ -163,3 +163,18 @@ re-run inside these campaigns so that every ratio is paired within a block.
   out-of-memory falls back to CPU compression and is counted. The fixes touch
   only failure paths. A full re-run is pending; single-instance results were
   unaffected.
+- **Earlier-design campaigns, first attempt (stopped, kept as
+  `prior-isolated-attempt1` and `prior-lz4-attempt1`):**
+  - What happened: in the LZ4 campaign, the sort/merge and pipeline rebuilds
+    were killed for lack of memory with batched writes and 4 background jobs.
+    Trials are bound to NUMA node 0 (about 47 GB).
+  - Cause 1: the CPU-decompress path decoded a whole job's input into one
+    extra pinned buffer. It now decodes and uploads in 256 MiB chunks.
+  - Cause 2: the pipeline rebuild still needs about 30 GB more pinned host
+    memory than full offload, because the GPU returns its blocks uncompressed
+    before RocksDB compresses them.
+  - Change: every trial of the earlier-design campaigns, native and full
+    offload included, now prefers node 0 but may spill to other nodes
+    (`"memory": "preferred"`).
+  - Both campaigns were restarted from scratch with the fixed build. The
+    isolated sweep was re-run as well, so all designs use the same binary.

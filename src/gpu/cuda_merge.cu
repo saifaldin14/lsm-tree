@@ -1265,7 +1265,6 @@ namespace lsm_lab
                 }
                 std::vector<std::uint64_t> host_decoded_offsets;
                 std::uint64_t host_decoded_total = 0;
-                const char *upload_source = host_serialized;
                 std::uint64_t upload_bytes = serialized_bytes;
                 if (cpu_decompress)
                 {
@@ -1273,14 +1272,7 @@ namespace lsm_lab
                                                   &host_decoded_total);
                     if (!status.ok())
                         return status;
-                    char *host_decoded = host_decoded_.reserve(host_decoded_total);
-                    status = decode_merge_blocks(request, host_serialized, offsets, host_decoded_offsets,
-                                                 host_decoded_total, host_decoded);
-                    if (!status.ok())
-                        return status;
-                    upload_source = host_decoded;
                     upload_bytes = host_decoded_total;
-                    mark("cpu_decode");
                 }
                 const auto device_started = std::chrono::steady_clock::now();
                 const auto *bytes = reinterpret_cast<const unsigned char *>(host_serialized);
@@ -1373,8 +1365,40 @@ namespace lsm_lab
                 auto *d_crc_status = d_crc_status_.reserve(block_count);
                 auto *h_blocks = h_blocks_.reserve(block_count);
                 std::memcpy(h_blocks, blocks.data(), blocks.size() * sizeof(GpuBlock));
-                cuda_ok(cudaMemcpyAsync(d_serialized, upload_source, upload_bytes, cudaMemcpyHostToDevice, stream_),
-                        "upload blocks");
+                if (cpu_decompress)
+                {
+                    // Decode and upload in bounded chunks so the extra pinned memory stays small.
+                    constexpr std::uint64_t kChunkBytes = 256ULL << 20;
+                    const auto count = host_decoded_offsets.size();
+                    const auto end_of = [&](std::size_t index) {
+                        return index < count ? host_decoded_offsets[index] : host_decoded_total;
+                    };
+                    char *staging = host_decoded_.reserve(std::max<std::uint64_t>(
+                        std::min(host_decoded_total, kChunkBytes), kMaxBlockBytes));
+                    for (std::size_t first = 0; first < count;)
+                    {
+                        auto last = first + 1;
+                        while (last < count && end_of(last + 1) - host_decoded_offsets[first] <= kChunkBytes)
+                            ++last;
+                        status = decode_merge_blocks(request, host_serialized, offsets, host_decoded_offsets,
+                                                     host_decoded_total, first, last, staging);
+                        if (!status.ok())
+                            return status;
+                        const auto bytes_in_chunk = end_of(last) - host_decoded_offsets[first];
+                        cuda_ok(cudaMemcpyAsync(d_serialized + host_decoded_offsets[first], staging, bytes_in_chunk,
+                                                cudaMemcpyHostToDevice, stream_),
+                                "upload decoded blocks");
+                        cuda_ok(cudaStreamSynchronize(stream_), "synchronize decoded upload");
+                        first = last;
+                    }
+                    mark("cpu_decode_upload");
+                }
+                else
+                {
+                    cuda_ok(cudaMemcpyAsync(d_serialized, host_serialized, serialized_bytes, cudaMemcpyHostToDevice,
+                                            stream_),
+                            "upload blocks");
+                }
                 cuda_ok(cudaMemcpyAsync(d_blocks, h_blocks, block_count * sizeof(GpuBlock), cudaMemcpyHostToDevice, stream_),
                         "upload descriptors");
                 verify_blocks<<<grid(block_count, 128), 128, 0, stream_>>>(

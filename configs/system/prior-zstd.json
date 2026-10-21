@@ -19,7 +19,8 @@
     "disable-wal": true,
     "background-jobs": 2
    },
-   "writes": "batched"
+   "writes": "batched",
+   "memory": "preferred"
   },
   {
    "design": "native",
@@ -30,7 +31,8 @@
     "disable-wal": true,
     "background-jobs": 4
    },
-   "writes": "batched"
+   "writes": "batched",
+   "memory": "preferred"
   },
   {
    "design": "native",
@@ -40,7 +42,8 @@
     "batch-size": 1,
     "background-jobs": 2
    },
-   "writes": "single"
+   "writes": "single",
+   "memory": "preferred"
   },
   {
    "design": "native",
@@ -50,7 +53,8 @@
     "batch-size": 1,
     "background-jobs": 4
    },
-   "writes": "single"
+   "writes": "single",
+   "memory": "preferred"
   },
   {
    "design": "sort_merge",
@@ -66,7 +70,8 @@
     "LSM_GPU_CPU_DECOMPRESS": "1",
     "LSM_DISABLE_GPU_OUTPUT": "1"
    },
-   "writes": "batched"
+   "writes": "batched",
+   "memory": "preferred"
   },
   {
    "design": "sort_merge",
@@ -82,7 +87,8 @@
     "LSM_GPU_CPU_DECOMPRESS": "1",
     "LSM_DISABLE_GPU_OUTPUT": "1"
    },
-   "writes": "batched"
+   "writes": "batched",
+   "memory": "preferred"
   },
   {
    "design": "sort_merge",
@@ -97,7 +103,8 @@
     "LSM_GPU_CPU_DECOMPRESS": "1",
     "LSM_DISABLE_GPU_OUTPUT": "1"
    },
-   "writes": "single"
+   "writes": "single",
+   "memory": "preferred"
   },
   {
    "design": "sort_merge",
@@ -112,7 +119,8 @@
     "LSM_GPU_CPU_DECOMPRESS": "1",
     "LSM_DISABLE_GPU_OUTPUT": "1"
    },
-   "writes": "single"
+   "writes": "single",
+   "memory": "preferred"
   },
   {
    "design": "pipeline_no_compression",
@@ -127,7 +135,8 @@
     "LSM_GPU_CPU_DECOMPRESS": "1",
     "LSM_GPU_CPU_COMPRESS": "1"
    },
-   "writes": "batched"
+   "writes": "batched",
+   "memory": "preferred"
   },
   {
    "design": "pipeline_no_compression",
@@ -142,7 +151,8 @@
     "LSM_GPU_CPU_DECOMPRESS": "1",
     "LSM_GPU_CPU_COMPRESS": "1"
    },
-   "writes": "batched"
+   "writes": "batched",
+   "memory": "preferred"
   },
   {
    "design": "pipeline_no_compression",
@@ -156,7 +166,8 @@
     "LSM_GPU_CPU_DECOMPRESS": "1",
     "LSM_GPU_CPU_COMPRESS": "1"
    },
-   "writes": "single"
+   "writes": "single",
+   "memory": "preferred"
   },
   {
    "design": "pipeline_no_compression",
@@ -170,7 +181,8 @@
     "LSM_GPU_CPU_DECOMPRESS": "1",
     "LSM_GPU_CPU_COMPRESS": "1"
    },
-   "writes": "single"
+   "writes": "single",
+   "memory": "preferred"
   },
   {
    "design": "full",
@@ -181,7 +193,8 @@
     "disable-wal": true,
     "background-jobs": 2
    },
-   "writes": "batched"
+   "writes": "batched",
+   "memory": "preferred"
   },
   {
    "design": "full",
@@ -192,7 +205,8 @@
     "disable-wal": true,
     "background-jobs": 4
    },
-   "writes": "batched"
+   "writes": "batched",
+   "memory": "preferred"
   },
   {
    "design": "full",
@@ -202,7 +216,8 @@
     "batch-size": 1,
     "background-jobs": 2
    },
-   "writes": "single"
+   "writes": "single",
+   "memory": "preferred"
   },
   {
    "design": "full",
@@ -212,7 +227,8 @@
     "batch-size": 1,
     "background-jobs": 4
    },
-   "writes": "single"
+   "writes": "single",
+   "memory": "preferred"
   }
  ]
 }
