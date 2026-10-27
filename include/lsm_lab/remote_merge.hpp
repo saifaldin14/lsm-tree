@@ -35,6 +35,9 @@ namespace lsm_lab
     {
         merge = 1,
         statistics = 2,
+        // Transport benchmark: the request carries blocks_bytes of payload and asks for a
+        // reply of meta_bytes bytes.
+        echo = 3,
     };
 
     // Request frame: RequestHeader, metadata (encode_merge_request), padding to 64 bytes,

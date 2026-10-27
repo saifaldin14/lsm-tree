@@ -574,6 +574,12 @@ namespace lsm_lab
                 return fail(rocksdb::Status::Code::kCorruption, "bad request magic");
             if (header.kind == RpcKind::statistics)
                 return write_reply(sink, reply, transform->statistics().dump(), nullptr);
+            if (header.kind == RpcKind::echo)
+            {
+                const auto total = std::max<std::size_t>(header.meta_bytes, sizeof(ReplyHeader));
+                std::memcpy(sink.reserve(total), &reply, sizeof(reply));
+                return total;
+            }
             if (header.kind != RpcKind::merge || header.blocks_offset + header.blocks_bytes > bytes ||
                 sizeof(header) + header.meta_bytes > header.blocks_offset)
                 return fail(rocksdb::Status::Code::kCorruption, "malformed request");

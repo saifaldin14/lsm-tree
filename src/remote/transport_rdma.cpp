@@ -1,9 +1,14 @@
 // RDMA transport: RC queue pairs set up with librdmacm.
 //
-// Protocol for one call (the client's request and reply buffers are registered once
-// and reused):
-//   client -> server  SEND  kRequest {request addr/rkey/bytes, reply addr/rkey/capacity}
-//   server            RDMA READ the request from client memory
+// Protocol for one call (request and reply buffers on both sides are registered once
+// and reused). The request moves by push (default) or pull (LSM_RDMA_PUSH=0):
+//   pull: client -> server  SEND  kRequest {request addr/rkey/bytes, reply addr/rkey/capacity}
+//         server            RDMA READ the request from client memory
+//   push: client -> server  SEND  kRequestPush {request bytes, reply addr/rkey/capacity}
+//         server -> client  SEND  kRequestBuffer {server buffer addr/rkey}
+//         client            RDMA WRITE the request into server memory
+//         client -> server  SEND  kRequestReady
+// then, for both:
 //   server -> client  SEND  kNeed {bytes}        only if the reply exceeds the capacity
 //   client -> server  SEND  kReplyBuffer {...}   with a larger reply buffer
 //   server            RDMA WRITE the reply into client memory
@@ -31,6 +36,7 @@
 #include <netdb.h>
 #include <poll.h>
 #include <stdexcept>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -50,6 +56,9 @@ namespace lsm_lab::detail
             kNeed = 2,
             kReplyBuffer = 3,
             kDone = 4,
+            kRequestPush = 5,
+            kRequestBuffer = 6,
+            kRequestReady = 7,
         };
 
         struct Ctrl
@@ -73,6 +82,16 @@ namespace lsm_lab::detail
         bool busy_poll()
         {
             static const bool value = std::getenv("LSM_RDMA_POLL") != nullptr;
+            return value;
+        }
+
+        bool push_requests()
+        {
+            static const bool value = [] {
+                // Push (RDMA WRITE) reaches line rate on ConnectX-6; READ peaks near half of it.
+                const char *configured = std::getenv("LSM_RDMA_PUSH");
+                return configured == nullptr || std::string(configured) != "0";
+            }();
             return value;
         }
 
@@ -532,7 +551,7 @@ namespace lsm_lab::detail
                     // Replies are usually no larger than the request; kNeed covers the rest.
                     auto region = replies_->get(std::max<std::size_t>(request_bytes, last_reply_));
                     Ctrl message;
-                    message.type = kRequest;
+                    message.type = push_requests() ? kRequestPush : kRequest;
                     message.request_addr = reinterpret_cast<std::uint64_t>(request_.data);
                     message.request_rkey = request_.mr->rkey;
                     message.request_bytes = request_bytes;
@@ -540,6 +559,20 @@ namespace lsm_lab::detail
                     message.reply_rkey = region.mr->rkey;
                     message.reply_capacity = region.capacity;
                     channel_->send(message);
+                    if (push_requests())
+                    {
+                        const auto target = channel_->receive();
+                        if (target.type != kRequestBuffer)
+                        {
+                            errno = 0;
+                            fail("expected a request buffer");
+                        }
+                        channel_->transfer(IBV_WR_RDMA_WRITE, request_, target.request_addr, target.request_rkey,
+                                           request_bytes);
+                        Ctrl ready;
+                        ready.type = kRequestReady;
+                        channel_->send(ready);
+                    }
                     while (true)
                     {
                         const auto answer = channel_->receive();
@@ -725,7 +758,7 @@ namespace lsm_lab::detail
                     while (!stopping_)
                     {
                         const auto message = channel.receive();
-                        if (message.type != kRequest)
+                        if (message.type != kRequest && message.type != kRequestPush)
                             continue;
                         if (request.capacity < message.request_bytes)
                         {
@@ -733,8 +766,23 @@ namespace lsm_lab::detail
                                 connection.pool->put(request);
                             request = connection.pool->get(message.request_bytes);
                         }
-                        channel.transfer(IBV_WR_RDMA_READ, request, message.request_addr, message.request_rkey,
-                                         message.request_bytes);
+                        if (message.type == kRequest)
+                        {
+                            channel.transfer(IBV_WR_RDMA_READ, request, message.request_addr, message.request_rkey,
+                                             message.request_bytes);
+                        }
+                        else
+                        {
+                            Ctrl target;
+                            target.type = kRequestBuffer;
+                            target.request_addr = reinterpret_cast<std::uint64_t>(request.data);
+                            target.request_rkey = request.mr->rkey;
+                            channel.send(target);
+                            Ctrl ready;
+                            do
+                                ready = channel.receive();
+                            while (ready.type != kRequestReady);
+                        }
                         const auto bytes = handler_(request.data, message.request_bytes, sink);
                         auto reply_addr = message.reply_addr;
                         auto reply_rkey = message.reply_rkey;

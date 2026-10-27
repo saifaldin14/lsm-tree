@@ -198,6 +198,9 @@ target_compile_options(lsm_system_bench PRIVATE -Wall -Wextra -Wpedantic -Werror
 add_executable(lsm_compaction_server apps/lsm_compaction_server.cpp)
 target_link_libraries(lsm_compaction_server PRIVATE lsm_blocks)
 target_compile_options(lsm_compaction_server PRIVATE -Wall -Wextra -Wpedantic -Werror)
+add_executable(lsm_rpc_bench apps/lsm_rpc_bench.cpp)
+target_link_libraries(lsm_rpc_bench PRIVATE lsm_blocks)
+target_compile_options(lsm_rpc_bench PRIVATE -Wall -Wextra -Wpedantic -Werror)
 add_test(NAME remote.compaction
   COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/remote_compaction_test.sh"
           "$<TARGET_FILE:lsm_compaction_server>" "$<TARGET_FILE:lsm_compaction_bench>")
