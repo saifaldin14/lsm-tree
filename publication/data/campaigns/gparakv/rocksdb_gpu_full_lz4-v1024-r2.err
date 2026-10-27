@@ -1,0 +1,348 @@
+lsm_ycsbc: mode=cuda_merge compression=lz4 background_jobs=4 blob_min_bytes=0
+--------------------Loading--------------------
+Time: Thu Oct 22 05:16:06 2026
+... finished 100 ops
+... finished 200 ops
+... finished 300 ops
+... finished 400 ops
+... finished 500 ops
+... finished 600 ops
+... finished 700 ops
+... finished 800 ops
+... finished 900 ops
+... finished 1000 ops
+... finished 1500 ops
+... finished 2000 ops
+... finished 2500 ops
+... finished 3000 ops
+... finished 3500 ops
+... finished 4000 ops
+... finished 4500 ops
+... finished 5000 ops
+... finished 6000 ops
+... finished 7000 ops
+... finished 8000 ops
+... finished 9000 ops
+... finished 10000 ops
+... finished 15000 ops
+... finished 20000 ops
+... finished 25000 ops
+... finished 30000 ops
+... finished 35000 ops
+... finished 40000 ops
+... finished 45000 ops
+... finished 50000 ops
+... finished 60000 ops
+... finished 70000 ops
+... finished 80000 ops
+... finished 90000 ops
+... finished 100000 ops
+... finished 150000 ops
+... finished 200000 ops
+... finished 250000 ops
+... finished 300000 ops
+... finished 350000 ops
+... finished 400000 ops
+... finished 450000 ops
+... finished 500000 ops
+... finished 600000 ops
+... finished 700000 ops
+... finished 800000 ops
+... finished 900000 ops
+... finished 1000000 ops
+... finished 1100000 ops
+... finished 1200000 ops
+... finished 1300000 ops
+... finished 1400000 ops
+... finished 1500000 ops
+... finished 1600000 ops
+... finished 1700000 ops
+... finished 1800000 ops
+... finished 1900000 ops
+... finished 2000000 ops
+... finished 2100000 ops
+... finished 2200000 ops
+... finished 2300000 ops
+... finished 2400000 ops
+... finished 2500000 ops
+... finished 2600000 ops
+... finished 2700000 ops
+... finished 2800000 ops
+... finished 2900000 ops
+... finished 3000000 ops
+... finished 3100000 ops
+... finished 3200000 ops
+... finished 3300000 ops
+... finished 3400000 ops
+... finished 3500000 ops
+... finished 3600000 ops
+... finished 3700000 ops
+... finished 3800000 ops
+... finished 3900000 ops
+... finished 4000000 ops
+... finished 4100000 ops
+... finished 4200000 ops
+... finished 4300000 ops
+... finished 4400000 ops
+... finished 4500000 ops
+... finished 4600000 ops
+... finished 4700000 ops
+... finished 4800000 ops
+... finished 4900000 ops
+... finished 5000000 ops
+... finished 5100000 ops
+... finished 5200000 ops
+... finished 5300000 ops
+... finished 5400000 ops
+... finished 5500000 ops
+... finished 5600000 ops
+... finished 5700000 ops
+... finished 5800000 ops
+... finished 5900000 ops
+... finished 6000000 ops
+... finished 6100000 ops
+... finished 6200000 ops
+... finished 6300000 ops
+... finished 6400000 ops
+... finished 6500000 ops
+... finished 6600000 ops
+... finished 6700000 ops
+... finished 6800000 ops
+... finished 6900000 ops
+... finished 7000000 ops
+... finished 7100000 ops
+... finished 7200000 ops
+... finished 7300000 ops
+... finished 7400000 ops
+... finished 7500000 ops
+... finished 7600000 ops
+... finished 7700000 ops
+... finished 7800000 ops
+... finished 7900000 ops
+... finished 8000000 ops
+... finished 8100000 ops
+... finished 8200000 ops
+... finished 8300000 ops
+... finished 8400000 ops
+... finished 8500000 ops
+... finished 8600000 ops
+... finished 8700000 ops
+... finished 8800000 ops
+... finished 8900000 ops
+... finished 9000000 ops
+... finished 9100000 ops
+... finished 9200000 ops
+... finished 9300000 ops
+... finished 9400000 ops
+... finished 9500000 ops
+... finished 9600000 ops
+... finished 9700000 ops
+... finished 9800000 ops
+... finished 9900000 ops
+... finished 10000000 ops
+
+----------------------Loading-----------------------
+Loading records : 10000000
+Loading duration: 51.9661 sec
+Loading throughput (KTPS): 192.433
+----------------------------------------------------
+
+--------------------Transaction--------------------
+Time: Thu Oct 22 05:17:04 2026
+... finished 100 ops
+... finished 200 ops
+... finished 300 ops
+... finished 400 ops
+... finished 500 ops
+... finished 600 ops
+... finished 700 ops
+... finished 800 ops
+... finished 900 ops
+... finished 1000 ops
+... finished 1500 ops
+... finished 2000 ops
+... finished 2500 ops
+... finished 3000 ops
+... finished 3500 ops
+... finished 4000 ops
+... finished 4500 ops
+... finished 5000 ops
+... finished 6000 ops
+... finished 7000 ops
+... finished 8000 ops
+... finished 9000 ops
+... finished 10000 ops
+... finished 15000 ops
+... finished 20000 ops
+... finished 25000 ops
+... finished 30000 ops
+... finished 35000 ops
+... finished 40000 ops
+... finished 45000 ops
+... finished 50000 ops
+... finished 60000 ops
+... finished 70000 ops
+... finished 80000 ops
+... finished 90000 ops
+... finished 100000 ops
+... finished 150000 ops
+... finished 200000 ops
+... finished 250000 ops
+... finished 300000 ops
+... finished 350000 ops
+... finished 400000 ops
+... finished 450000 ops
+... finished 500000 ops
+... finished 600000 ops
+... finished 700000 ops
+... finished 800000 ops
+... finished 900000 ops
+... finished 1000000 ops
+... finished 1100000 ops
+... finished 1200000 ops
+... finished 1300000 ops
+... finished 1400000 ops
+... finished 1500000 ops
+... finished 1600000 ops
+... finished 1700000 ops
+... finished 1800000 ops
+... finished 1900000 ops
+... finished 2000000 ops
+... finished 2100000 ops
+... finished 2200000 ops
+... finished 2300000 ops
+... finished 2400000 ops
+... finished 2500000 ops
+... finished 2600000 ops
+... finished 2700000 ops
+... finished 2800000 ops
+... finished 2900000 ops
+... finished 3000000 ops
+... finished 3100000 ops
+... finished 3200000 ops
+... finished 3300000 ops
+... finished 3400000 ops
+... finished 3500000 ops
+... finished 3600000 ops
+... finished 3700000 ops
+... finished 3800000 ops
+... finished 3900000 ops
+... finished 4000000 ops
+... finished 4100000 ops
+... finished 4200000 ops
+... finished 4300000 ops
+... finished 4400000 ops
+... finished 4500000 ops
+... finished 4600000 ops
+... finished 4700000 ops
+... finished 4800000 ops
+... finished 4900000 ops
+... finished 5000000 ops
+... finished 5100000 ops
+... finished 5200000 ops
+... finished 5300000 ops
+... finished 5400000 ops
+... finished 5500000 ops
+... finished 5600000 ops
+... finished 5700000 ops
+... finished 5800000 ops
+... finished 5900000 ops
+... finished 6000000 ops
+... finished 6100000 ops
+... finished 6200000 ops
+... finished 6300000 ops
+... finished 6400000 ops
+... finished 6500000 ops
+... finished 6600000 ops
+... finished 6700000 ops
+... finished 6800000 ops
+... finished 6900000 ops
+... finished 7000000 ops
+... finished 7100000 ops
+... finished 7200000 ops
+... finished 7300000 ops
+... finished 7400000 ops
+... finished 7500000 ops
+... finished 7600000 ops
+... finished 7700000 ops
+... finished 7800000 ops
+... finished 7900000 ops
+... finished 8000000 ops
+... finished 8100000 ops
+... finished 8200000 ops
+... finished 8300000 ops
+... finished 8400000 ops
+... finished 8500000 ops
+... finished 8600000 ops
+... finished 8700000 ops
+... finished 8800000 ops
+... finished 8900000 ops
+... finished 9000000 ops
+... finished 9100000 ops
+... finished 9200000 ops
+... finished 9300000 ops
+... finished 9400000 ops
+... finished 9500000 ops
+... finished 9600000 ops
+... finished 9700000 ops
+... finished 9800000 ops
+... finished 9900000 ops
+... finished 10000000 ops
+
+** Compaction Stats [default] **
+Level    Files   Size     Score Read(GB)  Rn(GB) Rnp1(GB) Write(GB) WPreComp(GB) Wnew(GB) Moved(GB) W-Amp Rd(MB/s) Wr(MB/s) Comp(sec) CompMergeCPU(sec) Comp(cnt) Avg(sec) KeyIn KeyDrop Rblob(GB) Wblob(GB)
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  L0      6/4      9.29 MB   0.5      0.2     0.0      0.2       0.7      18.9      0.4       0.0   1.5     12.7     35.3     19.25             17.99       270    0.071     21M   205K       0.0       0.0
+  L5      1/1     67.44 MB   0.0      0.7     0.1      0.6       0.7      19.4      0.1       0.0   6.2     16.8     15.8     43.30             42.23        13    3.331     20M  1185K       0.0       0.0
+  L6      4/0    270.07 MB   0.0      2.6     0.3      2.3       2.6      84.6      0.3       0.0   8.4     73.9     72.6     36.25             29.81        23    1.576     86M     16       0.0       0.0
+ Sum     11/5    346.79 MB   0.0      3.6     0.4      3.1       3.9     122.8      0.8       0.0   9.0     36.9     40.5     98.80             90.04       306    0.323    128M  1391K       0.0       0.0
+ Int      0/0      0.00 KB   0.0      3.6     0.4      3.1       3.9     122.8      0.8       0.0   9.0     36.9     40.5     98.80             90.04       306    0.323    128M  1391K       0.0       0.0
+
+** Compaction Stats [default] **
+Priority    Files   Size     Score Read(GB)  Rn(GB) Rnp1(GB) Write(GB) WPreComp(GB) Wnew(GB) Moved(GB) W-Amp Rd(MB/s) Wr(MB/s) Comp(sec) CompMergeCPU(sec) Comp(cnt) Avg(sec) KeyIn KeyDrop Rblob(GB) Wblob(GB)
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Low      0/0      0.00 KB   0.0      3.6     0.4      3.1       3.5     110.5      0.3       0.0   0.0     43.8     42.6     83.38             74.63        66    1.263    113M  1391K       0.0       0.0
+High      0/0      0.00 KB   0.0      0.0     0.0      0.0       0.4      12.3      0.4       0.0   0.0      0.0     28.7     15.42             15.40       240    0.064     14M      0       0.0       0.0
+
+Blob file count: 0, total size: 0.0 GB, garbage size: 0.0 GB, space amp: 0.0
+
+Uptime(secs): 120.3 total, 120.3 interval
+Flush(GB): cumulative 0.431, interval 0.431
+AddFile(GB): cumulative 0.000, interval 0.000
+AddFile(Total Files): cumulative 0, interval 0
+AddFile(L0 Files): cumulative 0, interval 0
+AddFile(Keys): cumulative 0, interval 0
+Cumulative compaction: 3.90 GB write, 33.23 MB/s write, 3.56 GB read, 30.34 MB/s read, 98.8 seconds
+Interval compaction: 3.90 GB write, 33.23 MB/s write, 3.56 GB read, 30.35 MB/s read, 98.8 seconds
+Estimated pending compaction bytes: 80453555
+Write Stall (count): cf-l0-file-count-limit-delays-with-ongoing-compaction: 0, cf-l0-file-count-limit-stops-with-ongoing-compaction: 0, l0-file-count-limit-delays: 0, l0-file-count-limit-stops: 0, memtable-limit-delays: 0, memtable-limit-stops: 0, pending-compaction-bytes-delays: 0, pending-compaction-bytes-stops: 0, total-delays: 0, total-stops: 0
+Block cache LRUCache@0x3717ae70#3186340 capacity: 256.00 MB seed: 1445900239 usage: 0.09 KB table_size: 1024 occupancy: 1 collections: 1 last_copies: 0 last_secs: 8.3e-05 secs_since: 120
+Block cache entry stats(count,size,portion): Misc(1,0.00 KB,0%)
+
+** File Read Latency Histogram By Level [default] **
+
+** DB Stats **
+Uptime(secs): 120.3 total, 120.3 interval
+Cumulative writes: 15M writes, 15M keys, 15M commit groups, 1.0 writes per commit group, ingest: 14.75 GB, 125.58 MB/s
+Cumulative WAL: 15M writes, 0 syncs, 15000520.00 writes per sync, written: 14.75 GB, 125.58 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 15M writes, 15M keys, 15M commit groups, 1.0 writes per commit group, ingest: 15106.72 MB, 125.58 MB/s
+Interval WAL: 15M writes, 0 syncs, 15000520.00 writes per sync, written: 14.75 GB, 125.58 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+
+lsm_transform: {"backend":"cuda_hybrid","batches":0,"blocks":0,"compaction_sessions":0,"cpu_fallback_batches":0,"cpu_fallback_blocks":0,"cpu_fallback_bytes":0,"device":"NVIDIA RTX A6000; nvCOMP=5.3.0.16; CUDA=12030; sync=blocking","dispatches":2304,"input_bytes":0,"kernel_ns":1919826059,"merge_blocks":23744177,"merge_built_blocks":23699647,"merge_built_bytes":2550947961,"merge_built_jobs":53,"merge_cpu_decoded_bytes":0,"merge_decoded_bytes":99479476004,"merge_device_ns":11937007270,"merge_entries":94798507,"merge_fallbacks":14,"merge_host_compressed_blocks":0,"merge_input_bytes":2721920910,"merge_jobs":53,"merge_last_fallback":"Operation aborted: cudaMalloc: out of memory","merge_read_ns":1456513112,"merge_wall_ns":13673414134,"merged_input":true,"output_batches":1152,"output_blocks":4662716,"output_bytes":0,"output_gpu_batches":1152,"wall_ns":0}
+
+DB name: leveldb
+Workload filename: /tmp/sa29ali/campaigns/gparakv/workloada-v1024.spec
+----------------------Loading-----------------------
+Loading records : 10000000
+Loading duration: 51.9661 sec
+Loading throughput (KTPS): 192.433
+----------------------------------------------------
+--------------------Transaction---------------------
+Read proportion: 0.5
+Transactions records : 10000000
+Transactions duration: 62.0412 sec
+Transaction throughput (KTPS): 161.183
+----------------------------------------------------

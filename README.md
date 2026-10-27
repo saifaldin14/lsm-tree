@@ -22,9 +22,10 @@ lookups.
   enough:** at most 1.2× faster, with no benefit to the database.
 - **It beats earlier GPU and FPGA compaction designs** rebuilt in the same
   RocksDB on the same machine. With compression on, a single compaction uses
-  2–6.5× less CPU than the best earlier design. In the whole database its gain
-  over native is 1.7–3× that of the best earlier design, with 4× lower p99
-  write latency and the least energy per write
+  2–6.5× less CPU than the best earlier design. In the whole database ours is
+  1.75× native with LZ4 and 2.27× with ZSTD, against at most 1.41× and 1.20×
+  for the earlier designs, with up to 4× lower p99 write latency. With no
+  compression the earlier pipeline design matches ours
   ([details](#4-compared-with-earlier-gpu-and-fpga-designs)).
 
 Measured on Zyra: 4 × Xeon Gold 5220, RTX A6000, data on `/dev/shm`.
@@ -180,40 +181,78 @@ ZSTD (9.3× against 1.4×).
 
 ![Whole database, earlier designs rebuilt](publication/figures/fig11_prior_database.png)
 
-**Figure 11.** Whole database on 4 cores (50 M keys, 128-byte values, LZ4), with (a–c) batched writes and (d–f) single writes: throughput including catch-up compaction, CPU time per operation, and energy per operation (CPU package, DRAM and GPU). Medians with 95% bootstrap CIs; each design at its best background-job setting. **Preliminary:** 2 of 5 planned repetitions.
+**Figure 11.** Whole database on 4 cores (50 M keys, 128-byte values) with LZ4, ZSTD and no compression, for (a–c) batched writes and (d–f) single writes: throughput including catch-up compaction, CPU time per operation, and energy per operation (CPU package, DRAM and GPU). Medians with 95% bootstrap CIs over 5 repetitions (LZ4) or 3 (ZSTD, no compression); each design at its best background-job setting. GPU compression only applies to LZ4.
 
 ![Tail latency, earlier designs rebuilt](publication/figures/fig13_prior_latency.png)
 
-**Figure 13.** p99 write latency with batched writes (a) and p99 update latency on YCSB A (b), same setup and status as Figure 11.
+**Figure 13.** LZ4, 4 cores: (a) p99 write latency with batched writes; (b) p99 update latency on YCSB A.
 
-| Workload | Metric | Native RocksDB | GPU sort/merge | GPU pipeline, CPU compression | **Ours** |
-|---|---|---|---|---|---|
-| Batched writes | kops/s | 353 | 416 (1.18×) | 504 (1.43×) | **614 (1.74×)** |
-| | p99 write | 6.2 ms | 5.5 ms | 4.9 ms | **1.2 ms** |
-| | Energy per write | 637 µJ | 708 µJ | 602 µJ | **557 µJ** |
-| Single writes | kops/s | 176 | 187 (1.06×) | 197 (1.12×) | **238 (1.36×)** |
-| | Energy per write | 1,279 µJ | 1,566 µJ | 1,518 µJ | 1,299 µJ |
-| YCSB A | kops/s | 189 | 215 (1.14×) | 237 (1.26×) | **275 (1.46×)** |
-| | p99 update | 0.28 ms | 0.23 ms | 0.19 ms | **0.11 ms** |
-| | Energy per op | 1,191 µJ | 1,355 µJ | 1,240 µJ | **1,096 µJ** |
+Throughput in kops/s (gain over native, paired within each repetition):
 
-Ratios are paired against native within each repetition.
+| Workload | Native RocksDB | GPU sort/merge | GPU pipeline, CPU compression | **Ours** |
+|---|---|---|---|---|
+| Batched writes, LZ4 | 350 | 397 (1.14×) | 496 (1.41×) | **616 (1.75×)** |
+| Batched writes, ZSTD | 209 | 235 (1.16×) | 246 (1.17×) | **475 (2.27×)** |
+| Batched writes, no compression | 424 | 401 (0.98×) | 576 (1.34×) | 586 (1.40×) |
+| Single writes, LZ4 | 177 | 189 (1.06×) | 199 (1.12×) | **237 (1.34×)** |
+| Single writes, ZSTD | 131 | 140 (1.09×) | 157 (1.20×) | **229 (1.76×)** |
+| Single writes, no compression | 189 | 203 (1.07×) | 224 (1.18×) | 226 (1.18×) |
+| YCSB A, LZ4 | 198 | 214 (1.10×) | 235 (1.20×) | **274 (1.38×)** |
 
-- **Throughput:** ours gains 1.7–3× more over native than the best earlier
-  design.
+Batched writes with LZ4:
+
+| Metric | Native RocksDB | GPU sort/merge | GPU pipeline, CPU compression | **Ours** |
+|---|---|---|---|---|
+| p99 write | 6.3 ms | 5.0 ms | 4.7 ms | **1.25 ms** |
+| Energy per write | 640 µJ | 740 µJ | 609 µJ | **555 µJ** |
+
+- **Throughput:** with LZ4 or ZSTD, ours gains 1.8–6.4× more over native than
+  the best earlier design.
+- **ZSTD:** with ZSTD, our database (475k writes/s) is faster than native
+  RocksDB with the cheaper LZ4 (350k).
+- **No compression:** ours and the GPU pipeline design are within their
+  confidence intervals of each other. The advantage comes from moving
+  compression to the GPU.
 - **Tail latency:** ours is the only design that cuts p99 write latency
   substantially.
-- **Energy:** the earlier designs add GPU power without enough speedup, so
-  they use up to 23% more energy per operation than plain RocksDB; ours uses
-  the least, or about the same as native with single writes.
+- **Energy:** the earlier designs add GPU power without enough speedup and
+  often use more energy per operation than plain RocksDB. With compression
+  on, ours uses the least energy, apart from LZ4 single writes, where it
+  matches native. With no compression, native uses the least energy.
 - **Reads:** p99 read latency on YCSB A is about 0.03 ms for every design.
 
-Still running:
+![Equal cost, earlier designs rebuilt](publication/figures/fig12_prior_equal_cost.png)
 
-- the remaining repetitions;
-- the same comparison with ZSTD and with no compression;
-- an equal-cost run against native RocksDB on 32 cores;
-- a head-to-head with gParaKV's own code under its own YCSB driver.
+**Figure 12.** Batched LZ4 writes: native RocksDB on 8 and 32 cores against the GPU pipeline design and ours on 8 cores. (a) Throughput; (b) p99 write latency.
+
+On 8 cores, ours reaches 1,006k writes/s, about native RocksDB on 32 cores
+(1,057k), with 2.2 ms p99 write latency against 35.7 ms. The GPU pipeline
+design reaches 804k. Native RocksDB on 32 cores uses less energy per write
+(233 µJ against 370 µJ).
+
+**gParaKV head-to-head (gParaKV's own code and YCSB driver).** gParaKV (SC'25)
+is the only earlier system with public code. We ran it unmodified (its
+persistent-memory pool emulated in DRAM) and connected RocksDB, with and
+without our offload, to gParaKV's own YCSB driver
+([bench/ycsbc/](bench/ycsbc/)). Everything runs on the same 4 cores and GPU,
+with one client thread. Medians of 3 runs:
+
+| Values | System | Load kops/s | YCSB A kops/s | CPU seconds |
+|---|---|---|---|---|
+| 128 B | gParaKV | 321 | 238 | 350 |
+| 128 B | RocksDB, LZ4 | 242 | 178 | 543 |
+| 128 B | **RocksDB + ours, LZ4** | 242 | 182 | **346** |
+| 1 KB | gParaKV | 265 | 251 | 105 |
+| 1 KB | RocksDB BlobDB (key/value separation) | 195 | 168 | 219 |
+| 1 KB | RocksDB + ours, LZ4 | 192 | 160 | 221 |
+
+gParaKV is faster under its own driver. It stores values in a separate log
+outside the LSM tree, stores data uncompressed, and is built on LevelDB, a
+different design point from RocksDB. With one client, this driver does not
+saturate RocksDB's compaction, so our offload mainly lowers CPU (by 36% at
+128 B) rather than raising throughput. Key/value separation and our offload
+are complementary; bringing our GPU path to RocksDB's BlobDB files is future
+work.
 
 The plan and hypotheses are in
 [publication/PREREGISTRATION.md](publication/PREREGISTRATION.md) (H8–H12).

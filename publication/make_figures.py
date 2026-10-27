@@ -465,7 +465,7 @@ def figure_ssd(entries):
 PRIOR_DESIGNS = (NATIVE, SORT_MERGE, PIPELINE, FULL)
 PRIOR_LABELS = {FULL: "GPU merge + block building, GPU compression (ours)"}
 PRIOR_FILES = {"s3": None, "s2": MERGE, "sortmerge": SORT_MERGE, "pipeline": PIPELINE}
-CODEC_LABEL = {"lz4": "LZ4", "zstd": "ZSTD", "none": "No compression"}
+CODEC_LABEL = {"lz4": "LZ4", "zstd": "ZSTD", "none": "No\ncompression"}
 
 
 def load_prior_compaction():
@@ -534,7 +534,7 @@ def figure_prior_database(by_codec):
               ("CPU time per op (µs)", "cpu_us_per_op", 1.0, lambda v: f"{v:.1f}"),
               ("Energy per op (µJ)", "energy_uj_per_op", 1.0, lambda v: f"{v:.0f}")]
     rows = [("batched", "Batched writes"), ("single", "Single writes")]
-    fig, axes = plt.subplots(len(rows), len(panels), figsize=(DOUBLE_COLUMN, 4.6))
+    fig, axes = plt.subplots(len(rows), len(panels), figsize=(DOUBLE_COLUMN * 1.3, 5.0))
     letters = iter("abcdef")
     for row, (writes, title) in zip(axes, rows):
         for ax, (ylabel, metric, scale, fmt) in zip(row, panels):
@@ -543,7 +543,7 @@ def figure_prior_database(by_codec):
                 entries = [e for e in by_codec[codec] if e["config"].get("writes") == writes]
                 values = by_design(entries, metric)
                 groups.append((CODEC_LABEL[codec], {d: tuple(v * scale for v in ci) for d, ci in values.items()}))
-            grouped_bars(ax, groups, designs, None, fmt, size=4.6)
+            grouped_bars(ax, groups, designs, None, fmt, size=4.0)
             finish_axis(ax, ylabel)
             panel_label(ax, next(letters))
             if ax is row[0]:
@@ -561,7 +561,7 @@ def figure_prior_equal_cost(entries):
     for key, cores in (("native", 8), ("native", 32), ("pipeline_no_compression", 8), ("full", 8)):
         match = [e for e in entries if e["design"] == key and e["config"].get("cores") == cores]
         if match:
-            bars.append((f"{KEY[key]}\n{cores} cores", KEY[key], match[0]))
+            bars.append((f"{cores} cores", KEY[key], match[0]))
     if not bars:
         return
     panels = [("Throughput (kops/s)", "ops_per_second", 1e-3, lambda v: f"{v:.0f}"),
@@ -574,11 +574,12 @@ def figure_prior_equal_cost(entries):
             rects = bar(ax, [x], [ci[0]], 0.6, design)
             tops = whiskers(ax, [x], [ci])
             value_labels(ax, rects, fmt, size=6.2, offsets=tops)
-        ax.set_xticks(xs, [label.replace(" (as ", "\n(as ") for label, _, _ in bars], fontsize=5.8)
+        ax.set_xticks(xs, [label for label, _, _ in bars])
         ax.set_ylim(0, max(c[2] for c in cis) * 1.18)
         finish_axis(ax, ylabel)
         panel_label(ax, letter)
-    fig.tight_layout(w_pad=2.5)
+    fig.tight_layout(w_pad=2.5, rect=(0, 0, 1, 0.84))
+    design_legend(fig, list(dict.fromkeys(design for _, design, _ in bars)), y=0.84, labels=PRIOR_LABELS, ncol=3)
     save(fig, "fig12_prior_equal_cost")
 
 
