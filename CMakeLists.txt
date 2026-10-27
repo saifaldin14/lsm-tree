@@ -63,7 +63,7 @@ find_package(gRPC CONFIG REQUIRED)
 find_package(hdr_histogram CONFIG REQUIRED)
 
 add_library(lsm_blocks src/gpu/block_transform.cpp src/gpu/merge_cpu.cpp
-  src/remote/remote_merge.cpp src/remote/transport.cpp src/remote/transport_tcp.cpp)
+  src/remote/remote_merge.cpp src/remote/replication.cpp src/remote/transport.cpp src/remote/transport_tcp.cpp)
 target_include_directories(lsm_blocks PUBLIC include)
 target_include_directories(lsm_blocks SYSTEM PRIVATE "${rocksdb_SOURCE_DIR}" "${rocksdb_BINARY_DIR}")
 target_link_libraries(lsm_blocks PUBLIC rocksdb nlohmann_json::nlohmann_json PRIVATE lz4::lz4 zstd::zstd)
@@ -198,6 +198,9 @@ target_compile_options(lsm_system_bench PRIVATE -Wall -Wextra -Wpedantic -Werror
 add_executable(lsm_compaction_server apps/lsm_compaction_server.cpp)
 target_link_libraries(lsm_compaction_server PRIVATE lsm_blocks)
 target_compile_options(lsm_compaction_server PRIVATE -Wall -Wextra -Wpedantic -Werror)
+add_executable(lsm_replica_server apps/lsm_replica_server.cpp)
+target_link_libraries(lsm_replica_server PRIVATE lsm_blocks)
+target_compile_options(lsm_replica_server PRIVATE -Wall -Wextra -Wpedantic -Werror)
 add_executable(lsm_rpc_bench apps/lsm_rpc_bench.cpp)
 target_link_libraries(lsm_rpc_bench PRIVATE lsm_blocks)
 target_compile_options(lsm_rpc_bench PRIVATE -Wall -Wextra -Wpedantic -Werror)
@@ -205,6 +208,10 @@ add_test(NAME remote.compaction
   COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/remote_compaction_test.sh"
           "$<TARGET_FILE:lsm_compaction_server>" "$<TARGET_FILE:lsm_compaction_bench>")
 set_tests_properties(remote.compaction PROPERTIES TIMEOUT 300 LABELS "remote;integration")
+add_test(NAME remote.replication
+  COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/replication_test.sh"
+          "$<TARGET_FILE:lsm_system_bench>" "$<TARGET_FILE:lsm_replica_server>")
+set_tests_properties(remote.replication PROPERTIES TIMEOUT 300 LABELS "remote;integration")
 
 # Head-to-head with gParaKV (publication/gparakv/): RocksDB behind gParaKV's own YCSB driver.
 set(LSM_YCSBC_DIR "" CACHE PATH "gParaKV's ycsbc source directory; builds lsm_ycsbc when set")

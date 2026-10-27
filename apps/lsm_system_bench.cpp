@@ -13,9 +13,12 @@
 // expected to be confined to a core budget by the caller (numactl).
 
 #include "lsm_lab/block_transform.hpp"
+#include "lsm_lab/db_options.hpp"
+#include "lsm_lab/replication.hpp"
 #include "lsm_lab/runtime.hpp"
 
 #include <rocksdb/db.h>
+#include <rocksdb/env.h>
 #include <rocksdb/filter_policy.h>
 #include <rocksdb/listener.h>
 #include <rocksdb/options.h>
@@ -86,6 +89,11 @@ namespace
         // RocksDB's integrated key/value separation (BlobDB): values of at least this many bytes
         // go to blob files, with blob garbage collection (0 disables).
         std::uint32_t blob_min_bytes = 0;
+        // Primary-backup replication (lsm_lab/replication.hpp): none, physical or logical, to the
+        // comma-separated lsm_replica_server endpoints; logical replicas compact with replica_backend.
+        std::string replication = "none";
+        std::string replicate_to;
+        std::string replica_backend = "native_cpu";
         bool verify = true;
         std::uint64_t seed = 1;
     };
@@ -191,50 +199,30 @@ namespace
             output_bytes{0}, input_records{0};
     };
 
+    lsm_lab::DbShape db_shape(const Config &config)
+    {
+        lsm_lab::DbShape shape;
+        shape.write_buffer_bytes = config.write_buffer_bytes;
+        shape.max_write_buffer_number = config.max_write_buffer_number;
+        shape.target_file_bytes = config.target_file_bytes;
+        shape.max_bytes_for_level_base = config.max_bytes_for_level_base;
+        shape.background_jobs = config.background_jobs;
+        shape.subcompactions = config.subcompactions;
+        shape.levels = config.levels;
+        shape.l0_trigger = config.l0_trigger;
+        shape.level_multiplier = config.level_multiplier;
+        shape.use_direct_io = config.use_direct_io;
+        shape.adaptive_yield = config.adaptive_yield;
+        shape.compression = config.compression;
+        shape.block_bytes = config.block_bytes;
+        shape.block_cache_bytes = config.block_cache_bytes;
+        shape.blob_min_bytes = config.blob_min_bytes;
+        return shape;
+    }
+
     rocksdb::Options make_options(const Config &config, const std::shared_ptr<lsm_lab::BatchTransform> &transform)
     {
-        rocksdb::Options options;
-        options.write_buffer_size = config.write_buffer_bytes;
-        options.max_write_buffer_number = static_cast<int>(config.max_write_buffer_number);
-        options.target_file_size_base = config.target_file_bytes;
-        options.max_bytes_for_level_base = config.max_bytes_for_level_base;
-        options.max_background_jobs = static_cast<int>(config.background_jobs);
-        options.max_subcompactions = config.subcompactions;
-        options.num_levels = static_cast<int>(config.levels);
-        options.paranoid_checks = true;
-        if (config.l0_trigger > 0)
-            options.level0_file_num_compaction_trigger = static_cast<int>(config.l0_trigger);
-        if (config.level_multiplier > 0)
-            options.max_bytes_for_level_multiplier = config.level_multiplier;
-        options.use_direct_reads = config.use_direct_io;
-        options.use_direct_io_for_flush_and_compaction = config.use_direct_io;
-        if (config.blob_min_bytes > 0)
-        {
-            options.enable_blob_files = true;
-            options.min_blob_size = config.blob_min_bytes;
-            options.enable_blob_garbage_collection = true;
-        }
-        // With more writers than cores, adaptive yield spins waiting writers and burns the CPU budget.
-        options.enable_write_thread_adaptive_yield = config.adaptive_yield;
-        options.statistics = rocksdb::CreateDBStatistics();
-        options.statistics->set_stats_level(rocksdb::StatsLevel::kExceptDetailedTimers);
-        if (config.compression == "lz4")
-            options.compression = rocksdb::kLZ4Compression;
-        else if (config.compression == "zstd")
-            options.compression = rocksdb::kZSTD;
-        else if (config.compression == "none")
-            options.compression = rocksdb::kNoCompression;
-        else
-            throw std::invalid_argument("compression must be lz4, zstd or none");
-        rocksdb::BlockBasedTableOptions table;
-        table.format_version = 6;
-        table.checksum = rocksdb::kCRC32c;
-        table.block_size = config.block_bytes;
-        table.block_cache = rocksdb::NewLRUCache(config.block_cache_bytes);
-        table.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10));
-        table.compaction_block_transform = transform;
-        options.table_factory.reset(rocksdb::NewBlockBasedTableFactory(table));
-        return options;
+        return lsm_lab::make_db_options(db_shape(config), transform);
     }
 
     std::shared_ptr<lsm_lab::BatchTransform> make_backend(const std::string &mode)
@@ -496,6 +484,55 @@ namespace
         auto options = make_options(config, backend);
         auto totals = std::make_shared<CompactionTotals>();
         options.listeners.push_back(totals);
+        std::shared_ptr<lsm_lab::ReplicaSet> replicas;
+        std::unique_ptr<rocksdb::Env> replicating_env;
+        const bool logical = config.replication == "logical";
+        if (config.replication != "none")
+        {
+            std::vector<std::string> endpoints;
+            std::size_t start = 0;
+            while (start < config.replicate_to.size())
+            {
+                const auto end = std::min(config.replicate_to.find(',', start), config.replicate_to.size());
+                endpoints.push_back(config.replicate_to.substr(start, end - start));
+                start = end + 1;
+            }
+            if (endpoints.empty())
+                throw std::invalid_argument("--replication needs --replicate-to");
+            replicas = std::make_shared<lsm_lab::ReplicaSet>(endpoints);
+            if (config.replication == "physical")
+            {
+                // RocksDB names files from the path exactly as given, so match that (not a canonical path).
+                auto mirrored = lsm_lab::make_replicating_file_system(rocksdb::FileSystem::Default(),
+                                                                       config.dir.lexically_normal().string(), replicas);
+                replicating_env = rocksdb::NewCompositeEnv(mirrored);
+                options.env = replicating_env.get();
+            }
+            else if (logical)
+            {
+                const auto request = Json{{"shape", db_shape(config)},
+                                          {"backend", config.replica_backend},
+                                          {"disable_wal", config.disable_wal}}
+                                         .dump();
+                check(replicas->broadcast(lsm_lab::ReplicaOp::open_database, "", 0, request.data(), request.size()),
+                      "open replicas");
+            }
+            else
+            {
+                throw std::invalid_argument("--replication must be none, physical or logical");
+            }
+        }
+        std::vector<std::string> replica_statistics_start;
+        if (replicas)
+            check(replicas->broadcast(lsm_lab::ReplicaOp::statistics, "", 0, nullptr, 0, &replica_statistics_start),
+                  "replica statistics");
+        // Logical replication: every write reaches the backups before it is applied here.
+        const auto replicate = [&](const rocksdb::WriteBatch &batch) {
+            if (logical)
+                check(replicas->broadcast(lsm_lab::ReplicaOp::write_batch, "", 0, batch.Data().data(),
+                                          batch.Data().size()),
+                      "replicate");
+        };
         std::unique_ptr<rocksdb::DB> db;
         check(rocksdb::DB::Open(options, config.dir.string(), &db), "open");
         const auto statistics = options.statistics;
@@ -537,6 +574,23 @@ namespace
                 std::string key, value, expected;
                 rocksdb::PinnableSlice found;
                 rocksdb::WriteBatch batch;
+                rocksdb::WriteBatch single;
+                const auto put = [&](const std::string &k, const std::string &v) {
+                    if (!logical)
+                        return check(db->Put(write, k, v), "put");
+                    single.Clear();
+                    check(single.Put(k, v), "batch put");
+                    replicate(single);
+                    check(db->Write(write, &single), "put");
+                };
+                const auto remove = [&](const std::string &k) {
+                    if (!logical)
+                        return check(db->Delete(write, k), "delete");
+                    single.Clear();
+                    check(single.Delete(k), "batch delete");
+                    replicate(single);
+                    check(db->Write(write, &single), "delete");
+                };
                 while (true)
                 {
                     const auto current = phase.load(std::memory_order_relaxed);
@@ -584,12 +638,12 @@ namespace
                         {
                             checked_get();
                             make_value(config, index, version, value);
-                            check(db->Put(write, key, value), "put");
+                            put(key, value);
                             versions[index] = version;
                         }
                         else
                         {
-                            check(db->Delete(write, key), "delete");
+                            remove(key);
                             versions[index] = version | kDeleted;
                         }
                         const auto ns = static_cast<std::uint64_t>((Clock::now() - begin).count());
@@ -604,7 +658,7 @@ namespace
                         const auto version = (versions[index] & ~kDeleted) + 1;
                         make_value(config, index, version, value);
                         const auto begin = Clock::now();
-                        check(db->Put(write, key, value), "put");
+                        put(key, value);
                         const auto ns = static_cast<std::uint64_t>((Clock::now() - begin).count());
                         versions[index] = version;
                         if (current == 1)
@@ -627,6 +681,7 @@ namespace
                             check(batch.Put(key, value), "batch put");
                         }
                         const auto begin = Clock::now();
+                        replicate(batch);
                         check(db->Write(write, &batch), "write batch");
                         const auto ns = static_cast<std::uint64_t>((Clock::now() - begin).count());
                         if (current == 1)
@@ -816,7 +871,45 @@ namespace
             result["sst_bytes_after_compaction"] = property(db.get(), "rocksdb.total-sst-files-size");
             result["transform_after_verification"] = backend ? backend->statistics() : Json(nullptr);
         }
-        check(db->Close(), "close");
+        if (!replicas)
+        {
+            check(db->Close(), "close");
+            return result;
+        }
+        // Every backup must hold exactly the primary's data: compare digests of all keys and values.
+        const auto primary_digest = lsm_lab::database_digest(db.get());
+        check(db->Close(), "close"); // physical: ships the final file contents
+        db.reset();
+        const auto wait_started = Clock::now();
+        check(replicas->broadcast(lsm_lab::ReplicaOp::wait, "", 0, nullptr, 0), "replica wait");
+        const auto replica_drain_seconds = std::chrono::duration<double>(Clock::now() - wait_started).count();
+        std::vector<std::string> replica_statistics_end, digests;
+        check(replicas->broadcast(lsm_lab::ReplicaOp::statistics, "", 0, nullptr, 0, &replica_statistics_end),
+              "replica statistics");
+        check(replicas->broadcast(lsm_lab::ReplicaOp::digest, "", 0, nullptr, 0, &digests), "replica digest");
+        Json backups = Json::array();
+        bool match = true;
+        for (std::size_t index = 0; index < digests.size(); ++index)
+        {
+            const auto before = Json::parse(replica_statistics_start.at(index));
+            const auto after = Json::parse(replica_statistics_end.at(index));
+            match = match && digests[index] == primary_digest;
+            backups.push_back({{"endpoint", replicas->endpoints()[index]},
+                               {"digest", digests[index]},
+                               {"cpu_seconds", after.at("cpu_seconds").get<double>() - before.at("cpu_seconds").get<double>()},
+                               {"bytes", after.at("bytes").get<std::uint64_t>() - before.at("bytes").get<std::uint64_t>()},
+                               {"statistics", after}});
+        }
+        result["replication"] = {{"mode", config.replication},
+                                 {"replica_backend", logical ? config.replica_backend : "none"},
+                                 {"primary_digest", primary_digest},
+                                 {"match", match},
+                                 {"replica_drain_seconds", replica_drain_seconds},
+                                 {"transport", replicas->statistics()},
+                                 {"backups", backups}};
+        if (!match)
+            throw std::runtime_error("replication: a backup's digest differs from the primary's: " +
+                                     result["replication"].dump());
         return result;
     }
 
@@ -889,6 +982,12 @@ namespace
                 config.level_multiplier = std::stod(value());
             else if (name == "--blob-min-bytes")
                 config.blob_min_bytes = static_cast<std::uint32_t>(number());
+            else if (name == "--replication")
+                config.replication = value();
+            else if (name == "--replicate-to")
+                config.replicate_to = value();
+            else if (name == "--replica-backend")
+                config.replica_backend = value();
             else if (name == "--use-direct-io")
                 config.use_direct_io = value() == "true";
             else if (name == "--batch-size")
@@ -936,6 +1035,8 @@ int main(int argc, char **argv)
                             {"distribution", config.distribution}, {"zipf_theta", config.zipf_theta},
                             {"use_direct_io", config.use_direct_io}, {"l0_trigger", config.l0_trigger},
                             {"level_multiplier", config.level_multiplier}, {"blob_min_bytes", config.blob_min_bytes},
+                            {"replication", config.replication}, {"replicate_to", config.replicate_to},
+                            {"replica_backend", config.replica_backend},
                             {"warmup_seconds", config.warmup_seconds}, {"duration_seconds", config.duration_seconds},
                             {"seed", config.seed}};
         result["engine_fingerprint"] = lsm_lab::engine_fingerprint();
