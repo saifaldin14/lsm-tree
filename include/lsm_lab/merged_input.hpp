@@ -85,6 +85,12 @@ namespace lsm_lab
         // decompressed on the CPU.
         std::uint64_t host_compressed_blocks = 0;
         std::uint64_t cpu_decoded_bytes = 0;
+        // Remote compaction (client side): time in the call, the server's handler time, and
+        // bytes sent and received.
+        std::uint64_t remote_ns = 0;
+        std::uint64_t server_ns = 0;
+        std::uint64_t sent_bytes = 0;
+        std::uint64_t received_bytes = 0;
     };
 
     // Total bytes of all listed blocks including their 5-byte trailers.

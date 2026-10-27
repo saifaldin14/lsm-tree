@@ -37,6 +37,10 @@ namespace lsm_lab
         rocksdb::Status MergeCompactionInput(const rocksdb::CompactionMergeRequest &request,
                                              std::unique_ptr<rocksdb::CompactionMergedInput> *output) noexcept final;
         void RecordMergeFallback(const rocksdb::Status &reason) noexcept final;
+        // MergeCompactionInput that also returns the job's statistics.
+        rocksdb::Status merge_with_stats(const rocksdb::CompactionMergeRequest &request,
+                                         std::unique_ptr<rocksdb::CompactionMergedInput> *output,
+                                         MergeRunStats *stats) noexcept;
         void enable_merged_input() { merged_input_ = true; }
         nlohmann::json statistics() const;
         virtual std::string name() const = 0;
@@ -70,7 +74,8 @@ namespace lsm_lab
         std::uint64_t merge_jobs_ = 0, merge_fallbacks_ = 0, merge_entries_ = 0, merge_blocks_ = 0,
                       merge_input_bytes_ = 0, merge_decoded_bytes_ = 0, merge_wall_ns_ = 0, merge_read_ns_ = 0,
                       merge_device_ns_ = 0, merge_built_jobs_ = 0, merge_built_blocks_ = 0, merge_built_bytes_ = 0,
-                      merge_host_compressed_blocks_ = 0, merge_cpu_decoded_bytes_ = 0;
+                      merge_host_compressed_blocks_ = 0, merge_cpu_decoded_bytes_ = 0,
+                      merge_remote_ns_ = 0, merge_server_ns_ = 0, merge_sent_bytes_ = 0, merge_received_bytes_ = 0;
         std::string merge_last_fallback_;
     };
 

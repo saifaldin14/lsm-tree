@@ -1,4 +1,5 @@
 #include "lsm_lab/merged_input.hpp"
+#include "lsm_lab/remote_merge.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -329,6 +330,27 @@ namespace lsm_lab
             blocks += request.files[index].blocks.size();
         }
         offsets->assign(blocks, 0);
+        if (const auto *preloaded = PreloadedMergeBlocks::current())
+        {
+            // Remote compaction server: the blocks arrived over the network in request order.
+            if (preloaded->bytes() != position)
+                return rocksdb::Status::Corruption("preloaded merge input has the wrong size");
+            std::uint64_t offset = 0;
+            std::size_t index = 0;
+            for (const auto &file : request.files)
+                for (const auto &block : file.blocks)
+                {
+                    (*offsets)[index++] = offset;
+                    offset += block.size + kTrailer;
+                }
+            constexpr std::uint64_t kChunk = 64ULL << 20;
+            const auto chunks = static_cast<std::size_t>((position + kChunk - 1) / kChunk);
+            return run_parallel(chunks, merge_read_threads(), [&](std::size_t chunk) {
+                const auto begin = chunk * kChunk;
+                std::memcpy(destination + begin, preloaded->data() + begin, std::min(kChunk, position - begin));
+                return rocksdb::Status::OK();
+            });
+        }
         return run_parallel(request.files.size(), merge_read_threads(), [&](std::size_t index) {
             return read_file_blocks(request.files[index], destination, file_position[index],
                                     offsets->data() + file_first_block[index]);

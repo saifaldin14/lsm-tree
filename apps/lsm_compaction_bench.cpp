@@ -160,7 +160,7 @@ namespace
             if (!transform)
                 transform = lsm_lab::make_transform("cuda_hybrid");
         }
-        else if (mode == "cpu_merge" || mode == "cuda_merge")
+        else if (mode == "cpu_merge" || mode == "cuda_merge" || mode == "remote_merge")
         {
             if (!transform)
                 transform = lsm_lab::make_transform(mode);

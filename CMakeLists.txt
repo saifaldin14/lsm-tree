@@ -62,12 +62,33 @@ find_package(Protobuf CONFIG REQUIRED)
 find_package(gRPC CONFIG REQUIRED)
 find_package(hdr_histogram CONFIG REQUIRED)
 
-add_library(lsm_blocks src/gpu/block_transform.cpp src/gpu/merge_cpu.cpp)
+add_library(lsm_blocks src/gpu/block_transform.cpp src/gpu/merge_cpu.cpp
+  src/remote/remote_merge.cpp src/remote/transport.cpp src/remote/transport_tcp.cpp)
 target_include_directories(lsm_blocks PUBLIC include)
 target_include_directories(lsm_blocks SYSTEM PRIVATE "${rocksdb_SOURCE_DIR}" "${rocksdb_BINARY_DIR}")
 target_link_libraries(lsm_blocks PUBLIC rocksdb nlohmann_json::nlohmann_json PRIVATE lz4::lz4 zstd::zstd)
 target_compile_options(lsm_blocks PRIVATE $<$<COMPILE_LANGUAGE:CXX,OBJCXX>:-Wall;-Wextra;-Wpedantic;-Werror>)
 target_compile_definitions(lsm_blocks PRIVATE $<TARGET_PROPERTY:rocksdb,COMPILE_DEFINITIONS>)
+# RDMA transport for remote compaction (libibverbs + librdmacm); TCP is always built.
+find_library(LSM_IBVERBS_LIBRARY ibverbs)
+find_library(LSM_RDMACM_LIBRARY rdmacm)
+find_path(LSM_RDMA_INCLUDE rdma/rdma_cma.h)
+set(LSM_RDMA_DEFAULT OFF)
+if(LSM_IBVERBS_LIBRARY AND LSM_RDMACM_LIBRARY AND LSM_RDMA_INCLUDE)
+  set(LSM_RDMA_DEFAULT ON)
+endif()
+option(LSM_ENABLE_RDMA "Build the RDMA transport for remote compaction" ${LSM_RDMA_DEFAULT})
+if(LSM_ENABLE_RDMA)
+  target_sources(lsm_blocks PRIVATE src/remote/transport_rdma.cpp)
+  target_include_directories(lsm_blocks SYSTEM PRIVATE "${LSM_RDMA_INCLUDE}")
+  target_link_libraries(lsm_blocks PRIVATE "${LSM_RDMACM_LIBRARY}" "${LSM_IBVERBS_LIBRARY}")
+  target_compile_definitions(lsm_blocks PUBLIC LSM_HAVE_RDMA=1)
+endif()
+# Portable binaries for other hosts (e.g. a database node without the compiler's runtime).
+option(LSM_STATIC_RUNTIME "Link libstdc++ and libgcc statically" OFF)
+if(LSM_STATIC_RUNTIME)
+  add_link_options(-static-libstdc++ -static-libgcc)
+endif()
 option(LSM_ENABLE_METAL "Build the real native Metal block backend" ${APPLE})
 if(LSM_ENABLE_METAL)
   if(NOT APPLE)
@@ -172,6 +193,15 @@ target_link_libraries(lsm_system_bench PRIVATE lsm_blocks lsm_runtime)
 target_include_directories(lsm_system_bench SYSTEM PRIVATE "${rocksdb_SOURCE_DIR}" "${rocksdb_BINARY_DIR}")
 target_compile_definitions(lsm_system_bench PRIVATE $<TARGET_PROPERTY:rocksdb,COMPILE_DEFINITIONS>)
 target_compile_options(lsm_system_bench PRIVATE -Wall -Wextra -Wpedantic -Werror)
+
+# Remote compaction server: runs merged input for database processes over TCP or RDMA.
+add_executable(lsm_compaction_server apps/lsm_compaction_server.cpp)
+target_link_libraries(lsm_compaction_server PRIVATE lsm_blocks)
+target_compile_options(lsm_compaction_server PRIVATE -Wall -Wextra -Wpedantic -Werror)
+add_test(NAME remote.compaction
+  COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/remote_compaction_test.sh"
+          "$<TARGET_FILE:lsm_compaction_server>" "$<TARGET_FILE:lsm_compaction_bench>")
+set_tests_properties(remote.compaction PROPERTIES TIMEOUT 300 LABELS "remote;integration")
 
 # Head-to-head with gParaKV (publication/gparakv/): RocksDB behind gParaKV's own YCSB driver.
 set(LSM_YCSBC_DIR "" CACHE PATH "gParaKV's ycsbc source directory; builds lsm_ycsbc when set")

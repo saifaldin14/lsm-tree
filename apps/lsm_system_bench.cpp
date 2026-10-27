@@ -243,9 +243,9 @@ namespace
             return nullptr;
         if (mode == "gpu_output")
             return lsm_lab::make_transform("cuda_hybrid");
-        if (mode == "cuda_merge" || mode == "cpu_merge")
+        if (mode == "cuda_merge" || mode == "cpu_merge" || mode == "remote_merge")
             return lsm_lab::make_transform(mode);
-        throw std::invalid_argument("mode must be native_cpu, gpu_output, cpu_merge or cuda_merge");
+        throw std::invalid_argument("mode must be native_cpu, gpu_output, cpu_merge, cuda_merge or remote_merge");
     }
 
     Json level_shape(rocksdb::DB *db)
