@@ -3,11 +3,12 @@
 # (PREREGISTRATION.md, H12). Persistent memory is emulated in DRAM: PMDK is built without ndctl
 # and the pool lives on tmpfs with PMEM_IS_PMEM_FORCE=1 at run time.
 #
-# The only source change is that the hard-coded pool path /mnt/pmem/my_pool is read from
-# GPARAKV_PMEM_POOL (no algorithmic change).
+# Source changes (no algorithmic change): the hard-coded pool path /mnt/pmem/my_pool is read
+# from GPARAKV_PMEM_POOL, and the YCSB driver honours maxexecutiontime (patch_ycsbc.py).
 #
 # Usage: publication/gparakv/setup.sh [WORK_DIR]   (default /tmp/$USER)
 set -euo pipefail
+here=$(cd "$(dirname "$0")" && pwd)
 work=${1:-/tmp/$USER}
 commit=14c94b1
 pmdk_tag=2.1.1
@@ -28,6 +29,8 @@ git submodule update -q --init --recursive
 grep -rl '"/mnt/pmem/my_pool"' db | xargs -r sed -i \
   's|"/mnt/pmem/my_pool"|(std::getenv("GPARAKV_PMEM_POOL") ? std::getenv("GPARAKV_PMEM_POOL") : "/mnt/pmem/my_pool")|g'
 grep -q '#include <cstdlib>' db/db_impl.cc || sed -i '1i #include <cstdlib>' db/db_impl.cc
+# Fixed-time runs: YCSB maxexecutiontime in the shared driver (also used by lsm_ycsbc).
+python3 "$here/patch_ycsbc.py" ycsbc/ycsbc.cc
 
 export PKG_CONFIG_PATH="$work/pmdk-install/lib/pkgconfig:$work/pmdk-install/lib64/pkgconfig:${PKG_CONFIG_PATH:-}"
 export LD_LIBRARY_PATH="$work/pmdk-install/lib:$work/pmdk-install/lib64:${LD_LIBRARY_PATH:-}"

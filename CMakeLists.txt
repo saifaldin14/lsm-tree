@@ -151,7 +151,8 @@ target_include_directories(lsm_runtime PUBLIC include "$<BUILD_INTERFACE:${CMAKE
 target_link_libraries(lsm_runtime PUBLIC rocksdb gRPC::grpc++ nlohmann_json::nlohmann_json PRIVATE OpenSSL::Crypto)
 target_compile_options(lsm_runtime PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
-add_library(lsm_telemetry src/telemetry/process.cpp src/telemetry/host.cpp src/telemetry/sensors.cpp src/telemetry/sampler.cpp)
+add_library(lsm_telemetry src/telemetry/process.cpp src/telemetry/host.cpp src/telemetry/sensors.cpp src/telemetry/sampler.cpp
+  src/telemetry/process_accounting.cpp)
 target_include_directories(lsm_telemetry PUBLIC include)
 target_link_libraries(lsm_telemetry PUBLIC nlohmann_json::nlohmann_json)
 target_link_libraries(lsm_telemetry PRIVATE OpenSSL::Crypto ${CMAKE_DL_LIBS})
@@ -189,7 +190,7 @@ target_include_directories(lsm_compaction_bench SYSTEM PRIVATE "${rocksdb_SOURCE
 target_compile_definitions(lsm_compaction_bench PRIVATE $<TARGET_PROPERTY:rocksdb,COMPILE_DEFINITIONS>)
 target_compile_options(lsm_compaction_bench PRIVATE -Wall -Wextra -Wpedantic -Werror)
 add_executable(lsm_system_bench apps/lsm_system_bench.cpp)
-target_link_libraries(lsm_system_bench PRIVATE lsm_blocks lsm_runtime)
+target_link_libraries(lsm_system_bench PRIVATE lsm_blocks lsm_runtime lsm_telemetry)
 target_include_directories(lsm_system_bench SYSTEM PRIVATE "${rocksdb_SOURCE_DIR}" "${rocksdb_BINARY_DIR}")
 target_compile_definitions(lsm_system_bench PRIVATE $<TARGET_PROPERTY:rocksdb,COMPILE_DEFINITIONS>)
 target_compile_options(lsm_system_bench PRIVATE -Wall -Wextra -Wpedantic -Werror)
@@ -222,6 +223,43 @@ if(LSM_YCSBC_DIR)
   target_include_directories(lsm_ycsbc SYSTEM PRIVATE "${rocksdb_SOURCE_DIR}" "${rocksdb_BINARY_DIR}")
   target_link_libraries(lsm_ycsbc PRIVATE lsm_blocks lsm_runtime)
   target_compile_definitions(lsm_ycsbc PRIVATE $<TARGET_PROPERTY:rocksdb,COMPILE_DEFINITIONS>)
+endif()
+# RocksDB's own db_bench (for MixGraph and the native cross-check), built from the pinned source
+# with one added line that installs the compaction transform chosen by LSM_DB_BENCH_MODE
+# (bench/db_bench/transform_hook.cc). Needs gflags, e.g. -DCMAKE_PREFIX_PATH=<gflags prefix>.
+option(LSM_BUILD_DB_BENCH "Build lsm_db_bench (RocksDB db_bench with the compaction transform)" OFF)
+if(LSM_BUILD_DB_BENCH)
+  find_package(gflags CONFIG REQUIRED)
+  set(lsm_db_bench_source "${CMAKE_CURRENT_BINARY_DIR}/lsm_db_bench_tool.cc")
+  file(READ "${rocksdb_SOURCE_DIR}/tools/db_bench_tool.cc" lsm_db_bench_text)
+  set(lsm_db_bench_anchor "      block_based_options.block_cache = cache_;")
+  string(FIND "${lsm_db_bench_text}" "${lsm_db_bench_anchor}" lsm_db_bench_at)
+  if(lsm_db_bench_at EQUAL -1)
+    message(FATAL_ERROR "db_bench_tool.cc: transform hook anchor not found")
+  endif()
+  string(REPLACE "${lsm_db_bench_anchor}"
+    "${lsm_db_bench_anchor}\n      block_based_options.compaction_block_transform = LsmDbBenchTransform();"
+    lsm_db_bench_text "${lsm_db_bench_text}")
+  string(REPLACE "namespace ROCKSDB_NAMESPACE {"
+    "namespace ROCKSDB_NAMESPACE {\nstd::shared_ptr<CompactionBlockTransform> LsmDbBenchTransform();"
+    lsm_db_bench_text "${lsm_db_bench_text}")
+  # Rewritten only when the text changes, so reconfiguring does not force a rebuild.
+  file(WRITE "${lsm_db_bench_source}.in" "${lsm_db_bench_text}")
+  configure_file("${lsm_db_bench_source}.in" "${lsm_db_bench_source}" COPYONLY)
+  add_executable(lsm_db_bench "${rocksdb_SOURCE_DIR}/tools/simulated_hybrid_file_system.cc"
+                 "${rocksdb_SOURCE_DIR}/tools/db_bench.cc" "${rocksdb_SOURCE_DIR}/tools/tool_hooks.cc"
+                 "${lsm_db_bench_source}" bench/db_bench/transform_hook.cc)
+  target_include_directories(lsm_db_bench SYSTEM PRIVATE "${rocksdb_SOURCE_DIR}" "${rocksdb_BINARY_DIR}")
+  target_compile_definitions(lsm_db_bench PRIVATE $<TARGET_PROPERTY:rocksdb,COMPILE_DEFINITIONS> GFLAGS=1)
+  # vcpkg exports gflags::gflags; gflags' own package (e.g. Homebrew) exports gflags.
+  if(TARGET gflags::gflags)
+    set(lsm_gflags gflags::gflags)
+  elseif(TARGET gflags)
+    set(lsm_gflags gflags)
+  else()
+    set(lsm_gflags ${gflags_LIBRARIES})
+  endif()
+  target_link_libraries(lsm_db_bench PRIVATE lsm_blocks lsm_runtime ${lsm_gflags})
 endif()
 target_include_directories(lsm_gpu_check SYSTEM PRIVATE "${rocksdb_SOURCE_DIR}" "${rocksdb_BINARY_DIR}")
 target_compile_definitions(lsm_gpu_check PRIVATE $<TARGET_PROPERTY:rocksdb,COMPILE_DEFINITIONS>)

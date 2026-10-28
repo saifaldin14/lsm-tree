@@ -14,11 +14,15 @@
 
 #include "lsm_lab/block_transform.hpp"
 #include "lsm_lab/db_options.hpp"
+#include "lsm_lab/process_accounting.hpp"
 #include "lsm_lab/replication.hpp"
 #include "lsm_lab/runtime.hpp"
 
 #include <rocksdb/db.h>
 #include <rocksdb/env.h>
+#include <rocksdb/iostats_context.h>
+#include <rocksdb/perf_context.h>
+#include <rocksdb/perf_level.h>
 #include <rocksdb/filter_policy.h>
 #include <rocksdb/listener.h>
 #include <rocksdb/options.h>
@@ -82,6 +86,19 @@ namespace
         std::uint32_t delete_percent = 0;
         std::string distribution = "uniform";
         double zipf_theta = 0.99;
+        // Workload shape (Phase 6 workloads; see docs/workloads.md). Keys and values may vary in
+        // size per key (key_bytes..key_bytes_max, value_bytes..value_bytes_max; 0 = fixed); keys
+        // may start with one of key_families prefix bytes; scan_percent of operations read
+        // scan_length consecutive keys. workload "timeseries" stores records / retention series
+        // of `retention` points each: an append writes the next point of a series and deletes
+        // the point that leaves the retention window.
+        std::string workload = "kv";
+        std::uint32_t key_bytes_max = 0;
+        std::uint32_t value_bytes_max = 0;
+        std::uint32_t key_families = 0;
+        std::uint32_t scan_percent = 0;
+        std::uint32_t scan_length = 16;
+        std::uint64_t retention = 0;
         bool use_direct_io = false;
         // Compaction shape (0 keeps RocksDB defaults).
         std::uint32_t l0_trigger = 0;
@@ -89,6 +106,9 @@ namespace
         // RocksDB's integrated key/value separation (BlobDB): values of at least this many bytes
         // go to blob files, with blob garbage collection (0 disables).
         std::uint32_t blob_min_bytes = 0;
+        bool pipelined_write = false;
+        bool concurrent_memtable = true;
+        std::uint32_t flush_jobs = 0;
         // Primary-backup replication (lsm_lab/replication.hpp): none, physical or logical, to the
         // comma-separated lsm_replica_server endpoints; logical replicas compact with replica_backend.
         std::string replication = "none";
@@ -106,16 +126,47 @@ namespace
         return value ^ (value >> 31);
     }
 
-    // Bytes 0-7: hash of the index (spreads keys), bytes 8-15: big-endian index.
+    std::uint32_t key_size(const Config &config, std::uint64_t index)
+    {
+        if (config.key_bytes_max <= config.key_bytes)
+            return config.key_bytes;
+        return config.key_bytes + static_cast<std::uint32_t>(mix64(index ^ 0x6b6579ULL) % (config.key_bytes_max - config.key_bytes + 1));
+    }
+
+    // Bytes 0-7: hash of the index (spreads keys), bytes 8-15: big-endian index, then padding
+    // up to the key's size. With key families, byte 0 is the family (index % families), so each
+    // family is a contiguous key range.
     void make_key(const Config &config, std::uint64_t index, std::string &key)
     {
-        key.assign(config.key_bytes, '\0');
+        key.assign(key_size(config, index), '\0');
         const auto prefix = mix64(index ^ config.seed);
         for (std::size_t offset = 0; offset < key.size(); ++offset)
         {
             const auto source = offset < 8 ? prefix : index;
             key[offset] = static_cast<char>((source >> (8 * (7 - offset % 8))) & 255);
         }
+        if (config.key_families > 0)
+            key[0] = static_cast<char>('A' + index % config.key_families);
+    }
+
+    // Time series: point t of series s has key (s, t), both big-endian, so a series is stored
+    // in time order. Its slot is s * retention + t % retention and its version t / retention.
+    void make_series_key(std::uint64_t series, std::uint64_t time, std::string &key)
+    {
+        key.assign(16, '\0');
+        for (std::size_t offset = 0; offset < 8; ++offset)
+        {
+            key[offset] = static_cast<char>((series >> (8 * (7 - offset))) & 255);
+            key[8 + offset] = static_cast<char>((time >> (8 * (7 - offset))) & 255);
+        }
+    }
+
+    std::uint64_t big_endian64(const char *bytes)
+    {
+        std::uint64_t value = 0;
+        for (std::size_t offset = 0; offset < 8; ++offset)
+            value = (value << 8) | static_cast<unsigned char>(bytes[offset]);
+        return value;
     }
 
     std::uint64_t key_index(const rocksdb::Slice &key)
@@ -133,7 +184,9 @@ namespace
     void make_value(const Config &config, std::uint64_t index, std::uint64_t version, std::string &value)
     {
         version &= ~std::uint64_t{kDeleted};
-        value.resize(config.value_bytes);
+        value.resize(config.value_bytes_max <= config.value_bytes
+                         ? config.value_bytes
+                         : config.value_bytes + mix64(index * 0x9e3779b1ULL + version) % (config.value_bytes_max - config.value_bytes + 1));
         std::uint64_t word = 0;
         const auto base = mix64(index * 1315423911ULL + version);
         for (std::size_t offset = 0; offset < value.size(); ++offset)
@@ -217,6 +270,9 @@ namespace
         shape.block_bytes = config.block_bytes;
         shape.block_cache_bytes = config.block_cache_bytes;
         shape.blob_min_bytes = config.blob_min_bytes;
+        shape.pipelined_write = config.pipelined_write;
+        shape.concurrent_memtable = config.concurrent_memtable;
+        shape.flush_jobs = config.flush_jobs;
         return shape;
     }
 
@@ -256,6 +312,13 @@ namespace
         return value;
     }
 
+    // For properties RocksDB reports only as strings (e.g. rocksdb.num-files-at-level<N>).
+    std::uint64_t string_property(rocksdb::DB *db, const char *name)
+    {
+        std::string value;
+        return db->GetProperty(name, &value) && !value.empty() ? std::stoull(value) : 0;
+    }
+
     void wait_for_compactions(rocksdb::DB *db)
     {
         rocksdb::WaitForCompactOptions wait;
@@ -277,9 +340,25 @@ namespace
         for (iterator->SeekToFirst(); iterator->Valid(); iterator->Next())
         {
             const auto key = iterator->key();
-            if (key.size() != config.key_bytes)
+            if (key.size() < 16)
                 throw std::runtime_error("verification: unexpected key size");
-            const auto index = key_index(key);
+            std::uint64_t index = 0;
+            if (config.workload == "timeseries")
+            {
+                // Point t of series s lives in slot s * retention + t % retention at version t / retention.
+                const auto series = big_endian64(key.data());
+                const auto time = big_endian64(key.data() + 8);
+                index = series * config.retention + time % config.retention;
+                if (key.size() != 16 || index >= config.records || versions[index] != time / config.retention)
+                    throw std::runtime_error("verification: unexpected time-series point " + std::to_string(series) + "/" +
+                                             std::to_string(time));
+            }
+            else
+            {
+                index = key_index(key);
+                if (index < config.records && key.size() != key_size(config, index))
+                    throw std::runtime_error("verification: unexpected key size");
+            }
             if (index >= config.records || seen[index])
                 throw std::runtime_error("verification: unexpected or duplicate key " + std::to_string(index));
             seen[index] = true;
@@ -397,7 +476,17 @@ namespace
         Histogram read_latency;
         Histogram write_latency;
         std::string error;
+        // Where sampled foreground writes spend their time (RocksDB PerfContext), nanoseconds.
+        std::uint64_t sampled_writes = 0;
+        std::array<std::uint64_t, 9> write_breakdown{};
     };
+
+    // PerfContext fields reported for sampled foreground writes (see rocksdb/perf_context.h). The
+    // timers overlap (write_pre_and_post_process encloses the others); "total" is the wall time
+    // of the whole Write call.
+    constexpr std::array<const char *, 9> kWriteBreakdown{
+        "write_thread_wait", "write_wal", "write_memtable", "write_delay", "write_pre_and_post_process",
+        "write_scheduling_flushes_compactions", "db_mutex_lock", "db_condition_wait", "total"};
 
     Json preload(const Config &config)
     {
@@ -440,7 +529,10 @@ namespace
                     {
                         // records < 2^32, so position * step fits in 64 bits.
                         const auto index = position * step % config.records;
-                        make_key(config, index, key);
+                        if (config.workload == "timeseries")
+                            make_series_key(index / config.retention, index % config.retention, key);
+                        else
+                            make_key(config, index, key);
                         make_value(config, index, 0, value);
                         check(batch.Put(key, value), "batch put");
                         if (batch.GetDataSize() >= (1U << 20))
@@ -547,10 +639,16 @@ namespace
         std::vector<ThreadState> states(config.threads);
         std::atomic<int> phase{0}; // 0 warmup, 1 measurement, 2 stop
         const auto per_thread = config.records / config.threads;
+        const bool timeseries = config.workload == "timeseries";
+        // Time series: thread t owns series t, t + threads, ...; heads[s] is the next point of series s.
+        const auto series_count = timeseries ? config.records / config.retention : 0;
+        std::vector<std::uint64_t> heads(series_count, config.retention);
+        // Keys (or series) each thread chooses among.
+        const auto items = timeseries ? series_count / config.threads : per_thread;
 
         std::unique_ptr<Zipfian> zipf;
         if (config.distribution == "zipfian")
-            zipf = std::make_unique<Zipfian>(per_thread, config.zipf_theta);
+            zipf = std::make_unique<Zipfian>(items, config.zipf_theta);
         else if (config.distribution != "uniform")
             throw std::invalid_argument("--distribution must be uniform or zipfian");
 
@@ -563,23 +661,51 @@ namespace
             try
             {
                 std::mt19937_64 random(mix64(config.seed * 7919 + thread));
-                std::uniform_int_distribution<std::uint64_t> uniform(0, per_thread - 1);
+                std::uniform_int_distribution<std::uint64_t> uniform(0, items - 1);
                 std::uniform_real_distribution<double> unit(0.0, 1.0);
                 // Scrambled Zipfian over this thread's keys (YCSB): rank r maps to a hashed slot.
                 const auto pick = [&](auto &generator) -> std::uint64_t {
                     if (!zipf)
                         return uniform(generator);
                     const auto rank = zipf->next(unit(generator));
-                    return mix64(rank ^ 0x5bd1e9955bd1e995ULL) % per_thread;
+                    return mix64(rank ^ 0x5bd1e9955bd1e995ULL) % items;
                 };
                 std::uniform_int_distribution<std::uint32_t> percent(0, 99);
                 rocksdb::WriteOptions write;
                 write.disableWAL = config.disable_wal;
                 rocksdb::ReadOptions read;
-                std::string key, value, expected;
+                std::string key, value, expected, expected_key;
                 rocksdb::PinnableSlice found;
                 rocksdb::WriteBatch batch;
                 rocksdb::WriteBatch single;
+                // Every 64th write in the measurement window is timed by RocksDB's PerfContext.
+                std::uint64_t write_counter = 0;
+                Clock::time_point sample_start;
+                const auto sample_begin = [&](bool measuring) {
+                    const bool sample = measuring && (++write_counter % 64) == 0;
+                    if (sample)
+                    {
+                        sample_start = Clock::now();
+                        rocksdb::SetPerfLevel(rocksdb::PerfLevel::kEnableTimeExceptForMutex);
+                        rocksdb::get_perf_context()->Reset();
+                    }
+                    return sample;
+                };
+                const auto sample_end = [&](bool sampled) {
+                    if (!sampled)
+                        return;
+                    const auto *perf = rocksdb::get_perf_context();
+                    const std::uint64_t values[] = {perf->write_thread_wait_nanos, perf->write_wal_time,
+                                                    perf->write_memtable_time, perf->write_delay_time,
+                                                    perf->write_pre_and_post_process_time,
+                                                    perf->write_scheduling_flushes_compactions_time,
+                                                    perf->db_mutex_lock_nanos, perf->db_condition_wait_nanos,
+                                                    static_cast<std::uint64_t>((Clock::now() - sample_start).count())};
+                    for (std::size_t index = 0; index < kWriteBreakdown.size(); ++index)
+                        state.write_breakdown[index] += values[index];
+                    ++state.sampled_writes;
+                    rocksdb::SetPerfLevel(rocksdb::PerfLevel::kDisable);
+                };
                 const auto put = [&](const std::string &k, const std::string &v) {
                     if (!logical)
                         return check(db->Put(write, k, v), "put");
@@ -596,17 +722,105 @@ namespace
                     replicate(single);
                     check(db->Write(write, &single), "delete");
                 };
+                // Timed reads: point reads and scans share the read counters and latency.
+                const auto timed_read = [&](bool measuring, auto &&body) {
+                    const auto begin = Clock::now();
+                    body();
+                    const auto ns = static_cast<std::uint64_t>((Clock::now() - begin).count());
+                    if (measuring)
+                    {
+                        state.read_latency.add(ns);
+                        ++state.window_reads;
+                    }
+                    state.ops.fetch_add(1, std::memory_order_relaxed);
+                };
+                const auto expect_point = [&](const rocksdb::Slice &value, std::uint64_t series, std::uint64_t time) {
+                    const auto slot = series * config.retention + time % config.retention;
+                    make_value(config, slot, time / config.retention, expected);
+                    if (value != rocksdb::Slice(expected))
+                        throw std::runtime_error("online read returned a wrong time-series point " + std::to_string(series) + "/" +
+                                                 std::to_string(time));
+                };
                 while (true)
                 {
                     const auto current = phase.load(std::memory_order_relaxed);
                     if (current == 2)
                         break;
+                    if (timeseries)
+                    {
+                        const auto series = thread + config.threads * pick(random);
+                        const auto roll = percent(random);
+                        const auto head = heads[series];
+                        if (roll < config.read_percent)
+                        {
+                            // One live point of the series, anywhere in the retention window.
+                            const auto time = head - 1 - random() % config.retention;
+                            timed_read(current == 1, [&] {
+                                make_series_key(series, time, key);
+                                found.Reset();
+                                check(db->Get(read, db->DefaultColumnFamily(), key, &found), "get");
+                                expect_point(found, series, time);
+                            });
+                            continue;
+                        }
+                        if (roll < config.read_percent + config.scan_percent)
+                        {
+                            // The latest scan_length points of the series, in time order.
+                            const auto length = std::min<std::uint64_t>(config.scan_length, config.retention);
+                            timed_read(current == 1, [&] {
+                                std::unique_ptr<rocksdb::Iterator> iterator(db->NewIterator(read));
+                                make_series_key(series, head - length, key);
+                                iterator->Seek(key);
+                                for (std::uint64_t time = head - length; time < head; ++time, iterator->Next())
+                                {
+                                    make_series_key(series, time, expected_key);
+                                    if (!iterator->Valid() || iterator->key() != rocksdb::Slice(expected_key))
+                                        throw std::runtime_error("time-series scan missed point " + std::to_string(series) + "/" +
+                                                                 std::to_string(time));
+                                    expect_point(iterator->value(), series, time);
+                                }
+                                check(iterator->status(), "scan");
+                            });
+                            continue;
+                        }
+                        // Appends: each writes the next point of a series and deletes the point that
+                        // leaves the retention window, batch_size appends per WriteBatch.
+                        batch.Clear();
+                        for (std::uint32_t item = 0; item < config.batch_size; ++item)
+                        {
+                            const auto target = item == 0 ? series : thread + config.threads * pick(random);
+                            const auto time = heads[target];
+                            const auto slot = target * config.retention + time % config.retention;
+                            make_series_key(target, time - config.retention, key);
+                            check(batch.Delete(key), "batch delete");
+                            versions[slot] = static_cast<std::uint32_t>(time / config.retention);
+                            make_value(config, slot, versions[slot], value);
+                            make_series_key(target, time, key);
+                            check(batch.Put(key, value), "batch put");
+                            heads[target] = time + 1;
+                        }
+                        const bool sampled = sample_begin(current == 1);
+                        const auto begin = Clock::now();
+                        replicate(batch);
+                        check(db->Write(write, &batch), "write batch");
+                        const auto ns = static_cast<std::uint64_t>((Clock::now() - begin).count());
+                        sample_end(sampled);
+                        if (current == 1)
+                        {
+                            state.write_latency.add(ns);
+                            state.window_writes += config.batch_size;
+                        }
+                        state.ops.fetch_add(config.batch_size, std::memory_order_relaxed);
+                        continue;
+                    }
                     const auto index = thread + config.threads * pick(random);
                     const auto roll = percent(random);
                     const bool is_read = roll < config.read_percent;
                     const bool is_rmw = !is_read && roll < config.read_percent + config.rmw_percent;
                     const bool is_delete = !is_read && !is_rmw &&
                                            roll < config.read_percent + config.rmw_percent + config.delete_percent;
+                    const bool is_scan = !is_read && !is_rmw && !is_delete &&
+                                         roll < config.read_percent + config.rmw_percent + config.delete_percent + config.scan_percent;
                     make_key(config, index, key);
                     // Reads (and the read half of read-modify-writes) are checked against the
                     // version this thread last wrote; a deleted key must be absent.
@@ -624,6 +838,33 @@ namespace
                         if (found != rocksdb::Slice(expected))
                             throw std::runtime_error("online read returned a wrong value for key " + std::to_string(index));
                     };
+                    if (is_scan)
+                    {
+                        // scan_length keys from this key on; keys this thread owns are checked (the
+                        // others change concurrently).
+                        timed_read(current == 1, [&] {
+                            std::unique_ptr<rocksdb::Iterator> iterator(db->NewIterator(read));
+                            iterator->Seek(key);
+                            for (std::uint32_t item = 0; item < config.scan_length && iterator->Valid(); ++item, iterator->Next())
+                            {
+                                const auto seen = iterator->key();
+                                if (seen.size() < 16)
+                                    throw std::runtime_error("scan found an unexpected key");
+                                const auto owner = key_index(seen);
+                                if (owner >= config.records || seen.size() != key_size(config, owner))
+                                    throw std::runtime_error("scan found an unexpected key");
+                                if (owner % config.threads != thread)
+                                    continue;
+                                if (versions[owner] & kDeleted)
+                                    throw std::runtime_error("scan found deleted key " + std::to_string(owner));
+                                make_value(config, owner, versions[owner], expected);
+                                if (iterator->value() != rocksdb::Slice(expected))
+                                    throw std::runtime_error("scan returned a wrong value for key " + std::to_string(owner));
+                            }
+                            check(iterator->status(), "scan");
+                        });
+                        continue;
+                    }
                     if (is_read)
                     {
                         const auto begin = Clock::now();
@@ -662,9 +903,11 @@ namespace
                     {
                         const auto version = (versions[index] & ~kDeleted) + 1;
                         make_value(config, index, version, value);
+                        const bool sampled = sample_begin(current == 1);
                         const auto begin = Clock::now();
                         put(key, value);
                         const auto ns = static_cast<std::uint64_t>((Clock::now() - begin).count());
+                        sample_end(sampled);
                         versions[index] = version;
                         if (current == 1)
                         {
@@ -685,10 +928,12 @@ namespace
                             make_value(config, owned, versions[owned], value);
                             check(batch.Put(key, value), "batch put");
                         }
+                        const bool sampled = sample_begin(current == 1);
                         const auto begin = Clock::now();
                         replicate(batch);
                         check(db->Write(write, &batch), "write batch");
                         const auto ns = static_cast<std::uint64_t>((Clock::now() - begin).count());
+                        sample_end(sampled);
                         if (current == 1)
                         {
                             state.write_latency.add(ns);
@@ -716,6 +961,10 @@ namespace
                         {"compact_write_bytes", ticker(rocksdb::COMPACT_WRITE_BYTES)},
                         {"compaction_cpu_micros", ticker(rocksdb::COMPACTION_CPU_TOTAL_TIME)},
                         {"stall_micros", ticker(rocksdb::STALL_MICROS)},
+                        {"wal_bytes", ticker(rocksdb::WAL_FILE_BYTES)},
+                        {"wal_syncs", ticker(rocksdb::WAL_FILE_SYNCED)},
+                        {"writes_done_by_self", ticker(rocksdb::WRITE_DONE_BY_SELF)},
+                        {"writes_done_by_other", ticker(rocksdb::WRITE_DONE_BY_OTHER)},
                         {"compactions", totals->snapshot()}};
         };
         const auto total_ops = [&]
@@ -726,6 +975,10 @@ namespace
             return sum;
         };
 
+        const lsm_lab::ProcessAccounting accounting(config.dir.string());
+        auto previous_sample = accounting.sample();
+        const auto run_sample_start = previous_sample;
+        lsm_lab::ProcessSample window_sample_start, window_sample_end;
         const auto run_cpu_start = process_cpu();
         const double run_start_unix = unix_seconds();
         const auto run_counters_start = counters();
@@ -746,6 +999,7 @@ namespace
         {
             cpu_start = process_cpu();
             counters_start = counters();
+            window_sample_start = accounting.sample();
             window_start = Clock::now();
             window_start_unix = unix_seconds();
             phase.store(1);
@@ -761,11 +1015,23 @@ namespace
                 break;
             const auto ops = total_ops();
             const auto stall = ticker(rocksdb::STALL_MICROS);
+            const auto current_sample = accounting.sample();
+            const auto usage = lsm_lab::ProcessAccounting::delta(previous_sample, current_sample);
+            previous_sample = current_sample;
             timeline.push_back({{"second", second},
                                 {"phase", second <= config.warmup_seconds ? "warmup" : "measurement"},
                                 {"ops", ops - previous_ops},
                                 {"stall_micros", stall - previous_stall},
-                                {"l0_files", property(db.get(), "rocksdb.num-files-at-level0")},
+                                {"cores_by_role", usage.at("cores_by_role")},
+                                {"process_write_mib_s", usage.at("process_write_mib_s")},
+                                {"syscall_write_mib_s", usage.at("syscall_write_mib_s")},
+                                {"device", usage.value("device", Json(nullptr))},
+                                {"immutable_memtables", property(db.get(), "rocksdb.num-immutable-mem-table")},
+                                {"running_flushes", property(db.get(), "rocksdb.num-running-flushes")},
+                                {"l0_files", string_property(db.get(), "rocksdb.num-files-at-level0")},
+                                // Non-zero while RocksDB throttles writes (bytes/s); 1 while writes are stopped.
+                                {"delayed_write_rate", property(db.get(), "rocksdb.actual-delayed-write-rate")},
+                                {"write_stopped", property(db.get(), "rocksdb.is-write-stopped")},
                                 {"running_compactions", property(db.get(), "rocksdb.num-running-compactions")},
                                 {"pending_compaction_bytes", property(db.get(), "rocksdb.estimate-pending-compaction-bytes")}});
             previous_ops = ops;
@@ -779,6 +1045,7 @@ namespace
             window_end_unix = unix_seconds();
             cpu_end = process_cpu();
             counters_end = counters();
+            window_sample_end = accounting.sample();
         }
         phase.store(2);
         for (auto &thread : workers)
@@ -863,6 +1130,30 @@ namespace
                                      {"compaction_cpu_seconds", (run_counters_end.at("compactions").at("cpu_micros").get<double>() -
                                                                  run_counters_start.at("compactions").at("cpu_micros").get<double>()) / 1e6},
                                      {"write_amplification", written > 0 ? rewritten / written : 0.0}};
+                     }()},
+                    {"accounting", [&] {
+                         // Where CPU went and what reached storage, for the window and for the whole run.
+                         Json breakdown = Json::object();
+                         std::uint64_t sampled = 0;
+                         for (const auto &state : states)
+                             sampled += state.sampled_writes;
+                         for (std::size_t index = 0; index < kWriteBreakdown.size(); ++index)
+                         {
+                             std::uint64_t sum = 0;
+                             for (const auto &state : states)
+                                 sum += state.write_breakdown[index];
+                             breakdown[kWriteBreakdown[index]] = sampled ? sum / 1000.0 / sampled : 0.0;
+                         }
+                         std::string cf_stalls, db_stalls;
+                         db->GetProperty(rocksdb::DB::Properties::kCFWriteStallStats, &cf_stalls);
+                         db->GetProperty(rocksdb::DB::Properties::kDBWriteStallStats, &db_stalls);
+                         return Json{{"window", lsm_lab::ProcessAccounting::delta(window_sample_start, window_sample_end)},
+                                     {"run", lsm_lab::ProcessAccounting::delta(run_sample_start, accounting.sample())},
+                                     {"device", accounting.device()},
+                                     {"sampled_writes", sampled},
+                                     {"write_breakdown_us_per_write", breakdown},
+                                     {"cf_write_stall_stats", cf_stalls},
+                                     {"db_write_stall_stats", db_stalls}};
                      }()},
                     {"sst_bytes_after_run", property(db.get(), "rocksdb.total-sst-files-size")},
                     {"live_sst_bytes_after_run", property(db.get(), "rocksdb.live-sst-files-size")},
@@ -988,6 +1279,26 @@ namespace
                 config.level_multiplier = std::stod(value());
             else if (name == "--blob-min-bytes")
                 config.blob_min_bytes = static_cast<std::uint32_t>(number());
+            else if (name == "--workload")
+                config.workload = value();
+            else if (name == "--key-bytes-max")
+                config.key_bytes_max = static_cast<std::uint32_t>(number());
+            else if (name == "--value-bytes-max")
+                config.value_bytes_max = static_cast<std::uint32_t>(number());
+            else if (name == "--key-families")
+                config.key_families = static_cast<std::uint32_t>(number());
+            else if (name == "--scan-percent")
+                config.scan_percent = static_cast<std::uint32_t>(number());
+            else if (name == "--scan-length")
+                config.scan_length = static_cast<std::uint32_t>(number());
+            else if (name == "--retention")
+                config.retention = number();
+            else if (name == "--pipelined-write")
+                config.pipelined_write = value() == "true";
+            else if (name == "--concurrent-memtable")
+                config.concurrent_memtable = value() == "true";
+            else if (name == "--flush-jobs")
+                config.flush_jobs = static_cast<std::uint32_t>(number());
             else if (name == "--replication")
                 config.replication = value();
             else if (name == "--replicate-to")
@@ -1011,12 +1322,28 @@ namespace
             throw std::invalid_argument("--phase must be preload or run");
         if (config.dir.empty())
             throw std::invalid_argument("--dir is required");
-        if (config.key_bytes != 16)
-            throw std::invalid_argument("--key-bytes must be 16");
-        if (config.read_percent + config.rmw_percent + config.delete_percent > 100)
-            throw std::invalid_argument("--read-percent + --rmw-percent + --delete-percent must be <= 100");
-        if (config.batch_size > 1 && (config.read_percent + config.rmw_percent + config.delete_percent) > 0)
-            throw std::invalid_argument("--batch-size > 1 supports write-only runs");
+        if (config.key_bytes < 16 || config.key_bytes > 512 || (config.key_bytes_max > 0 && (config.key_bytes_max < config.key_bytes ||
+                                                                                           config.key_bytes_max > 512)))
+            throw std::invalid_argument("--key-bytes (and --key-bytes-max) must be 16 to 512");
+        if (config.value_bytes_max > 0 && config.value_bytes_max < config.value_bytes)
+            throw std::invalid_argument("--value-bytes-max must be at least --value-bytes");
+        if (config.key_families > 26)
+            throw std::invalid_argument("--key-families must be at most 26");
+        if (config.read_percent + config.rmw_percent + config.delete_percent + config.scan_percent > 100)
+            throw std::invalid_argument("--read-percent + --rmw-percent + --delete-percent + --scan-percent must be <= 100");
+        if (config.workload == "timeseries")
+        {
+            if (config.retention == 0 || config.records % config.retention != 0 ||
+                (config.records / config.retention) % config.threads != 0)
+                throw std::invalid_argument("timeseries needs --retention dividing --records into a multiple of --threads series");
+            if (config.key_bytes != 16 || config.key_bytes_max > 0 || config.key_families > 0 || config.rmw_percent > 0 ||
+                config.delete_percent > 0 || config.scan_length == 0)
+                throw std::invalid_argument("timeseries uses 16-byte keys, no key families, reads, scans and appends only");
+        }
+        else if (config.workload != "kv")
+            throw std::invalid_argument("--workload must be kv or timeseries");
+        else if (config.batch_size > 1 && (config.read_percent + config.rmw_percent + config.delete_percent + config.scan_percent) > 0)
+            throw std::invalid_argument("--batch-size > 1 supports write-only runs (except timeseries)");
         if (config.threads == 0 || config.read_percent > 100 || config.duration_seconds == 0 || config.records == 0 || config.batch_size == 0 ||
             config.records >= (1ULL << 32))
             throw std::invalid_argument("invalid --threads, --read-percent, --duration-seconds or --records");
@@ -1041,6 +1368,12 @@ int main(int argc, char **argv)
                             {"distribution", config.distribution}, {"zipf_theta", config.zipf_theta},
                             {"use_direct_io", config.use_direct_io}, {"l0_trigger", config.l0_trigger},
                             {"level_multiplier", config.level_multiplier}, {"blob_min_bytes", config.blob_min_bytes},
+                            {"workload", config.workload}, {"key_bytes_max", config.key_bytes_max},
+                            {"value_bytes_max", config.value_bytes_max}, {"key_families", config.key_families},
+                            {"scan_percent", config.scan_percent}, {"scan_length", config.scan_length},
+                            {"retention", config.retention},
+                            {"pipelined_write", config.pipelined_write}, {"concurrent_memtable", config.concurrent_memtable},
+                            {"flush_jobs", config.flush_jobs},
                             {"replication", config.replication}, {"replicate_to", config.replicate_to},
                             {"replica_backend", config.replica_backend},
                             {"warmup_seconds", config.warmup_seconds}, {"duration_seconds", config.duration_seconds},

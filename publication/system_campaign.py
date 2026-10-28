@@ -202,21 +202,28 @@ def run_trial(out: Path, golden: Path, scratch: Path, trial: dict, common: dict,
         burner = subprocess.Popen([str(BURN), "--cpus", cpu_list, "--percent", str(trial["burn_percent"])],
                                   stdout=(trial_dir / "burn.json").open("w"), stderr=subprocess.STDOUT)
     processes = []
-    for instance, command in enumerate(commands):
-        suffix = "" if instances == 1 else f"-{instance}"
-        processes.append(subprocess.Popen(command, stdout=(trial_dir / f"bench{suffix}.json").open("w"),
-                                          stderr=(trial_dir / f"bench{suffix}.err").open("w"), env=environment))
-    codes = [process.wait() for process in processes]
-    if burner:
-        burner.send_signal(signal.SIGTERM)
-        burner.wait()
-    perf.send_signal(signal.SIGINT)
-    perf.wait()
-    if iostat:
-        iostat.send_signal(signal.SIGTERM)
-        iostat.wait()
-    gpu.send_signal(signal.SIGTERM)
-    gpu_lines, _ = gpu.communicate()
+    # The monitors are stopped even if the driver is interrupted, so none outlive the trial.
+    try:
+        for instance, command in enumerate(commands):
+            suffix = "" if instances == 1 else f"-{instance}"
+            processes.append(subprocess.Popen(command, stdout=(trial_dir / f"bench{suffix}.json").open("w"),
+                                              stderr=(trial_dir / f"bench{suffix}.err").open("w"), env=environment))
+        codes = [process.wait() for process in processes]
+    finally:
+        for process in processes:
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+        if burner:
+            burner.send_signal(signal.SIGTERM)
+            burner.wait()
+        perf.send_signal(signal.SIGINT)
+        perf.wait()
+        if iostat:
+            iostat.send_signal(signal.SIGTERM)
+            iostat.wait()
+        gpu.send_signal(signal.SIGTERM)
+        gpu_lines, _ = gpu.communicate()
     converted, utilization = [], []
     for line in gpu_lines.splitlines():
         fields = [field.strip() for field in line.split(",")]

@@ -58,6 +58,9 @@ namespace
         std::uint64_t target_file_bytes = 64ULL << 20;
         std::uint32_t subcompactions = 1;
         std::uint32_t repetitions = 1;
+        // Fixed-time mode: after the given repetitions, keep repeating each mode (round-robin)
+        // until this many seconds have passed since the first warm repetition (0 disables).
+        double duration_seconds = 0;
         std::uint64_t seed = 1;
         bool keep = false;
     };
@@ -469,6 +472,8 @@ namespace
                 config.subcompactions = static_cast<std::uint32_t>(std::stoul(value()));
             else if (name == "--repetitions")
                 config.repetitions = static_cast<std::uint32_t>(std::stoul(value()));
+            else if (name == "--duration")
+                config.duration_seconds = std::stod(value());
             else if (name == "--seed")
                 config.seed = std::stoull(value());
             else if (name == "--keep")
@@ -493,8 +498,12 @@ int main(int argc, char **argv)
         std::optional<std::string> reference;
         bool consistent = true;
         std::map<std::string, std::shared_ptr<lsm_lab::BatchTransform>> transforms;
-        for (std::uint32_t repetition = 0; repetition < config.repetitions; ++repetition)
+        const auto timed_start = std::chrono::steady_clock::now();
+        for (std::uint32_t repetition = 0;; ++repetition)
         {
+            const double elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - timed_start).count();
+            if (repetition >= config.repetitions && (config.duration_seconds <= 0 || elapsed >= config.duration_seconds))
+                break;
             for (const auto &mode : config.modes)
             {
                 auto result = run_once(config, mode, repetition, transforms[mode]);
