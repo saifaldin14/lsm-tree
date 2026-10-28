@@ -254,3 +254,16 @@ Hardware status when this was written:
     GPU memory of the pipeline rebuild fell to 24 GB (full offload: 13 GB),
     with no fallbacks.
   - Both campaigns were restarted from scratch with this build.
+- **RDMA experiments with the hardware available (R1, R2, R6):**
+  - **Topology:** the database node (Nasus) is connected over 100 Gb/s RoCE to one
+    other machine (Jax), which runs the compaction server and both backups on
+    separate cores. A third RDMA host on the same network was not available.
+  - **CPU only:** no host has both a usable GPU and an RDMA card, so the server
+    compacts on the CPU (`cpu_merge`) and every result is labelled "CPU". `cpu_merge`
+    is our reference merge and takes about twice as long as RocksDB's own compaction
+    for the same job (19.8 s against 10.0 s for 32-byte values). So "remote CPU" here
+    understates a CaaS-LSM-style remote RocksDB compaction, and H17 cannot be tested
+    until GPU-over-RDMA hardware is available.
+  - **Interrupted R2 runs:** the first attempts were interrupted twice when the
+    controlling laptop lost its connection. Unfinished runs were discarded and
+    re-run, and the experiment driver now runs on the database node itself.
