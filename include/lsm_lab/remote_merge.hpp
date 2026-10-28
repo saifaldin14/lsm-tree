@@ -108,7 +108,22 @@ namespace lsm_lab
         // Sends the first request_bytes of request_buffer. The reply stays valid while *reply lives.
         virtual rocksdb::Status call(std::size_t request_bytes, std::shared_ptr<const char> *reply,
                                      std::size_t *reply_bytes) = 0;
+        // call() in two halves, so one thread can have requests outstanding on several
+        // connections (e.g. one per backup): send() transmits the request and finish() waits for
+        // its reply. The defaults simply run call() in finish().
+        virtual rocksdb::Status send(std::size_t request_bytes)
+        {
+            pending_bytes_ = request_bytes;
+            return rocksdb::Status::OK();
+        }
+        virtual rocksdb::Status finish(std::shared_ptr<const char> *reply, std::size_t *reply_bytes)
+        {
+            return call(pending_bytes_, reply, reply_bytes);
+        }
         virtual std::string describe() const = 0;
+
+    protected:
+        std::size_t pending_bytes_ = 0;
     };
     std::unique_ptr<RpcClient> connect_rpc(const Endpoint &endpoint);
 

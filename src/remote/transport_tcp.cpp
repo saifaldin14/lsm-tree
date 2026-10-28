@@ -135,11 +135,29 @@ namespace lsm_lab::detail
             rocksdb::Status call(std::size_t request_bytes, std::shared_ptr<const char> *reply,
                                  std::size_t *reply_bytes) override
             {
+                const auto status = send(request_bytes);
+                return status.ok() ? finish(reply, reply_bytes) : status;
+            }
+
+            rocksdb::Status send(std::size_t request_bytes) override
+            {
                 try
                 {
                     const std::uint64_t length = request_bytes;
                     write_all(fd_, reinterpret_cast<const char *>(&length), sizeof(length));
                     write_all(fd_, request_.get(), request_bytes);
+                    return rocksdb::Status::OK();
+                }
+                catch (const std::exception &error)
+                {
+                    return rocksdb::Status::IOError(error.what());
+                }
+            }
+
+            rocksdb::Status finish(std::shared_ptr<const char> *reply, std::size_t *reply_bytes) override
+            {
+                try
+                {
                     std::uint64_t answer = 0;
                     if (!read_all(fd_, reinterpret_cast<char *>(&answer), sizeof(answer)))
                         throw std::runtime_error("tcp: server closed the connection");

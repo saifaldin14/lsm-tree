@@ -225,6 +225,78 @@ Hardware status when this was written:
   - Supported for batched writes: 3.4× less cluster CPU per write.
   - Not supported for single writes: 1.8× less, short of the stated 2×.
 
+## Methodology v2 (added before the v2 campaigns)
+
+All campaigns above are the **v1 methodology** and stay as they are. A methodology audit
+(new per-role CPU, I/O and write-path instrumentation; `perf` profiles) found four problems,
+which v2 fixes:
+
+1. **Native was under-tuned at high core counts.** With `max_subcompactions = 4`, RocksDB's
+   single L0→L1 compaction can use at most 4 threads, and writes are throttled while it
+   runs. Pilot (50 M keys, batched writes, 40 s): native on 32 cores went from 0.84 M to
+   1.45 M writes/s with subcompactions equal to the cores; full offload was unchanged.
+   The v1 equal-cost comparison therefore overstates our advantage at 16–32 native cores.
+2. **The per-second L0 file count was always 0** (a string property read as an integer).
+   Stall statistics were correct; only that timeline column was wrong.
+3. **Fixed-size runs** in the single-compaction benchmark and in YCSB.
+4. **Memory-backed storage only** (`/dev/shm`).
+
+### Tuning (Phase 3)
+
+- **Search space, identical for every design** (`configs/system/tune-search.json`):
+  4, 8, 16 and 32 physical cores (spilling to a second NUMA node above 18); client threads
+  1× and 2× the cores (adaptive yield only at 1×); subcompactions 4 and equal to the cores;
+  pipelined write off and on; background jobs equal to the cores; batched writes, LZ4,
+  50 M keys; 20 s warm-up and 60 s measurement.
+- **Selection rule:** per design and core count, the highest measured throughput among
+  settings with stall time below 5% and passing verification.
+- The chosen settings are frozen in `configs/system/tuned.json` before any v2 campaign
+  runs, and the whole search is published. Trials overlapping other work on the machine are
+  re-run and the originals excluded.
+
+### Run length (Phase 4)
+
+- **Whole database:** 120 s warm-up and 600 s measurement. Steady-state throughput is the
+  median of per-minute rates over the last 8 minutes; a run whose per-minute trend exceeds
+  5% is reported as not steady. Catch-up time and catch-up-inclusive throughput are
+  reported separately, as before.
+- **Workloads:** 60 s warm-up and 300 s measurement; MixGraph: 300 s per run.
+- **Single compaction:** `lsm_compaction_bench --duration 120`.
+- **YCSB (both drivers):** `maxexecutiontime = 300` seconds.
+
+### Campaigns
+
+| ID | Campaign | Designs | Cores | Repetitions |
+|---|---|---|---|---|
+| V1 | Headline, batched writes, LZ4, `/dev/shm`, tuned | native, full | 4, 8, 16, 32 | 3 blocks |
+| V2 | Workloads: stream, metadata, time series (`docs/workloads.md`) | native, full | 8, 16 | 3 blocks |
+| V3 | MixGraph: `zippydb`, `zippydb_write` (`lsm_db_bench`) | native, full | 8, 16 | 3 |
+| V4 | SATA SSD (Zyra), direct I/O, 50 M keys, tuned | native, full | 8, 16 | 3 blocks |
+| V5 | Replication R6 with parallel broadcast to backups (otherwise as R6) | as R6 | as R6 | 3 |
+
+Every whole-database run records CPU by thread role, device bandwidth and utilisation,
+throttled seconds, and GPU fallbacks.
+
+### Hypotheses
+
+- **H18:** with tuned settings for both, full offload sustains at least 1.3× native
+  throughput at 8 and 16 cores (V1).
+- **H19:** at 32 cores, tuned native spends more seconds throttled (below 25% of its mean
+  rate) than full offload, by at least 2× (V1).
+- **H20:** full offload gives at least 1.2× throughput or at least 25% less CPU per
+  operation on the stream and metadata workloads, and is within ±10% of native on the
+  time-series workload, where compaction does little merging (V2).
+- **H21:** on MixGraph, `zippydb` (85% reads) is within ±10% of native and `zippydb_write`
+  gains at least 1.1× (V3).
+- **H22:** on the SATA SSD the gain is smaller than on `/dev/shm`, and the device, not the
+  CPU, limits native throughput (utilisation above 80%) (V4).
+- **H23:** with parallel broadcast, compact-once replication with single writes is within
+  10% of per-replica compaction throughput (it was 25% slower in R6) (V5).
+
+The pilots that motivated v2 (`perf` profiles, subcompaction checks, small MixGraph and
+workload runs) are not results and are not reported as such. Analysis, statistics and
+exclusions are as in the main plan.
+
 ## Changes after data collection
 
 - **Shared GPU, first attempt (discarded, kept as `shared-gpu-attempt1`):** all

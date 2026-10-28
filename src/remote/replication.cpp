@@ -608,34 +608,42 @@ namespace lsm_lab
         header.offset = offset;
         header.data_bytes = bytes;
         const auto total = sizeof(header) + path.size() + bytes;
-        for (std::size_t index = 0; index < impl_->backups.size(); ++index)
+        // Every backup gets the request before any reply is awaited, so the backups work (and
+        // the network transfers) in parallel. On error the unfinished connections are dropped.
+        const auto count = impl_->backups.size();
+        std::vector<std::unique_ptr<RpcClient>> clients(count);
+        for (std::size_t index = 0; index < count; ++index)
         {
-            auto &backup = *impl_->backups[index];
-            std::unique_ptr<RpcClient> client;
             try
             {
-                client = impl_->acquire(backup);
+                clients[index] = impl_->acquire(*impl_->backups[index]);
             }
             catch (const std::exception &error)
             {
                 return rocksdb::Status::IOError(std::string("replica connect: ") + error.what());
             }
-            char *buffer = client->request_buffer(total);
+            char *buffer = clients[index]->request_buffer(total);
             std::memcpy(buffer, &header, sizeof(header));
             std::memcpy(buffer + sizeof(header), path.data(), path.size());
             if (bytes != 0)
                 std::memcpy(buffer + sizeof(header) + path.size(), data, bytes);
+            const auto status = clients[index]->send(total);
+            if (!status.ok())
+                return status;
+        }
+        for (std::size_t index = 0; index < count; ++index)
+        {
             std::shared_ptr<const char> answer;
             std::size_t answer_bytes = 0;
-            const auto status = client->call(total, &answer, &answer_bytes);
+            const auto status = clients[index]->finish(&answer, &answer_bytes);
             if (!status.ok())
-                return status; // the connection is dropped
+                return status;
             ReplicaReply result;
             if (answer_bytes < sizeof(result))
                 return rocksdb::Status::Corruption("short replica reply");
             std::memcpy(&result, answer.get(), sizeof(result));
             const std::string message(answer.get() + sizeof(result), result.message_bytes);
-            impl_->release(backup, std::move(client));
+            impl_->release(*impl_->backups[index], std::move(clients[index]));
             if (result.ok == 0)
                 return rocksdb::Status::IOError("replica " + impl_->endpoints[index] + ": " + message);
             if (replies != nullptr)

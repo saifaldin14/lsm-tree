@@ -553,6 +553,8 @@ namespace lsm_lab::detail
             {
                 if (request_.data != nullptr)
                     requests_->put(request_);
+                if (pending_.data != nullptr)
+                    replies_->put(pending_);
                 rdma_disconnect(id_);
                 channel_.reset();
                 rdma_destroy_id(id_);
@@ -573,10 +575,19 @@ namespace lsm_lab::detail
             rocksdb::Status call(std::size_t request_bytes, std::shared_ptr<const char> *reply,
                                  std::size_t *reply_bytes) override
             {
+                const auto status = send(request_bytes);
+                return status.ok() ? finish(reply, reply_bytes) : status;
+            }
+
+            rocksdb::Status send(std::size_t request_bytes) override
+            {
                 try
                 {
                     // Replies are usually no larger than the request; kNeed covers the rest.
-                    auto region = replies_->get(std::max<std::size_t>(request_bytes, last_reply_));
+                    if (pending_.data != nullptr)
+                        replies_->put(pending_);
+                    pending_ = replies_->get(std::max<std::size_t>(request_bytes, last_reply_));
+                    const auto &region = pending_;
                     Ctrl message;
                     message.reply_addr = reinterpret_cast<std::uint64_t>(region.data);
                     message.reply_rkey = region.mr->rkey;
@@ -609,6 +620,23 @@ namespace lsm_lab::detail
                             channel_->send(ready);
                         }
                     }
+                    return rocksdb::Status::OK();
+                }
+                catch (const std::exception &error)
+                {
+                    return rocksdb::Status::IOError(error.what());
+                }
+            }
+
+            rocksdb::Status finish(std::shared_ptr<const char> *reply, std::size_t *reply_bytes) override
+            {
+                if (pending_.data == nullptr)
+                    return rocksdb::Status::InvalidArgument("finish without send");
+                // The reply owns the region from here on.
+                auto region = pending_;
+                pending_ = Region{};
+                try
+                {
                     while (true)
                     {
                         const auto received = channel_->receive();
@@ -651,6 +679,7 @@ namespace lsm_lab::detail
                 }
                 catch (const std::exception &error)
                 {
+                    // As before the split, the region is not reused: the connection is dropped on error.
                     return rocksdb::Status::IOError(error.what());
                 }
             }
@@ -666,6 +695,8 @@ namespace lsm_lab::detail
             std::shared_ptr<Pool> requests_;
             std::shared_ptr<Pool> replies_;
             Region request_;
+            // Reply region of the request in flight (between send and finish).
+            Region pending_;
             std::size_t last_reply_ = 0;
         };
 
