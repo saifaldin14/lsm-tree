@@ -150,6 +150,71 @@ Runs:
 Analysis, statistics and exclusions are as above. Native and full offload are
 re-run inside these campaigns so that every ratio is paired within a block.
 
+## Remote compaction and replication over RDMA (added before these runs)
+
+Every result above comes from one machine. These experiments move compaction off the
+database node and share it across replicas, over 100 Gb/s RoCE (ConnectX-6 Dx).
+
+Systems (all verified against native RocksDB as above):
+
+- **Remote merge (`remote_merge`):**
+  - The database node keeps RocksDB's `CompactionJob`, file cuts and installation.
+  - It sends each merge request and its input blocks to `lsm_compaction_server`, which
+    runs `cuda_merge` (GPU) or `cpu_merge` (CPU) and returns the finished blocks.
+  - Transports: RDMA (push by default, pull for comparison) or TCP.
+  - No shared filesystem is needed.
+- **Physical replication (compact once):** the primary mirrors every file write to the
+  backups, which never compact.
+- **Logical replication (per-replica compaction):** every write batch goes to the
+  backups, which run their own RocksDB and compact it themselves.
+
+Related work these experiments compare against (checked against the papers):
+
+- **Shipping compaction results to replicas:**
+  - Tebis (EuroSys'22): the primary compacts and ships its index to backups over RDMA.
+  - RubbleDB (ATC'23): compacts once and ships SSTs to replicas over NVMe-oF.
+- **Offloading compaction to other nodes:**
+  - Nova-LSM (SIGMOD'21): offloads compaction to storage nodes over RDMA.
+  - dLSM (ICDE'23): an LSM-tree on RDMA-disaggregated memory.
+  - CaaS-LSM (SIGMOD'24): remote CPU compaction as a service for RocksDB.
+- None uses a GPU, and we found no shared GPU compaction service.
+- Our remote-CPU and compact-once-on-CPU configurations stand in for these designs.
+
+Hypotheses:
+
+- **H13:** remote GPU compaction over RDMA keeps at least 80% of the local GPU
+  throughput gain (batched writes, LZ4, 4 cores on the database node).
+- **H14:** for the same remote GPU compaction:
+  - RDMA gives higher throughput than TCP;
+  - RDMA uses less database-node CPU per operation.
+- **H15:** one GPU server serves 4 database instances at no less than 80% of the
+  single-instance throughput gain each.
+- **H16:** with 2 backups, compact-once replication on the GPU server uses at most half
+  the total cluster CPU per write of per-replica compaction.
+- **H17:** at equal hardware cost, a remote GPU compaction server gives higher database
+  throughput than a remote CPU compaction server.
+
+Measurements:
+
+| ID | Experiment | Repetitions |
+|---|---|---|
+| R1 | Transport: our RDMA (push, pull) and TCP vs `ib_write_bw`/`ib_read_bw`, 64 KiB-512 MiB | 3 |
+| R2 | Isolated remote compaction, same workloads as the isolated sweep: local native, local GPU, remote CPU and remote GPU over RDMA and TCP | 3 warm runs |
+| R3 | Whole database on the database node, 4 and 8 cores, LZ4 and ZSTD: native, remote GPU over RDMA, remote CPU over RDMA, remote GPU over TCP | 5 |
+| R4 | 1, 2, 4, 8 database instances sharing one GPU server | 3 |
+| R5 | Network capped at 10/25/50/100 Gb/s | 3 |
+| R6 | Replication, 2 backups: per-replica compaction, compact once on CPU, compact once on GPU | 5 |
+
+Metrics include CPU and energy on every node involved (database node, compaction server
+and backups), and bytes on the network.
+
+Hardware status when this was written:
+
+- No host had both a usable GPU and RDMA: the A6000 host has no RDMA card, and the
+  RDMA-capable GPU host has no GPU driver installed.
+- Runs that need a GPU over RDMA wait for that hardware. Everything else (transport,
+  remote CPU, and the CPU replication designs) runs now and is labelled as such.
+
 ## Changes after data collection
 
 - **Shared GPU, first attempt (discarded, kept as `shared-gpu-attempt1`):** all

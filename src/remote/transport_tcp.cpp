@@ -5,10 +5,12 @@
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
+#include <atomic>
 #include <mutex>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <poll.h>
 #include <stdexcept>
 #include <sys/socket.h>
 #include <thread>
@@ -201,21 +203,24 @@ namespace lsm_lab::detail
                 for (auto &thread : threads_)
                     if (thread.joinable())
                         thread.join();
+                if (fd_ >= 0)
+                    ::close(fd_);
             }
 
             std::uint16_t port() const override { return port_; }
 
             void run() override
             {
-                while (true)
+                // Polls with a timeout: closing a listening socket does not wake accept() everywhere.
+                const int listening = fd_;
+                while (!stopping_)
                 {
-                    const int connection = ::accept(fd_, nullptr, nullptr);
+                    pollfd ready{listening, POLLIN, 0};
+                    if (::poll(&ready, 1, 200) <= 0 || stopping_)
+                        continue;
+                    const int connection = ::accept(listening, nullptr, nullptr);
                     if (connection < 0)
-                    {
-                        if (errno == EINTR)
-                            continue;
-                        return; // stop() closed the listening socket
-                    }
+                        continue;
                     tune(connection);
                     const std::lock_guard guard(mutex_);
                     connections_.push_back(connection);
@@ -225,13 +230,8 @@ namespace lsm_lab::detail
 
             void stop() override
             {
+                stopping_ = true;
                 const std::lock_guard guard(mutex_);
-                if (fd_ >= 0)
-                {
-                    ::shutdown(fd_, SHUT_RDWR);
-                    ::close(fd_);
-                    fd_ = -1;
-                }
                 for (const int connection : connections_)
                     ::shutdown(connection, SHUT_RDWR);
             }
@@ -266,6 +266,7 @@ namespace lsm_lab::detail
             RpcHandler handler_;
             int fd_ = -1;
             std::uint16_t port_ = 0;
+            std::atomic<bool> stopping_{false};
             std::mutex mutex_;
             std::vector<int> connections_;
             std::vector<std::thread> threads_;

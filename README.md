@@ -257,6 +257,29 @@ work.
 The plan and hypotheses are in
 [publication/PREREGISTRATION.md](publication/PREREGISTRATION.md) (H8–H12).
 
+### 5. Remote compaction and replication over RDMA (in progress)
+
+Compaction can also run on a shared compaction server over 100 Gb/s RDMA (RoCE), and a
+replicated database can compact once for all replicas
+([docs/remote-compaction.md](docs/remote-compaction.md)).
+
+- **Remote compaction.** The database node keeps RocksDB's compaction job and file
+  writing, and sends each merge with its input blocks to a GPU or CPU server, with no
+  shared filesystem. The output matches native RocksDB, and if the server is lost the job
+  falls back to local compaction.
+- **Replication.** Backups either mirror the primary's files and never compact (compact
+  once), or apply every write and compact themselves (per-replica). After each run, every
+  backup's data is checked against the primary's.
+- **First measurements (CPU only, no GPU over RDMA yet):**
+  - Our RDMA transport moves 128 MiB at about 90 Gb/s, close to the hardware's 92 Gb/s.
+  - It uses about 0.012 client CPU-seconds per GiB, about 60× less than TCP.
+  - Compacting on a remote server cuts the database node's CPU from 8.9 to 1.9 CPU-seconds
+    per GiB compacted.
+
+The remaining experiments need a machine with both a GPU and an RDMA card, which the
+current cluster does not have. They are listed in
+[publication/PREREGISTRATION.md](publication/PREREGISTRATION.md).
+
 ### Correctness
 
 - **Single compactions:** every run compares a digest of every stored key
@@ -274,8 +297,9 @@ The plan and hypotheses are in
 | Path | Contents |
 |---|---|
 | `src/gpu/`, `include/lsm_lab/` | GPU merge and block building (`cuda_merge.cu`), CPU reference (`merge_cpu.cpp`), output compression (`cuda_transform.cu`), Metal backend, RocksDB integration headers |
+| `src/remote/` | Remote compaction (`remote_merge`) and replication over TCP and RDMA |
 | `cmake/ApplyEnginePatch.cmake` | Version-locked patch that adds the offload hooks to RocksDB |
-| `apps/` | `lsm_compaction_bench`, `lsm_system_bench`, `lsm_burn`, and the harness services (`lsm_db`, `lsm_worker`, `lsm_loadgen`, `lsm_admin`, `lsm_telemetry`, `lsm_gpu_check`) |
+| `apps/` | `lsm_compaction_bench`, `lsm_system_bench`, `lsm_compaction_server`, `lsm_replica_server`, `lsm_rpc_bench`, `lsm_burn`, and the harness services (`lsm_db`, `lsm_worker`, `lsm_loadgen`, `lsm_admin`, `lsm_telemetry`, `lsm_gpu_check`) |
 | `tools/` | `labctl` harness: plans, runs, audits and analysis |
 | `publication/` | Results, raw data, figures, and the scripts that produce them |
 | `configs/` | Dataset and experiment configurations |
@@ -311,6 +335,7 @@ python3 publication/make_figures.py                                      # figur
 ## Documentation
 
 - [docs/gpu-compaction.md](docs/gpu-compaction.md): what is offloaded, how it plugs into RocksDB, eligibility, configuration and limits
+- [docs/remote-compaction.md](docs/remote-compaction.md): remote compaction and replication over TCP and RDMA
 - [docs/runbook.md](docs/runbook.md): building, benchmarks, the `labctl` harness, hardware gates
 - [docs/telemetry.md](docs/telemetry.md): resource and energy telemetry
 - [publication/](publication/): results, methodology audit and data

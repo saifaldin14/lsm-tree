@@ -23,22 +23,26 @@ trap cleanup EXIT
 
 "$bench" --phase preload --dir "$work/golden" --records 200000 --threads 4 > "$work/preload.json" 2>&1
 
-start_replica() { # name -> echoes endpoint
+# Starts a backup (the primary bootstraps its empty directory) and sets $endpoint. Not run in a
+# subshell, so its PID is recorded for cleanup.
+start_replica() {
   local name=$1
   rm -rf "$work/$name"
-  cp -R "$work/golden" "$work/$name"
+  mkdir -p "$work/$name"
   "$replica" --listen "$host:0" --dir "$work/$name" > "$work/$name.out" 2> "$work/$name.err" &
   pids+=($!)
   for _ in $(seq 1 100); do
     grep -q '^listening ' "$work/$name.out" 2>/dev/null && break
     sleep 0.1
   done
-  awk '/^listening /{print $2; exit}' "$work/$name.out"
+  endpoint=$(awk '/^listening /{print $2; exit}' "$work/$name.out")
 }
 
 for mode in "${modes[@]}"; do
-  a=$(start_replica "$mode-a")
-  b=$(start_replica "$mode-b")
+  start_replica "$mode-a"
+  a=$endpoint
+  start_replica "$mode-b"
+  b=$endpoint
   rm -rf "$work/primary"
   cp -R "$work/golden" "$work/primary"
   "$bench" --phase run --mode cpu_merge --dir "$work/primary" --records 200000 --threads 4 \

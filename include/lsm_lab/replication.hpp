@@ -43,6 +43,8 @@ namespace lsm_lab
         statistics = 13,
         // Logical replica: wait until its compaction is idle (catch-up), as the primary does.
         wait = 14,
+        // Empties the backup's directory (before bootstrap).
+        reset = 15,
     };
 
     // Connections to every backup.
@@ -71,6 +73,10 @@ namespace lsm_lab
     std::shared_ptr<rocksdb::FileSystem> make_replicating_file_system(std::shared_ptr<rocksdb::FileSystem> base,
                                                                       const std::string &root,
                                                                       std::shared_ptr<ReplicaSet> replicas);
+
+    // Copies every database file under root to each backup (after a reset), so backups start
+    // from the primary's exact files. Run before the primary opens its database.
+    rocksdb::Status bootstrap_replicas(const std::string &root, ReplicaSet &replicas);
 
     // Digest of every key and value ("<count>:<hex>"), read with checksum verification.
     std::string database_digest(rocksdb::DB *db);

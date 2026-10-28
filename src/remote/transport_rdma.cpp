@@ -8,7 +8,9 @@
 //         server -> client  SEND  kRequestBuffer {server buffer addr/rkey}
 //         client            RDMA WRITE the request into server memory
 //         client -> server  SEND  kRequestReady
-// then, for both:
+//   eager: requests and replies of at most kInline bytes travel inside the control
+//          messages themselves (kRequestInline, kDoneInline), one round trip in total
+// then, for push and pull:
 //   server -> client  SEND  kNeed {bytes}        only if the reply exceeds the capacity
 //   client -> server  SEND  kReplyBuffer {...}   with a larger reply buffer
 //   server            RDMA WRITE the reply into client memory
@@ -59,6 +61,8 @@ namespace lsm_lab::detail
             kRequestPush = 5,
             kRequestBuffer = 6,
             kRequestReady = 7,
+            kRequestInline = 8,
+            kDoneInline = 9,
         };
 
         struct Ctrl
@@ -70,8 +74,18 @@ namespace lsm_lab::detail
             std::uint64_t reply_addr = 0;
             std::uint64_t reply_capacity = 0;
             std::uint32_t reply_rkey = 0;
-            std::uint32_t pad = 0;
+            std::uint32_t inline_bytes = 0; // payload bytes following this header in the same message
             std::uint64_t reply_bytes = 0;
+        };
+
+        // Control messages carry up to kInline payload bytes after the header.
+        constexpr std::size_t kSlot = 16384;
+        constexpr std::size_t kInline = kSlot - sizeof(Ctrl);
+
+        struct Message
+        {
+            Ctrl ctrl;
+            std::string payload;
         };
 
         [[noreturn]] void fail(const std::string &what)
@@ -215,7 +229,8 @@ namespace lsm_lab::detail
                 attr.cap.max_recv_sge = 1;
                 if (rdma_create_qp(id, pd_->pd, &attr) != 0)
                     fail("rdma_create_qp");
-                ctrl_mr_ = ibv_reg_mr(pd_->pd, ctrl_, sizeof(ctrl_), IBV_ACCESS_LOCAL_WRITE);
+                ctrl_.resize((kRecvSlots + 1) * kSlot);
+                ctrl_mr_ = ibv_reg_mr(pd_->pd, ctrl_.data(), ctrl_.size(), IBV_ACCESS_LOCAL_WRITE);
                 if (ctrl_mr_ == nullptr)
                     fail("ibv_reg_mr (control)");
                 for (int slot = 0; slot < kRecvSlots; ++slot)
@@ -259,10 +274,17 @@ namespace lsm_lab::detail
             const std::shared_ptr<Pd> &pd() const { return pd_; }
             rdma_cm_id *id() const { return id_; }
 
-            void send(const Ctrl &message)
+            void send(Ctrl message, const char *payload = nullptr, std::size_t bytes = 0)
             {
-                ctrl_[kRecvSlots] = message;
-                ibv_sge sge{reinterpret_cast<std::uint64_t>(&ctrl_[kRecvSlots]), sizeof(Ctrl), ctrl_mr_->lkey};
+                if (bytes > kInline)
+                    throw std::logic_error("inline payload too large");
+                message.inline_bytes = static_cast<std::uint32_t>(bytes);
+                char *slot = ctrl_.data() + kRecvSlots * kSlot;
+                std::memcpy(slot, &message, sizeof(Ctrl));
+                if (bytes != 0)
+                    std::memcpy(slot + sizeof(Ctrl), payload, bytes);
+                ibv_sge sge{reinterpret_cast<std::uint64_t>(slot), static_cast<std::uint32_t>(sizeof(Ctrl) + bytes),
+                            ctrl_mr_->lkey};
                 ibv_send_wr wr{};
                 wr.wr_id = kSendId;
                 wr.sg_list = &sge;
@@ -275,11 +297,11 @@ namespace lsm_lab::detail
                 wait_sends(1, kSendId);
             }
 
-            Ctrl receive()
+            Message receive()
             {
                 while (received_.empty())
                     poll_once();
-                const auto message = received_.front();
+                auto message = std::move(received_.front());
                 received_.pop_front();
                 return message;
             }
@@ -318,7 +340,8 @@ namespace lsm_lab::detail
         private:
             void post_recv(int slot)
             {
-                ibv_sge sge{reinterpret_cast<std::uint64_t>(&ctrl_[slot]), sizeof(Ctrl), ctrl_mr_->lkey};
+                ibv_sge sge{reinterpret_cast<std::uint64_t>(ctrl_.data() + slot * kSlot), static_cast<std::uint32_t>(kSlot),
+                            ctrl_mr_->lkey};
                 ibv_recv_wr wr{};
                 wr.wr_id = static_cast<std::uint64_t>(slot);
                 wr.sg_list = &sge;
@@ -429,7 +452,11 @@ namespace lsm_lab::detail
                     if (wc[index].opcode == IBV_WC_RECV)
                     {
                         const auto slot = static_cast<int>(wc[index].wr_id);
-                        received_.push_back(ctrl_[slot]);
+                        const char *data = ctrl_.data() + slot * kSlot;
+                        Message message;
+                        std::memcpy(&message.ctrl, data, sizeof(Ctrl));
+                        message.payload.assign(data + sizeof(Ctrl), message.ctrl.inline_bytes);
+                        received_.push_back(std::move(message));
                         post_recv(slot);
                     }
                     else
@@ -448,8 +475,8 @@ namespace lsm_lab::detail
             ibv_comp_channel *completion_ = nullptr;
             ibv_cq *cq_ = nullptr;
             ibv_mr *ctrl_mr_ = nullptr;
-            Ctrl ctrl_[kRecvSlots + 1];
-            std::deque<Ctrl> received_;
+            std::vector<char> ctrl_; // kRecvSlots receive slots, then one send slot
+            std::deque<Message> received_;
             int completed_sends_ = 0;
             bool send_done_ = false;
             int read_depth_ = 1;
@@ -551,31 +578,51 @@ namespace lsm_lab::detail
                     // Replies are usually no larger than the request; kNeed covers the rest.
                     auto region = replies_->get(std::max<std::size_t>(request_bytes, last_reply_));
                     Ctrl message;
-                    message.type = push_requests() ? kRequestPush : kRequest;
-                    message.request_addr = reinterpret_cast<std::uint64_t>(request_.data);
-                    message.request_rkey = request_.mr->rkey;
-                    message.request_bytes = request_bytes;
                     message.reply_addr = reinterpret_cast<std::uint64_t>(region.data);
                     message.reply_rkey = region.mr->rkey;
                     message.reply_capacity = region.capacity;
-                    channel_->send(message);
-                    if (push_requests())
+                    if (request_bytes <= kInline)
                     {
-                        const auto target = channel_->receive();
-                        if (target.type != kRequestBuffer)
+                        // Eager: one round trip for small requests (WAL appends, write batches).
+                        message.type = kRequestInline;
+                        channel_->send(message, request_.data, request_bytes);
+                    }
+                    else
+                    {
+                        message.type = push_requests() ? kRequestPush : kRequest;
+                        message.request_addr = reinterpret_cast<std::uint64_t>(request_.data);
+                        message.request_rkey = request_.mr->rkey;
+                        message.request_bytes = request_bytes;
+                        channel_->send(message);
+                        if (push_requests())
                         {
-                            errno = 0;
-                            fail("expected a request buffer");
+                            const auto target = channel_->receive().ctrl;
+                            if (target.type != kRequestBuffer)
+                            {
+                                errno = 0;
+                                fail("expected a request buffer");
+                            }
+                            channel_->transfer(IBV_WR_RDMA_WRITE, request_, target.request_addr, target.request_rkey,
+                                               request_bytes);
+                            Ctrl ready;
+                            ready.type = kRequestReady;
+                            channel_->send(ready);
                         }
-                        channel_->transfer(IBV_WR_RDMA_WRITE, request_, target.request_addr, target.request_rkey,
-                                           request_bytes);
-                        Ctrl ready;
-                        ready.type = kRequestReady;
-                        channel_->send(ready);
                     }
                     while (true)
                     {
-                        const auto answer = channel_->receive();
+                        const auto received = channel_->receive();
+                        const auto &answer = received.ctrl;
+                        if (answer.type == kDoneInline)
+                        {
+                            std::memcpy(region.data, received.payload.data(), received.payload.size());
+                            last_reply_ = received.payload.size();
+                            *reply = std::shared_ptr<const char>(region.data, [pool = replies_, region](const char *) {
+                                pool->put(region);
+                            });
+                            *reply_bytes = received.payload.size();
+                            return rocksdb::Status::OK();
+                        }
                         if (answer.type == kNeed)
                         {
                             replies_->put(region);
@@ -668,10 +715,14 @@ namespace lsm_lab::detail
             {
                 stop();
                 // Disconnecting flushes each queue pair, which wakes and ends its serving thread.
-                while (!connections_.empty())
-                    close(connections_.begin()->first);
-                rdma_destroy_id(listener_);
-                rdma_destroy_event_channel(events_);
+                // The connection ids and the event channel are left to process exit: destroying an
+                // id blocks until its pending events (nobody reads them any more) are acknowledged.
+                for (auto &[id, connection] : connections_)
+                {
+                    rdma_disconnect(id);
+                    if (connection->thread.joinable())
+                        connection->thread.join();
+                }
             }
 
             std::uint16_t port() const override { return port_; }
@@ -757,16 +808,23 @@ namespace lsm_lab::detail
                 {
                     while (!stopping_)
                     {
-                        const auto message = channel.receive();
-                        if (message.type != kRequest && message.type != kRequestPush)
+                        const auto received = channel.receive();
+                        const auto &message = received.ctrl;
+                        if (message.type != kRequest && message.type != kRequestPush && message.type != kRequestInline)
                             continue;
-                        if (request.capacity < message.request_bytes)
+                        const auto request_bytes =
+                            message.type == kRequestInline ? received.payload.size() : message.request_bytes;
+                        if (request.capacity < request_bytes)
                         {
                             if (request.data != nullptr)
                                 connection.pool->put(request);
-                            request = connection.pool->get(message.request_bytes);
+                            request = connection.pool->get(request_bytes);
                         }
-                        if (message.type == kRequest)
+                        if (message.type == kRequestInline)
+                        {
+                            std::memcpy(request.data, received.payload.data(), request_bytes);
+                        }
+                        else if (message.type == kRequest)
                         {
                             channel.transfer(IBV_WR_RDMA_READ, request, message.request_addr, message.request_rkey,
                                              message.request_bytes);
@@ -780,10 +838,17 @@ namespace lsm_lab::detail
                             channel.send(target);
                             Ctrl ready;
                             do
-                                ready = channel.receive();
+                                ready = channel.receive().ctrl;
                             while (ready.type != kRequestReady);
                         }
-                        const auto bytes = handler_(request.data, message.request_bytes, sink);
+                        const auto bytes = handler_(request.data, request_bytes, sink);
+                        if (bytes <= kInline)
+                        {
+                            Ctrl done;
+                            done.type = kDoneInline;
+                            channel.send(done, sink.region().data, bytes);
+                            continue;
+                        }
                         auto reply_addr = message.reply_addr;
                         auto reply_rkey = message.reply_rkey;
                         if (bytes > message.reply_capacity)
@@ -794,7 +859,7 @@ namespace lsm_lab::detail
                             channel.send(need);
                             Ctrl buffer;
                             do
-                                buffer = channel.receive();
+                                buffer = channel.receive().ctrl;
                             while (buffer.type != kReplyBuffer);
                             reply_addr = buffer.reply_addr;
                             reply_rkey = buffer.reply_rkey;

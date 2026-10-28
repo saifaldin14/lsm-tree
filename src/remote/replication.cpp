@@ -365,6 +365,9 @@ namespace lsm_lab
                 case ReplicaOp::wait:
                     wait_for_compaction();
                     return {};
+                case ReplicaOp::reset:
+                    reset();
+                    return {};
                 }
                 throw std::runtime_error("unknown replica operation");
             }
@@ -451,6 +454,22 @@ namespace lsm_lab
                 if (!status.ok())
                     throw std::runtime_error("replica open: " + status.ToString());
                 backend_ = backend;
+            }
+
+            void reset()
+            {
+                const std::lock_guard guard(db_mutex_);
+                db_.reset();
+                transform_.reset();
+                backend_ = "physical";
+                {
+                    const std::lock_guard files_guard(mutex_);
+                    for (auto &[name, fd] : files_)
+                        ::close(fd);
+                    files_.clear();
+                }
+                for (const auto &entry : std::filesystem::directory_iterator(directory_))
+                    std::filesystem::remove_all(entry.path());
             }
 
             void wait_for_compaction()
@@ -644,6 +663,47 @@ namespace lsm_lab
                                                                       std::shared_ptr<ReplicaSet> replicas)
     {
         return std::make_shared<ReplicatingFileSystem>(std::move(base), root, std::move(replicas));
+    }
+
+    rocksdb::Status bootstrap_replicas(const std::string &root, ReplicaSet &replicas)
+    {
+        auto status = replicas.broadcast(ReplicaOp::reset, "", 0, nullptr, 0);
+        if (!status.ok())
+            return status;
+        constexpr std::size_t kChunk = 64ULL << 20;
+        std::string buffer(kChunk, '\0');
+        for (const auto &entry : std::filesystem::directory_iterator(root))
+        {
+            const auto name = entry.path().filename().string();
+            if (!entry.is_regular_file() || !replicated_name(name))
+                continue;
+            status = replicas.broadcast(ReplicaOp::create, name, 0, nullptr, 0);
+            const int fd = ::open(entry.path().c_str(), O_RDONLY | O_CLOEXEC);
+            if (fd < 0)
+                return rocksdb::Status::IOError("bootstrap open " + name, std::strerror(errno));
+            std::uint64_t offset = 0;
+            while (status.ok())
+            {
+                const auto got = ::pread(fd, buffer.data(), kChunk, static_cast<off_t>(offset));
+                if (got < 0 && errno == EINTR)
+                    continue;
+                if (got < 0)
+                {
+                    status = rocksdb::Status::IOError("bootstrap read " + name, std::strerror(errno));
+                    break;
+                }
+                if (got == 0)
+                    break;
+                status = replicas.broadcast(ReplicaOp::append, name, offset, buffer.data(), static_cast<std::size_t>(got));
+                offset += static_cast<std::uint64_t>(got);
+            }
+            ::close(fd);
+            if (status.ok())
+                status = replicas.broadcast(ReplicaOp::close, name, 0, nullptr, 0);
+            if (!status.ok())
+                return status;
+        }
+        return rocksdb::Status::OK();
     }
 
     std::string database_digest(rocksdb::DB *db)

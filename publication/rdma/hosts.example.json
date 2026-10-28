@@ -1,0 +1,14 @@
+{
+  "_comment": "Copy to a private file and fill in. Hosts are ssh destinations; addresses are on the RDMA (RoCE) interface.",
+  "ssh": ["ssh", "-o", "BatchMode=yes"],
+  "repo": "~/lsm-tree",
+  "build": "build/rdma",
+  "scratch": "/dev/shm/USER",
+  "client": {"host": "user@db-node", "address": "10.0.0.2", "device": "mlx5_0", "cores": "0-3", "node": 0},
+  "server": {"host": "user@gpu-node", "address": "10.0.0.1", "device": "mlx5_0", "cores": "0-23", "node": 0,
+             "backend": "cuda_merge"},
+  "backups": [
+    {"host": "user@backup-1", "address": "10.0.0.3", "cores": "0-3", "node": 0},
+    {"host": "user@backup-2", "address": "10.0.0.4", "cores": "0-3", "node": 0}
+  ]
+}

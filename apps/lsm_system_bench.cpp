@@ -486,6 +486,7 @@ namespace
         options.listeners.push_back(totals);
         std::shared_ptr<lsm_lab::ReplicaSet> replicas;
         std::unique_ptr<rocksdb::Env> replicating_env;
+        double bootstrap_seconds = 0;
         const bool logical = config.replication == "logical";
         if (config.replication != "none")
         {
@@ -500,6 +501,10 @@ namespace
             if (endpoints.empty())
                 throw std::invalid_argument("--replication needs --replicate-to");
             replicas = std::make_shared<lsm_lab::ReplicaSet>(endpoints);
+            // Backups start from a copy of the primary's files (both modes), sent before the run.
+            const auto bootstrap_started = Clock::now();
+            check(lsm_lab::bootstrap_replicas(config.dir.string(), *replicas), "bootstrap replicas");
+            bootstrap_seconds = std::chrono::duration<double>(Clock::now() - bootstrap_started).count();
             if (config.replication == "physical")
             {
                 // RocksDB names files from the path exactly as given, so match that (not a canonical path).
@@ -905,6 +910,7 @@ namespace
                                  {"primary_digest", primary_digest},
                                  {"match", match},
                                  {"replica_drain_seconds", replica_drain_seconds},
+                                 {"bootstrap_seconds", bootstrap_seconds},
                                  {"transport", replicas->statistics()},
                                  {"backups", backups}};
         if (!match)
