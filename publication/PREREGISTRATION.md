@@ -273,6 +273,7 @@ which v2 fixes:
 | V3 | MixGraph: `zippydb`, `zippydb_write` (`lsm_db_bench`) | native, full | 8, 16 | 3 |
 | V4 | SATA SSD (Zyra), direct I/O, 50 M keys, tuned | native, full | 8, 16 | 3 blocks |
 | V5 | Replication R6 with parallel broadcast to backups (otherwise as R6) | as R6 | as R6 | 3 |
+| V6 | Remote compaction without RDMA hardware: database on NUMA node 2, compaction server on the GPU's node 0 (8 cores), loopback TCP; native, local GPU, remote GPU, remote CPU (`publication/rdma/loopback_gpu.py`) | 4 | database: 4 | 3 |
 
 Every whole-database run records CPU by thread role, device bandwidth and utilisation,
 throttled seconds, and GPU fallbacks.
@@ -292,6 +293,10 @@ throttled seconds, and GPU fallbacks.
   CPU, limits native throughput (utilisation above 80%) (V4).
 - **H23:** with parallel broadcast, compact-once replication with single writes is within
   10% of per-replica compaction throughput (it was 25% slower in R6) (V5).
+- **H24 (stands in for H13 until GPU-over-RDMA hardware exists):** over loopback TCP, remote
+  GPU compaction keeps at least 80% of the local GPU throughput gain over native, and a
+  remote GPU server gives higher throughput than a remote CPU server on the same 8 cores
+  (V6).
 
 The pilots that motivated v2 (`perf` profiles, subcompaction checks, small MixGraph and
 workload runs) are not results and are not reported as such. Analysis, statistics and

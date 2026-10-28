@@ -61,11 +61,11 @@ at the end.
 
 - **Modelled on:** time-series and log stores on RocksDB: keys made of a series id and an
   increasing timestamp, batched ingestion, reads of recent data and retention deletes.
-- **Settings:** `--workload timeseries --retention 1000 --value-bytes 32 --batch-size 100
+- **Settings:** `--workload timeseries --retention 1250 --value-bytes 32 --batch-size 100
   --read-percent 5 --scan-percent 5 --scan-length 60`, with the write-ahead log on.
 - **Meaning:**
-  - `records / retention` series (50,000 for 50 M records), each keeping its latest 1,000
-    points;
+  - `records / retention` series (40,000 for 50 M records), each keeping its latest 1,250
+    points (so the series divide evenly among 8, 16 or 32 client threads);
   - keys are (series, timestamp), both big-endian, so a series is stored in time order;
   - an append writes the next point of a series and deletes the point that leaves the
     retention window, 100 appends per write batch;
