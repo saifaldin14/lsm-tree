@@ -1,0 +1,42 @@
+{
+ "_comment": "Re-run of tune-search trials 1 and 2, which overlapped a build on the same machine.",
+ "common": {
+  "records": 50000000,
+  "read-percent": 0,
+  "warmup-seconds": 20,
+  "duration-seconds": 60,
+  "verify": true
+ },
+ "trials": [
+  {
+   "design": "native",
+   "mode": "native_cpu",
+   "cores": 32,
+   "writes": "batched",
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 32,
+    "threads": 32,
+    "subcompactions": 32,
+    "pipelined-write": false,
+    "adaptive-yield": true
+   }
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 32,
+   "writes": "batched",
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 32,
+    "threads": 64,
+    "subcompactions": 32,
+    "pipelined-write": true,
+    "adaptive-yield": false
+   }
+  }
+ ]
+}

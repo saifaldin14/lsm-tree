@@ -30,6 +30,24 @@ while building and measuring the full GPU offload.
 | 14 | **Shared-GPU failures.** With 4 and 8 instances, native instances were killed for lack of memory (every instance bound to NUMA node 0), and GPU instances hit an illegal memory access: a failed GPU allocation left the buffer reporting its old capacity. GPU out-of-memory on the output path also failed the compaction instead of falling back. | The first shared-GPU campaign is unusable (kept as `shared-gpu-attempt1`); single-instance campaigns were unaffected. | Multi-instance trials prefer node 0 but may spill (`numactl --preferred`); buffers forget their capacity before reallocating; GPU errors on the output path fall back to CPU compression and are counted. Re-run pending. |
 | 15 | **Engine patch not idempotent.** One patch step inserted a block that later steps edited, so re-running CMake inserted it again; another anchored on text that only an already-patched tree contains. | A fresh checkout failed to configure, and an old local tree failed to compile. Zyra's long-lived tree was correct, so no measurement was affected. | The inserted block now carries its final text and the old step is a migration; a fresh configure followed by a second configure leaves the patched sources byte-identical. |
 
+## Problems found by the methodology v2 audit
+
+New instrumentation (CPU by thread role, process and device I/O, RocksDB PerfContext on
+sampled writes, per-second throttle state) and `perf` profiles on Zyra, with 50 M keys and
+batched writes. Pilot numbers below are from 40–60 s runs; the v2 campaigns re-measure
+everything (PREREGISTRATION.md, "Methodology v2").
+
+| # | Problem | Evidence | Fix |
+|---|---|---|---|
+| 16 | **Native capped by subcompactions at high core counts.** RocksDB runs one L0→L1 compaction at a time, split into at most `max_subcompactions` threads (4 in v1), and throttles writes while it runs. | Native on 32 cores: 0.84 M writes/s using 7.8 cores, with 17 of 40 seconds below 25% of the mean rate (about 4k writes/s while one compaction used exactly 4 cores). With subcompactions = 32: 1.45 M writes/s, 11.7 cores, 2 throttled seconds. Full offload is unaffected (1.73 M at 16 cores either way). | Subcompactions are part of the v2 tuning search for every design. The v1 equal-cost comparison overstates our advantage at 16–32 native cores and is superseded by v2. |
+| 17 | **Low CPU use with 2 background jobs.** 2 jobs give RocksDB one flush and one compaction thread. | Native on 4 cores used 2.0 cores: compaction 1.0, flush 0.3, and 4 clients only 0.7 (throttled). Full offload on 16 cores was flush-bound at 1.0 core with 2 jobs and used 1.8 flush cores with 16 jobs. | v1's main campaign reported both 2 and 4 jobs; v2 tunes background jobs with the core count. |
+| 18 | **Clients mostly wait in RocksDB's write queue.** | Sampled batched writes (100 keys) on 16–32 cores spent 68–75% of their wall time in `write_thread_wait` (e.g. 952 of 1,398 µs) and about 160 µs inserting into the memtable; 16–32 clients used only 2.3–4.4 cores. | A RocksDB property (one leader per write group). Client threads 1× and 2× the cores and pipelined writes are in the tuning search. |
+| 19 | **L0 file count in the timeline was always 0.** `rocksdb.num-files-at-level0` is a string property and was read as an integer. | Timeline column only; stall statistics were correct. | Read as a string; the timeline also records RocksDB's delayed write rate and write-stopped flag. |
+| 20 | **Benchmark overhead (checked, not a problem).** | Value generation and the client loop were 3–6% of CPU samples; flush CPU scaled with throughput (about 1 core per 0.95 M writes/s) rather than capping it. | None needed. |
+| 21 | **Replication sent to backups one after another.** | With 2 backups every replicated write paid two round trips. | The RPC client now sends to every backup before awaiting replies: replication time fell 37% (batched) and 15% (single writes) in R6. Single-write compact-once throughput did not change (about 50k writes/s), because physical replication ships the WAL inside RocksDB's serial write path, so only one round trip is ever in flight. |
+| 22 | **Leaked monitors.** Interrupted campaigns left `perf stat` and `iostat` running for days. | Four orphaned processes on Zyra (stopped). | The campaign driver stops its monitors in a `finally` block. |
+| 23 | **Fixed-size runs and memory-only storage.** `lsm_compaction_bench` and YCSB ran a fixed amount of work; every whole-database run used `/dev/shm`. | On `/dev/shm` a 32-core native run writes about 540 MiB/s through system calls, more than a SATA SSD sustains, so real disks may move the bottleneck. | `lsm_compaction_bench --duration`, YCSB `maxexecutiontime`, and SATA SSD runs with direct I/O (V4). |
+
 ## Data and provenance
 
 - The raw results behind every current figure and table are in
