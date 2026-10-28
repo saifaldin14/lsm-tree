@@ -49,7 +49,13 @@ class Cluster:
         # Not "cd && command": with a trailing "&" that would background the whole list in a
         # subshell that keeps ssh's output open.
         full = f"cd {self.repo} || exit 1; {command}"
-        result = subprocess.run(self.config["ssh"] + [host, full], capture_output=True, text=True, timeout=timeout)
+        # ssh exits with 255 when the connection itself fails; retry those (commands are idempotent
+        # or restart from a clean scratch directory).
+        for attempt in range(6):
+            result = subprocess.run(self.config["ssh"] + [host, full], capture_output=True, text=True, timeout=timeout)
+            if result.returncode != 255:
+                break
+            time.sleep(min(60, 5 * 2 ** attempt))
         if check and result.returncode != 0:
             raise RuntimeError(f"{host}: {command}\n{result.stdout[-2000:]}\n{result.stderr[-2000:]}")
         return result.stdout
@@ -75,6 +81,12 @@ class Cluster:
     def load(self, host: str) -> dict:
         out = self.run(host, "cat /proc/loadavg; who | wc -l", check=False).split()
         return {"load_1m": float(out[0]), "users": int(out[-1])} if out else {}
+
+    def cpu_seconds(self, host: str, pid: int) -> float:
+        """User + system CPU of a process and its waited-for children, from /proc."""
+        out = self.run(host, f"cat /proc/{pid}/stat; getconf CLK_TCK", check=False).split("\n")
+        fields = out[0].rsplit(")", 1)[-1].split()
+        return sum(int(value) for value in fields[11:15]) / int(out[1])
 
 
 def pin(machine: dict) -> str:
@@ -206,16 +218,19 @@ def experiment_r6(cluster: Cluster, out: Path, repetitions: int, records: int, s
                     primary = f"{scratch}/rdma-primary"
                     load_before = {m: cluster.load(h) for m, h in
                                    [("client", c["host"]), ("server", s["host"])] + [(f"backup{i}", b["host"]) for i, b in enumerate(backups)]}
+                    server_cpu_before = cluster.cpu_seconds(s["host"], server[0])
                     command = (f"rm -rf {primary} && cp -a --reflink=auto {golden} {primary} && "
                                f"{GPU_ENV} LSM_REMOTE_ENDPOINT={server[1]} {pin(c)} {cluster.build}/lsm_system_bench "
                                f"--phase run --dir {primary} --records {records} --threads 4 --background-jobs 4 "
                                f"--warmup-seconds {seconds[0]} --duration-seconds {seconds[1]} "
                                f"{designs[design]} {writes[write]} --replicate-to {','.join(endpoints)}")
                     text = cluster.run(c["host"], command)
+                    server_cpu_after = cluster.cpu_seconds(s["host"], server[0])
                     result = json.loads(text[text.index("{"):])
                     result.pop("timeline", None)
                     append(results, {"experiment": "r6", "repetition": repetition, "design": design, "writes": write,
-                                     "server_backend": s["backend"], "load_before": load_before, "result": result})
+                                     "server_backend": s["backend"], "load_before": load_before,
+                                     "server_cpu_seconds": server_cpu_after - server_cpu_before, "result": result})
                     print(f"r6 repetition {repetition} {design} {write}: "
                           f"{result['ingest_and_compact']['ops_per_second']:.0f} ops/s "
                           f"match={result['replication']['match']}", flush=True)

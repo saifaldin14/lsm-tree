@@ -653,6 +653,194 @@ def gparakv_table():
     return lines
 
 
+# ---------------------------------------------------------------- remote compaction and replication (R1-R6)
+
+RDMA = DATA / "rdma"
+TRANSPORTS = [("ib_write_bw", "ib_write_bw (hardware ceiling)", "#8c8c8c", "o", "--"),
+              ("rdma_push", "Ours, RDMA push", "#D55E00", "s", "-"),
+              ("ib_read_bw", "ib_read_bw", "#bbbbbb", "o", ":"),
+              ("rdma_pull", "Ours, RDMA pull", "#CC79A7", "^", "-"),
+              ("tcp", "Ours, TCP", "#0072B2", "D", "-")]
+
+
+def figure_rdma_transport():
+    """R1: (a) goodput against transfer size; (b) client CPU per GiB moved."""
+    path = RDMA / "r1-transport.jsonl"
+    if not path.exists():
+        return
+    rate, cpu = {}, {}
+    for line in path.read_text().splitlines():
+        record = json.loads(line)
+        for row in record["rows"]:
+            size = row.get("bytes") or row.get("bytes_each_way")
+            if row.get("gbit_per_s") is not None:
+                rate.setdefault(record["variant"], {}).setdefault(size, []).append(row["gbit_per_s"])
+            if "client_cpu_s_per_gib" in row:
+                cpu.setdefault(record["variant"], {}).setdefault(size, []).append(row["client_cpu_s_per_gib"])
+    fig, axes = plt.subplots(1, 2, figsize=(DOUBLE_COLUMN, 2.5))
+    for ax, letter, (data, ylabel, log) in zip(axes, "ab", ((rate, "Goodput (Gbit/s)", False),
+                                                           (cpu, "Client CPU (s per GiB moved)", True))):
+        for key, label, color, marker, style in TRANSPORTS:
+            series = sorted(data.get(key, {}).items())
+            if not series:
+                continue
+            xs = [size / 2**20 for size, _ in series]
+            ys = [statistics.median(values) for _, values in series]
+            ax.plot(xs, ys, color=color, marker=marker, linestyle=style, markersize=3.5, linewidth=1.1, label=label)
+        ax.set_xscale("log", base=2)
+        ax.set_xticks([1 / 16, 1, 16, 256], ["64K", "1M", "16M", "256M"])
+        ax.set_xticks([128], [""], minor=True)
+        ax.set_xlabel("Transfer size (bytes)")
+        if log:
+            ax.set_yscale("log")
+        else:
+            ax.set_ylim(0, 100)
+        finish_axis(ax, ylabel)
+        ax.tick_params(axis="x", length=2.5)
+        panel_label(ax, letter)
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.tight_layout(w_pad=2.5, rect=(0, 0, 1, 0.84))
+    fig.legend(handles, labels, loc="lower center", ncol=3, bbox_to_anchor=(0.5, 0.84))
+    save(fig, "fig14_rdma_transport")
+
+
+REMOTE_VARIANTS = [("local", "native_cpu", "Native RocksDB (local)", "#8c8c8c", ""),
+                   ("local", "cpu_merge", "CPU merge (local; the server's backend)", "#56B4E9", "///"),
+                   ("remote-rdma-push", "remote_merge", "Remote, RDMA push", "#D55E00", ""),
+                   ("remote-rdma-pull", "remote_merge", "Remote, RDMA pull", "#CC79A7", "\\\\\\"),
+                   ("remote-tcp", "remote_merge", "Remote, TCP", "#0072B2", "...")]
+
+
+def figure_rdma_isolated():
+    """R2: isolated compaction run from the database node: (a) wall time, (b) database-node CPU per GiB."""
+    root = RDMA / "r2"
+    if not root.exists():
+        return
+    data = {}
+    for tag, _ in WORKLOAD_ORDER:
+        for variant, mode, label, _, _ in REMOTE_VARIANTS:
+            path = root / f"{tag}-{variant}.jsonl"
+            if not path.exists():
+                continue
+            for line in path.read_text().splitlines():
+                run = json.loads(line)
+                if not run["matches_reference"]:
+                    raise SystemExit(f"r2 {tag} {variant}: {run['mode']} differs from native")
+                if run["repetition"] == 0 or run["mode"] != mode:
+                    continue
+                entry = data.setdefault(tag, {}).setdefault(label, {"wall": [], "cpu": []})
+                entry["wall"].append(run["wall_seconds"])
+                entry["cpu"].append(run["process_cpu_seconds"] / (run["input_bytes"] / 2**30))
+    tags = [(tag, label) for tag, label in WORKLOAD_ORDER if tag in data]
+    if not tags:
+        return
+    labels = [label for _, _, label, _, _ in REMOTE_VARIANTS]
+    for _, _, label, color, hatch in REMOTE_VARIANTS:
+        STYLE.setdefault(label, {"color": color, "hatch": hatch})
+    designs = [label for label in labels if any(label in data[tag] for tag, _ in tags)]
+    fig, axes = plt.subplots(2, 1, figsize=(DOUBLE_COLUMN, 4.6))
+    for ax, letter, (key, ylabel, fmt) in zip(axes, "ab", (("wall", "Compaction time (s)", lambda v: f"{v:.1f}"),
+                                                           ("cpu", "Database-node CPU (s per GiB)",
+                                                            lambda v: f"{v:.1f}"))):
+        groups = []
+        for tag, label in tags:
+            by = {d: (statistics.median(v[key]), min(v[key]), max(v[key])) for d, v in data[tag].items()}
+            groups.append((label, by))
+        grouped_bars(ax, groups, designs, None, fmt, size=4.8)
+        finish_axis(ax, ylabel)
+        panel_label(ax, letter)
+    fig.tight_layout(h_pad=1.6, rect=(0, 0, 1, 0.9))
+    design_legend(fig, designs, y=0.9, ncol=3)
+    save(fig, "fig15_rdma_isolated")
+
+
+R6_DESIGNS = [("per_replica", "Per-replica compaction (each backup compacts)", "#8c8c8c", ""),
+              ("once_primary_cpu", "Compact once on the primary's CPU, ship files", "#56B4E9", "///"),
+              ("once_server", "Compact once on the compaction server, ship files", "#D55E00", "")]
+
+
+def load_rdma_replication():
+    """{(writes, design): [per-run metrics]} from R6."""
+    path = RDMA / "r6-replication.jsonl"
+    runs = {}
+    if not path.exists():
+        return runs
+    for line in path.read_text().splitlines():
+        record = json.loads(line)
+        result = record["result"]
+        replication = result["replication"]
+        if not replication["match"]:
+            raise SystemExit("r6: a backup differs from the primary")
+        ops = result["ingest_and_compact"]["ops"]
+        primary = result["ingest_and_compact"]["cpu_seconds"]
+        backups = sum(b["cpu_seconds"] for b in replication["backups"])
+        server = record.get("server_cpu_seconds", 0.0)
+        runs.setdefault((record["writes"], record["design"]), []).append({
+            "ops_per_second": result["ingest_and_compact"]["ops_per_second"],
+            "p99_write_ms": result["write_latency"]["p99_ns"] / 1e6,
+            "primary_us": primary * 1e6 / ops,
+            "backups_us": backups * 1e6 / ops,
+            "server_us": server * 1e6 / ops,
+            "total_us": (primary + backups + server) * 1e6 / ops,
+            "network_bytes_per_op": replication["transport"]["bytes_sent"] / ops})
+    return runs
+
+
+def figure_rdma_replication():
+    """R6: (a) throughput, (b) cluster CPU per write split by node, (c) bytes shipped per write."""
+    runs = load_rdma_replication()
+    if not runs:
+        return
+    rows = [w for w in ("batched", "single") if any(k[0] == w for k in runs)]
+    fig, axes = plt.subplots(len(rows), 3, figsize=(DOUBLE_COLUMN, 2.4 * len(rows)), squeeze=False)
+    letters = iter("abcdef")
+    for row, writes in zip(axes, rows):
+        designs = [(key, label, color, hatch) for key, label, color, hatch in R6_DESIGNS if (writes, key) in runs]
+        xs = list(range(len(designs)))
+        med = lambda key, metric: statistics.median(r[metric] for r in runs[(writes, key)])
+        # (a) throughput
+        ax = row[0]
+        for x, (key, label, color, hatch) in zip(xs, designs):
+            values = [r["ops_per_second"] / 1000 for r in runs[(writes, key)]]
+            rect = ax.bar(x, statistics.median(values), 0.6, color=color, hatch=hatch, edgecolor="white", zorder=2)
+            ax.errorbar([x], [statistics.median(values)], yerr=[[statistics.median(values) - min(values)],
+                                                                 [max(values) - statistics.median(values)]],
+                        fmt="none", ecolor=INK, elinewidth=0.6, capsize=1.2, zorder=3)
+            value_labels(ax, rect, lambda v: f"{v:.0f}", size=6)
+        finish_axis(ax, "Throughput (kops/s)")
+        ax.set_title("Batched writes, WAL off" if writes == "batched" else "Single writes, WAL on", loc="left",
+                     fontsize=8, color=INK, pad=9)
+        # (b) stacked CPU per op
+        ax = row[1]
+        for x, (key, label, color, hatch) in zip(xs, designs):
+            bottom = 0.0
+            for metric, shade, part in (("primary_us", 1.0, "primary"), ("backups_us", 0.6, "backups"),
+                                        ("server_us", 0.3, "server")):
+                value = med(key, metric)
+                ax.bar(x, value, 0.6, bottom=bottom, color=color, alpha=shade, edgecolor="white", zorder=2,
+                       label=part if x == 0 else None)
+                bottom += value
+            ax.annotate(f"{bottom:.1f}", (x, bottom), xytext=(0, 1.5), textcoords="offset points", ha="center",
+                        fontsize=6, color=INK)
+        finish_axis(ax, "Cluster CPU per op (µs)")
+        # (c) network
+        ax = row[2]
+        for x, (key, label, color, hatch) in zip(xs, designs):
+            value = med(key, "network_bytes_per_op") / 1024
+            rect = ax.bar(x, value, 0.6, color=color, hatch=hatch, edgecolor="white", zorder=2)
+            value_labels(ax, rect, lambda v: f"{v:.1f}", size=6)
+        finish_axis(ax, "Replication traffic per op (KiB)")
+        for ax in row:
+            ax.set_xticks(xs, [""] * len(xs))
+            panel_label(ax, next(letters))
+    handles = [Patch(facecolor=color, hatch=hatch, edgecolor="white", label=label) for _, label, color, hatch in R6_DESIGNS]
+    handles += [Patch(facecolor="#555555", alpha=a, label=f"CPU: {p}") for a, p in ((1.0, "primary"), (0.6, "backups"),
+                                                                                    (0.3, "compaction server"))]
+    fig.tight_layout(h_pad=1.8, w_pad=1.6, rect=(0, 0, 1, 0.82 if len(rows) > 1 else 0.7))
+    fig.legend(handles=handles, loc="lower center", ncol=2, bbox_to_anchor=(0.5, 0.82 if len(rows) > 1 else 0.7))
+    save(fig, "fig16_rdma_replication")
+
+
 # ---------------------------------------------------------------- tables
 
 def write_summary(summaries):
@@ -755,4 +943,7 @@ if __name__ == "__main__":
     figure_prior_database({codec: summaries[f"prior-{codec}"] for codec in ("lz4", "zstd", "none")})
     figure_prior_equal_cost(summaries["prior-equal-cost"])
     figure_prior_latency(summaries["prior-lz4"])
+    figure_rdma_transport()
+    figure_rdma_isolated()
+    figure_rdma_replication()
     print("wrote", sorted(p.name for p in OUT.glob("*.pdf")))
