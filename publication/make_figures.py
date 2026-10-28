@@ -806,7 +806,8 @@ def figure_rdma_replication():
             ax.errorbar([x], [statistics.median(values)], yerr=[[statistics.median(values) - min(values)],
                                                                  [max(values) - statistics.median(values)]],
                         fmt="none", ecolor=INK, elinewidth=0.6, capsize=1.2, zorder=3)
-            value_labels(ax, rect, lambda v: f"{v:.0f}", size=6)
+            value_labels(ax, rect, lambda v: f"{v:.0f}", size=6, offsets=[max(values)])
+        ax.set_ylim(0, max(max(r["ops_per_second"] for r in runs[(writes, k)]) for k, _, _, _ in designs) / 1000 * 1.18)
         finish_axis(ax, "Throughput (kops/s)")
         ax.set_title("Batched writes, WAL off" if writes == "batched" else "Single writes, WAL on", loc="left",
                      fontsize=8, color=INK, pad=9)

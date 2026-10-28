@@ -215,6 +215,16 @@ Hardware status when this was written:
 - Runs that need a GPU over RDMA wait for that hardware. Everything else (transport,
   remote CPU, and the CPU replication designs) runs now and is labelled as such.
 
+### Outcomes so far (CPU compaction server)
+
+- **H13, H15, H17:** not tested. They need a GPU compaction server reachable over RDMA.
+- **H14 (RDMA against TCP):** supported with a CPU server. Over RDMA, the database node
+  uses about half the CPU per GiB that TCP needs, and compaction is 10–25% faster.
+- **H16 (cluster CPU):** tested only with compact-once on the primary's CPU, because the
+  compact-once-on-GPU configuration needs GPU hardware.
+  - Supported for batched writes: 3.4× less cluster CPU per write.
+  - Not supported for single writes: 1.8× less, short of the stated 2×.
+
 ## Changes after data collection
 
 - **Shared GPU, first attempt (discarded, kept as `shared-gpu-attempt1`):** all

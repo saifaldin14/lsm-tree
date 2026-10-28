@@ -110,6 +110,22 @@ How a run proceeds:
 Combined with `--mode remote_merge`, physical replication compacts once, on the
 compaction server, for the whole replica set.
 
+## Results so far (CPU compaction server)
+
+These were measured on two machines linked at 100 Gb/s (ConnectX-6 Dx, RoCE), with the
+compaction server running the CPU merge (`cpu_merge`). Details, figures and tables are in
+the [README](../README.md#5-remote-compaction-and-replication-over-rdma).
+
+- **Transport:** RDMA push reaches 92 Gb/s (the `ib_write_bw` ceiling) and costs the
+  client about 0.012 CPU-seconds per GiB. TCP reaches 6–7 Gb/s at about 1 CPU-second
+  per GiB.
+- **Remote compaction:** the database node's CPU per GiB compacted falls to 1.7–2.0
+  seconds over RDMA, against 4.7–15.0 for native RocksDB; TCP needs 3.2–3.6. RDMA adds
+  2–12% to compaction time compared with running the same merge locally.
+- **Replication with 2 backups:** compacting once and shipping the files cuts cluster CPU
+  per write by 3.4× for batched writes (same throughput) and by 1.8× for single writes
+  (25% lower throughput, see Limits), for about 3× more replication traffic.
+
 ## Limits
 
 - **No failover protocol.** If a backup fails during a run, the primary's write fails and
@@ -117,6 +133,14 @@ compaction server, for the whole replica set.
   only that a backup's copy is complete.
 - **Sequential replication.** Operations go to backups one after another, so latency grows
   with the number of backups.
+- **WAL shipping is serialised.** Physical replication ships each WAL append inside
+  RocksDB's write path, where only one write group holds the WAL at a time. With single
+  writes, the network round trips therefore serialise, and throughput is 25% below
+  logical replication. Shipping the WAL asynchronously with group commit would remove
+  this.
+- **Slow CPU merge on the server.** The server's CPU backend (`cpu_merge`) is a
+  reference implementation about 2× slower than RocksDB's own compaction. CPU-server
+  results are therefore a lower bound for remote CPU compaction.
 - **Extra hops for SSTs.** With remote compaction plus physical replication, each output
   file crosses the network twice: server to primary, then primary to each backup.
 - **GPUDirect RDMA is not used.** On the server, received data passes through host memory

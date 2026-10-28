@@ -257,30 +257,83 @@ work.
 The plan and hypotheses are in
 [publication/PREREGISTRATION.md](publication/PREREGISTRATION.md) (H8–H12).
 
-### 5. Remote compaction and replication over RDMA (in progress)
+### 5. Remote compaction and replication over RDMA
 
 Compaction can also run on a shared compaction server over 100 Gb/s RDMA (RoCE), and a
 replicated database can compact once for all replicas
 ([docs/remote-compaction.md](docs/remote-compaction.md)).
 
 - **Remote compaction.** The database node keeps RocksDB's compaction job and file
-  writing, and sends each merge with its input blocks to a GPU or CPU server, with no
-  shared filesystem. The output matches native RocksDB, and if the server is lost the job
-  falls back to local compaction.
+  writing, and sends each merge with its input blocks to the server, with no shared
+  filesystem. If the server is lost, the job falls back to local compaction.
 - **Replication.** Backups either mirror the primary's files and never compact (compact
-  once), or apply every write and compact themselves (per-replica). After each run, every
-  backup's data is checked against the primary's.
-- **First measurements (CPU only, no GPU over RDMA yet):**
-  - Our RDMA transport moves 128 MiB at about 90 Gb/s, close to the hardware's 92 Gb/s.
-  - It uses about 0.012 client CPU-seconds per GiB, about 60× less than TCP.
-  - Compacting on a remote server cuts the database node's CPU from 8.9 to 1.9 CPU-seconds
-    per GiB compacted.
+  once), or apply every write and compact themselves (per-replica).
+- **Correctness.** Every run below matched native RocksDB, and after every replicated run
+  each backup's data matched the primary's.
 
-The remaining experiments need a machine with both a GPU and an RDMA card, which the
-current cluster does not have. They are listed in
-[publication/PREREGISTRATION.md](publication/PREREGISTRATION.md).
+**Hardware so far:** the database node (Nasus, 4 cores) and one other machine (Jax) are
+linked by ConnectX-6 Dx cards at 100 Gb/s. No machine on the cluster has both a GPU and an
+RDMA card, so **all results in this section use CPU compaction on the server**; GPU
+compaction over RDMA is still to be measured.
 
-### Correctness
+![RDMA transport](publication/figures/fig14_rdma_transport.png)
+
+**Figure 14.** Moving one request and its reply of the same size between the two machines.
+(a) Data rate; (b) CPU the sending machine spends per GiB moved. Medians of 3 runs.
+`ib_write_bw` and `ib_read_bw` are the hardware's reference benchmarks.
+
+- **Speed:** our RDMA transport reaches 92 Gb/s for large transfers, the same as the
+  hardware benchmark.
+- **CPU cost:** it uses 0.012 CPU-seconds per GiB moved, about 80× less than TCP. TCP
+  manages only 6–7 Gb/s.
+
+![Remote compaction](publication/figures/fig15_rdma_isolated.png)
+
+**Figure 15.** One full compaction started on the database node. (a) Compaction time;
+(b) the database node's whole-process CPU per GiB of input. "CPU merge (local)" is the
+merge the server runs, measured on the database node itself. Medians of 3 warm runs;
+whiskers span min-max.
+
+- **CPU saved on the database node:** with compaction done remotely over RDMA, the
+  database node spends 1.7–2.0 CPU-seconds per GiB, against 4.7–15.0 for native RocksDB
+  (2.6–7.6× less). The work left is reading the input blocks and writing the returned
+  files.
+- **RDMA against TCP:** TCP needs about twice that (3.2–3.6 CPU-seconds per GiB) and is
+  10–25% slower.
+- **Network cost:** compaction time over RDMA is within 2–12% of running the same merge
+  locally.
+- **Total time:** compaction takes about twice as long as native RocksDB. That comes from
+  the server's merge code, a reference implementation about 2× slower than RocksDB's
+  own, not from the network.
+- **One outlier:** the RDMA push run with deletes (14.9 s) was slowed on the server side
+  by another user's load on the shared server machine.
+
+![Replication](publication/figures/fig16_rdma_replication.png)
+
+**Figure 16.** A primary on 4 cores of the database node with 2 backups on the other
+machine, 50 M keys, 30 s warm-up and 120 s measurement. (a, d) Throughput including
+catch-up compaction; (b, e) CPU per operation summed over the primary, the backups and the
+compaction server; (c, f) replication traffic per operation. Medians of 5 runs.
+
+| Writes | Design | kops/s | Cluster CPU per op | Traffic per op |
+|---|---|---|---|---|
+| Batched, WAL off | Per-replica compaction | 351 | 28.5 µs | 0.4 KiB |
+| | **Compact once (primary's CPU), ship files** | **365** | **8.4 µs (3.4× less)** | 1.2 KiB |
+| | Compact once on the compaction server | 206 | 12.5 µs | 1.3 KiB |
+| Single, WAL on | Per-replica compaction | 67 | 86.1 µs | 1.2 KiB |
+| | **Compact once (primary's CPU), ship files** | 50 | **48.8 µs (1.8× less)** | 3.2 KiB |
+| | Compact once on the compaction server | 49 | 57.1 µs | 3.3 KiB |
+
+- **Batched writes:** compacting once and shipping the files cuts total cluster CPU per
+  write by 3.4×, at the same throughput, for about 3× more network traffic.
+- **Single writes:** compacting once cuts total cluster CPU per write by 1.8× but is 25%
+  slower. Physical replication ships each WAL append inside RocksDB's single-writer WAL
+  path, so the network round trips are serialised; logical replication sends writes from
+  every thread in parallel.
+- **Compaction server:** compacting once on the server is slower here because its CPU
+  merge is slower than RocksDB's own. A GPU server is the configuration still to measure.
+
+### Correctness### Correctness
 
 - **Single compactions:** every run compares a digest of every stored key
   version, and of up to 200,000 point lookups, against native RocksDB. Point
@@ -335,7 +388,7 @@ python3 publication/make_figures.py                                      # figur
 ## Documentation
 
 - [docs/gpu-compaction.md](docs/gpu-compaction.md): what is offloaded, how it plugs into RocksDB, eligibility, configuration and limits
-- [docs/remote-compaction.md](docs/remote-compaction.md): remote compaction and replication over TCP and RDMA
+- [docs/remote-compaction.md](docs/remote-compaction.md): remote compaction and replication over TCP and RDMA, and their results
 - [docs/runbook.md](docs/runbook.md): building, benchmarks, the `labctl` harness, hardware gates
 - [docs/telemetry.md](docs/telemetry.md): resource and energy telemetry
 - [publication/](publication/): results, methodology audit and data
