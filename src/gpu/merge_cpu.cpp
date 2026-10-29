@@ -744,6 +744,8 @@ namespace lsm_lab
             const std::string &contents = use_compressed ? compressed : raw;
             const char type = use_compressed ? codec : 0;
             buffers->contents.append(contents);
+            // Room for the block trailer, filled in place by the table builder.
+            buffers->contents.append(rocksdb::kBuiltTrailerGap, '\0');
             out.contents_bytes = static_cast<std::uint32_t>(contents.size());
             out.compressed = static_cast<unsigned char>(type);
             if (host_compress)
@@ -762,13 +764,14 @@ namespace lsm_lab
         result.blocks = buffers->blocks.data();
         result.block_count = buffers->blocks.size();
         result.contents = buffers->contents.data();
+        result.contents_capacity = buffers->contents.size();
         result.keys = buffers->keys.data();
         result.hashes = buffers->hashes.data();
         result.entries = count;
         if (stats)
         {
             stats->built_blocks = buffers->blocks.size();
-            stats->built_bytes = buffers->contents.size();
+            stats->built_bytes = buffers->contents.size() - buffers->blocks.size() * rocksdb::kBuiltTrailerGap;
             stats->host_compressed_blocks = static_cast<std::uint64_t>(std::count_if(
                 buffers->blocks.begin(), buffers->blocks.end(), [](const rocksdb::CompactionBuiltBlock &block) {
                     return (block.flags & rocksdb::CompactionBuiltBlock::kCompressOnHost) != 0;

@@ -419,3 +419,219 @@ lsm_replace("db/compaction/compaction_job.cc"
 lsm_replace("db/compaction/compaction_job.cc"
   "    lsm_build.zero_limit = std::min(earliest_snapshot_, preserve_seqno_after_);\n"
   "    lsm_build.zero_limit = std::min(earliest_snapshot_, preserve_seqno_after_);\n    lsm_build.earliest_snapshot = earliest_snapshot_;\n")
+
+# Built output in runs: the table builder fills each block's trailer in the gap the
+# accelerator left after it and appends a run of blocks with one write
+# (include/lsm_lab/compaction_output.hpp); CompactionOutputs still decides file cuts block by
+# block. Inserted next to (not inside) the text of earlier steps, so re-running stays a no-op.
+lsm_replace("table/table_builder.h"
+  "    return Status::NotSupported(\"built data blocks\");\n  }"
+  "    return Status::NotSupported(\"built data blocks\");\n  }\n\n  // Adds a run of finished data blocks with trailer gaps (block-based tables only).\n  virtual Status LsmAddBuiltRun(const CompactionBuiltBlock* /*blocks*/,\n                                size_t /*count*/, char* /*contents*/,\n                                const char* /*keys*/,\n                                const uint64_t* /*hashes*/) {\n    return Status::NotSupported(\"built data block runs\");\n  }")
+lsm_replace("table/block_based/block_based_table_builder.h"
+  "  bool lsm_pending_index_ = false;"
+  "  bool lsm_pending_index_ = false;\n  Status LsmAddBuiltRun(const CompactionBuiltBlock* blocks, size_t count,\n                        char* contents, const char* keys,\n                        const uint64_t* hashes) override;")
+lsm_replace("db/compaction/compaction_outputs.h"
+  "                          const ParsedInternalKey& prev_iter_output_internal_key);\n\n private:"
+  "                          const ParsedInternalKey& prev_iter_output_internal_key);\n\n private:\n\n public:\n  // Adds blocks [begin, end) of built output, cutting files block by block as\n  // LsmAddBuiltBlock does and writing each run that stays in one file at once.\n  Status LsmAddBuiltBlocks(const CompactionBuiltOutput& built, size_t begin,\n                           size_t end,\n                           const CompactionFileOpenFunc& open_file_func,\n                           const CompactionFileCloseFunc& close_file_func,\n                           Slice* previous_last);\n\n private:")
+lsm_replace("db/compaction/compaction_outputs.cc"
+  "Status CompactionOutputs::LsmAddBuiltBlock(\n    const CompactionBuiltBlock& block, const char* contents,"
+  [=[// *previous_last is the last key of the block before begin (empty at the start of
+// the output). Cut decisions see the same file size as with one block at a time.
+Status CompactionOutputs::LsmAddBuiltBlocks(
+    const CompactionBuiltOutput& built, size_t begin, size_t end,
+    const CompactionFileOpenFunc& open_file_func,
+    const CompactionFileCloseFunc& close_file_func, Slice* previous_last) {
+  Status s;
+  char* contents = const_cast<char*>(built.contents);
+  size_t run = begin;
+  uint64_t run_bytes = 0;
+  SequenceNumber run_smallest = kMaxSequenceNumber;
+  SequenceNumber run_largest = 0;
+  const auto flush_run = [&](size_t until) {
+    Status status;
+    if (until == run) {
+      return status;
+    }
+    status = builder_->LsmAddBuiltRun(built.blocks + run, until - run, contents,
+                                      built.keys, built.hashes);
+    if (status.ok()) {
+      const auto& first_block = built.blocks[run];
+      const auto& last_block = built.blocks[until - 1];
+      const Slice first(built.keys + first_block.keys_offset,
+                        first_block.first_key_bytes);
+      const Slice last(built.keys + last_block.keys_offset +
+                           last_block.first_key_bytes,
+                       last_block.last_key_bytes);
+      for (size_t i = run; i < until; ++i) {
+        stats_.num_output_records += built.blocks[i].entries;
+      }
+      current_output_file_size_ = builder_->EstimatedFileSize();
+      status = current_output().meta.UpdateBoundaries(first, Slice(),
+                                                      run_smallest, kTypeValue);
+      if (status.ok()) {
+        status = current_output().meta.UpdateBoundaries(
+            last, Slice(), run_largest, kTypeValue);
+      }
+    }
+    run = until;
+    run_bytes = 0;
+    run_smallest = kMaxSequenceNumber;
+    run_largest = 0;
+    return status;
+  };
+  for (size_t index = begin; index < end; ++index) {
+    const auto& block = built.blocks[index];
+    const Slice first(built.keys + block.keys_offset, block.first_key_bytes);
+    const Slice last(first.data() + block.first_key_bytes,
+                     block.last_key_bytes);
+    const bool can_cut = !previous_last->empty() &&
+                         ExtractUserKey(first) != ExtractUserKey(*previous_last);
+    if (HasBuilder()) {
+      current_output_file_size_ = builder_->EstimatedFileSize() + run_bytes;
+    }
+    // Always evaluated, as for every key on the regular path.
+    const bool stop = LsmShouldStopBefore(first, ExtractUserKey(first));
+    if (can_cut && stop && HasBuilder()) {
+      s = flush_run(index);
+      if (!s.ok()) {
+        return s;
+      }
+      ParsedInternalKey previous;
+      s = ParseInternalKey(*previous_last, &previous, /*log_err_key=*/false);
+      if (!s.ok()) {
+        return s;
+      }
+      s = close_file_func(Status::OK(), previous, first, nullptr, *this);
+      if (!s.ok()) {
+        return s;
+      }
+      grandparent_boundary_switched_num_ = 0;
+      grandparent_overlapped_bytes_ =
+          GetCurrentKeyGrandparentOverlappedBytes(first);
+      range_tombstone_lower_bound_.Clear();
+    }
+    if (!HasBuilder()) {
+      s = open_file_func(*this);
+      if (!s.ok()) {
+        return s;
+      }
+    }
+    s = current_output().validator.Add(first, Slice());
+    if (s.ok()) {
+      s = current_output().validator.Add(last, Slice());
+    }
+    if (!s.ok()) {
+      return s;
+    }
+    // The block's trailer is the same size as the gap left for it.
+    run_bytes += block.contents_bytes + kBuiltTrailerGap;
+    run_smallest = std::min<SequenceNumber>(run_smallest, block.smallest_seqno);
+    run_largest = std::max<SequenceNumber>(run_largest, block.largest_seqno);
+    *previous_last = last;
+  }
+  return flush_run(end);
+}
+
+Status CompactionOutputs::LsmAddBuiltBlock(
+    const CompactionBuiltBlock& block, const char* contents,]=])
+
+# Filters of built output: the table builder hands the filter builder the (contiguous) key
+# hashes of each file instead of copying them into its entry queue, and Finish sets the
+# FastLocalBloom bits through the compaction transform (GPU), or on the CPU when it declines.
+# Sizing, probe count and metadata stay RocksDB's own.
+lsm_replace("table/block_based/filter_policy_internal.h"
+  "  virtual bool LsmAddKeyHash(uint64_t /*hash*/) { return false; }"
+  "  virtual bool LsmAddKeyHash(uint64_t /*hash*/) { return false; }\n\n  // Uses count hashes held by the caller (alive until Finish) instead of copying\n  // them; false if unsupported, and then nothing was added.\n  virtual bool LsmAddExternalHashes(const uint64_t* /*hashes*/, size_t /*count*/,\n                                    CompactionBlockTransform* /*transform*/) {\n    return false;\n  }")
+lsm_replace("table/block_based/filter_block.h"
+  "  virtual bool LsmAddKeyHashes(const uint64_t* /*hashes*/, size_t /*count*/) {\n    return false;\n  }"
+  "  virtual bool LsmAddKeyHashes(const uint64_t* /*hashes*/, size_t /*count*/) {\n    return false;\n  }\n\n  // As LsmAddKeyHashes, but the hashes stay with the caller until Finish.\n  virtual bool LsmAddExternalKeyHashes(const uint64_t* /*hashes*/,\n                                       size_t /*count*/,\n                                       CompactionBlockTransform* /*transform*/) {\n    return false;\n  }")
+lsm_replace("table/block_based/full_filter_block.h"
+  "      if (!filter_bits_builder_->LsmAddKeyHash(hashes[i])) {\n        return false;\n      }\n    }\n    return true;\n  }"
+  "      if (!filter_bits_builder_->LsmAddKeyHash(hashes[i])) {\n        return false;\n      }\n    }\n    return true;\n  }\n\n  bool LsmAddExternalKeyHashes(const uint64_t* hashes, size_t count,\n                               CompactionBlockTransform* transform) override {\n    if (prefix_extractor_ != nullptr || !whole_key_filtering_) {\n      return false;\n    }\n    return filter_bits_builder_->LsmAddExternalHashes(hashes, count, transform);\n  }")
+lsm_replace("table/block_based/filter_policy.cc"
+  "  ~FastLocalBloomBitsBuilder() override = default;\n\n  using FilterBitsBuilder::Finish;\n\n  Slice Finish(std::unique_ptr<const char[]>* buf) override {\n    return Finish(buf, nullptr);\n  }\n\n  Slice Finish(std::unique_ptr<const char[]>* buf, Status* status) override {"
+  "  ~FastLocalBloomBitsBuilder() override = default;\n\n  using FilterBitsBuilder::Finish;\n\n  Slice Finish(std::unique_ptr<const char[]>* buf) override {\n    return Finish(buf, nullptr);\n  }\n\n  Slice Finish(std::unique_ptr<const char[]>* buf, Status* status) override {\n    if (lsm_external_ != nullptr) {\n      return LsmFinishExternal(buf, status);\n    }")
+lsm_replace("table/block_based/filter_policy.cc"
+  "  // Target allocation per added key, in thousandths of a bit.\n  int millibits_per_key_;\n};"
+  [=[ public:
+  // External hashes (built compaction output): one contiguous range per file.
+  // Only used while the entry queue is empty and no feature needs the queue.
+  bool LsmAddExternalHashes(const uint64_t* hashes, size_t count,
+                            CompactionBlockTransform* transform) override {
+    if (detect_filter_construct_corruption_ || cache_res_mgr_ ||
+        !hash_entries_info_.entries.empty() ||
+        (lsm_external_ != nullptr && hashes != lsm_external_ + lsm_external_count_)) {
+      // Move what was taken so far into the queue; the caller adds the rest there.
+      for (size_t i = 0; i < lsm_external_count_; ++i) {
+        LsmAddKeyHash(lsm_external_[i]);
+      }
+      lsm_external_ = nullptr;
+      lsm_external_count_ = 0;
+      return false;
+    }
+    if (lsm_external_ == nullptr) {
+      lsm_external_ = hashes;
+    }
+    lsm_external_count_ += count;
+    lsm_transform_ = transform;
+    return true;
+  }
+
+  size_t EstimateEntriesAdded() override {
+    return hash_entries_info_.entries_count.LoadRelaxed() + lsm_external_count_;
+  }
+
+  // Finish for external hashes: the same filter bytes as adding them to the
+  // queue (which skips a hash equal to the one before it).
+  Slice LsmFinishExternal(std::unique_ptr<const char[]>* buf, Status* status) {
+    const uint64_t* hashes = lsm_external_;
+    const size_t count = lsm_external_count_;
+    lsm_external_ = nullptr;
+    lsm_external_count_ = 0;
+    if (status) {
+      *status = Status::OK();
+    }
+    size_t num_entries = 0;
+    for (size_t i = 0; i < count; ++i) {
+      num_entries += (i == 0 || hashes[i] != hashes[i - 1]) ? 1 : 0;
+    }
+    if (num_entries == 0) {
+      return FinishAlwaysFalse(buf);
+    }
+    size_t len_with_metadata = CalculateSpace(num_entries);
+    std::unique_ptr<char[]> mutable_buf;
+    len_with_metadata =
+        AllocateMaybeRounding(len_with_metadata, num_entries, &mutable_buf);
+    int num_probes = GetNumProbes(num_entries, len_with_metadata);
+    uint32_t len = static_cast<uint32_t>(len_with_metadata - kMetadataLen);
+    std::memset(mutable_buf.get(), 0, len_with_metadata);
+    if (len > 0) {
+      if (lsm_transform_ == nullptr ||
+          !lsm_transform_
+               ->BuildBloomFilter(hashes, count, len, num_probes,
+                                  mutable_buf.get())
+               .ok()) {
+        for (size_t i = 0; i < count; ++i) {
+          FastLocalBloomImpl::AddHash(Lower32of64(hashes[i]),
+                                      Upper32of64(hashes[i]), len, num_probes,
+                                      mutable_buf.get());
+        }
+      }
+    }
+    mutable_buf[len] = static_cast<char>(-1);
+    mutable_buf[len + 1] = static_cast<char>(0);
+    mutable_buf[len + 2] = static_cast<char>(num_probes);
+    Slice rv(mutable_buf.get(), len_with_metadata);
+    *buf = std::move(mutable_buf);
+    final_filter_cache_res_handles_.push_back(nullptr);
+    return rv;
+  }
+
+  const uint64_t* lsm_external_ = nullptr;
+  size_t lsm_external_count_ = 0;
+  CompactionBlockTransform* lsm_transform_ = nullptr;
+
+ private:
+  // Target allocation per added key, in thousandths of a bit.
+  int millibits_per_key_;
+};]=])

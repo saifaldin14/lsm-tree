@@ -21,6 +21,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <map>
 #include <mutex>
@@ -57,6 +58,8 @@ namespace
         std::uint64_t block_bytes = 4096;
         std::uint64_t target_file_bytes = 64ULL << 20;
         std::uint32_t subcompactions = 1;
+        // RocksDB's allow_fallocate (preallocation; on tmpfs it zeroes pages before they are written).
+        bool allow_fallocate = true;
         std::uint32_t repetitions = 1;
         // Fixed-time mode: after the given repetitions, keep repeating each mode (round-robin)
         // until this many seconds have passed since the first warm repetition (0 disables).
@@ -139,6 +142,7 @@ namespace
         options.max_write_buffer_number = 4;
         options.target_file_size_base = config.target_file_bytes;
         options.max_subcompactions = config.subcompactions;
+        options.allow_fallocate = config.allow_fallocate;
         options.max_background_jobs = 4;
         options.paranoid_checks = true;
         if (config.compression == "lz4")
@@ -366,12 +370,22 @@ namespace
 
         rocksdb::CompactRangeOptions compact;
         compact.bottommost_level_compaction = rocksdb::BottommostLevelCompaction::kSkip;
+        // LSM_PERF_CTL: a perf --control FIFO; profiling is enabled only around the measured compaction.
+        const auto perf_control = [](const char *command) {
+            if (const char *fifo = std::getenv("LSM_PERF_CTL"))
+            {
+                std::ofstream control(fifo);
+                control << command << std::endl;
+            }
+        };
+        perf_control("enable");
         const auto cpu_start = process_cpu_seconds();
         const auto wall_start = std::chrono::steady_clock::now();
         check(db->CompactRange(compact, nullptr, nullptr), "compact");
         const auto wall_seconds =
             std::chrono::duration<double>(std::chrono::steady_clock::now() - wall_start).count();
         const auto cpu_seconds = process_cpu_seconds() - cpu_start;
+        perf_control("disable");
 
         check(db->VerifyChecksum(), "verify checksum");
         const auto after = digest_versions(db.get());
@@ -379,6 +393,9 @@ namespace
         const auto lookups = lookup_digest(db.get(), config, &lookups_found);
         Json result = {{"mode", mode},
                        {"repetition", repetition},
+                       {"settings", {{"subcompactions", config.subcompactions}, {"allow_fallocate", config.allow_fallocate},
+                                     {"compression", config.compression}, {"value_bytes", config.value_bytes},
+                                     {"records", config.records}, {"block_bytes", config.block_bytes}}},
                        {"wall_seconds", wall_seconds},
                        {"process_cpu_seconds", cpu_seconds},
                        {"levels_before", shape_before},
@@ -470,6 +487,8 @@ namespace
                 config.target_file_bytes = std::stoull(value());
             else if (name == "--subcompactions")
                 config.subcompactions = static_cast<std::uint32_t>(std::stoul(value()));
+            else if (name == "--allow-fallocate")
+                config.allow_fallocate = value() == "true";
             else if (name == "--repetitions")
                 config.repetitions = static_cast<std::uint32_t>(std::stoul(value()));
             else if (name == "--duration")

@@ -127,11 +127,17 @@ namespace ROCKSDB_NAMESPACE
 
     // Finished output of one (sub)compaction, in key order. The first key of
     // block i is keys + blocks[i].keys_offset and its last key follows it.
+    // Producers leave a kBuiltTrailerGap-byte gap after each block's contents, and
+    // contents_capacity is the writable size of contents (0 if unknown). The table builder
+    // then writes each block's trailer into its gap and appends whole runs of blocks with
+    // one write; without the gaps it adds blocks one at a time.
+    static constexpr std::uint32_t kBuiltTrailerGap = 5;
     struct CompactionBuiltOutput
     {
         const CompactionBuiltBlock *blocks = nullptr;
         std::size_t block_count = 0;
         const char *contents = nullptr;
+        std::uint64_t contents_capacity = 0;
         const char *keys = nullptr;
         const std::uint64_t *hashes = nullptr;
         std::uint64_t entries = 0;
@@ -236,5 +242,14 @@ namespace ROCKSDB_NAMESPACE
             return Status::NotSupported("merged compaction input is not implemented by this transform");
         }
         virtual void RecordMergeFallback(const Status & /*reason*/) noexcept {}
+        // Sets the bits of a FastLocalBloom filter (RocksDB's format_version 5+ Bloom filter):
+        // for every hash, FastLocalBloomImpl::AddHash(lower 32 bits, upper 32 bits, len_bytes,
+        // num_probes, data). data holds len_bytes zeroed bytes. Any non-OK status makes the
+        // caller set the bits on the CPU.
+        virtual Status BuildBloomFilter(const std::uint64_t * /*hashes*/, std::size_t /*count*/,
+                                        std::uint32_t /*len_bytes*/, int /*num_probes*/, char * /*data*/) noexcept
+        {
+            return Status::NotSupported("filter building is not implemented by this transform");
+        }
     };
 }

@@ -18,4 +18,10 @@ namespace lsm_lab
     };
 
     std::unique_ptr<CudaMergeEngine> make_cuda_merge_engine();
+
+    // Sets the bits of a FastLocalBloom filter on the GPU (see
+    // rocksdb::CompactionBlockTransform::BuildBloomFilter). Thread-safe; data is len_bytes zeroed
+    // host bytes and receives the filter bits.
+    rocksdb::Status cuda_build_bloom_filter(const std::uint64_t *hashes, std::size_t count, std::uint32_t len_bytes,
+                                            int num_probes, char *data);
 }

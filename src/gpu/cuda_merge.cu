@@ -1062,7 +1062,8 @@ namespace lsm_lab
             built[block].compressed = use ? codec : 0u;
             built[block].contents_bytes = static_cast<std::uint32_t>(stored);
             built[block].flags = host_compress ? rocksdb::CompactionBuiltBlock::kCompressOnHost : 0u;
-            contents_bytes[block] = stored;
+            // Room for the 5-byte block trailer, which the table builder fills in place.
+            contents_bytes[block] = stored + rocksdb::kBuiltTrailerGap;
         }
 
         // One CUDA block per data block: copy the stored form, then CRC32C of
@@ -2116,13 +2117,14 @@ namespace lsm_lab
                 result.blocks = reinterpret_cast<const rocksdb::CompactionBuiltBlock *>(owner.blocks.get());
                 result.block_count = blocks;
                 result.contents = owner.contents.get();
+                result.contents_capacity = contents_total;
                 result.keys = owner.keys.get();
                 result.hashes = reinterpret_cast<const std::uint64_t *>(owner.hashes.get());
                 result.entries = count;
                 if (stats)
                 {
                     stats->built_blocks = blocks;
-                    stats->built_bytes = contents_total;
+                    stats->built_bytes = contents_total - static_cast<std::uint64_t>(blocks) * rocksdb::kBuiltTrailerGap;
                     stats->host_compressed_blocks = host_compress ? blocks : 0;
                 }
                 *output = std::make_unique<BuiltMergedInput>(std::make_shared<BuiltOwner>(std::move(owner)), result,
@@ -2247,4 +2249,70 @@ namespace lsm_lab
     }
 
     std::unique_ptr<CudaMergeEngine> make_cuda_merge_engine() { return std::make_unique<Engine>(); }
+
+    namespace
+    {
+        // FastLocalBloomImpl::AddHash for every hash (util/bloom_impl.h): a 64-byte cache line
+        // chosen by FastRange32 of the lower 32 bits, then num_probes bits within it from the
+        // upper 32 bits. Bits are ORed, so the order of hashes does not matter.
+        __global__ void bloom_bits(const std::uint64_t *hashes, std::size_t count, std::uint32_t len_bytes,
+                                   int num_probes, std::uint32_t *words)
+        {
+            const std::uint32_t lines = len_bytes >> 6;
+            for (std::size_t index = blockIdx.x * static_cast<std::size_t>(blockDim.x) + threadIdx.x; index < count;
+                 index += static_cast<std::size_t>(gridDim.x) * blockDim.x)
+            {
+                const std::uint64_t hash = hashes[index];
+                const auto h1 = static_cast<std::uint32_t>(hash);
+                std::uint32_t h = static_cast<std::uint32_t>(hash >> 32);
+                const std::uint32_t line = static_cast<std::uint32_t>((static_cast<std::uint64_t>(h1) * lines) >> 32) << 6;
+                for (int probe = 0; probe < num_probes; ++probe, h *= 0x9e3779b9u)
+                {
+                    const std::uint32_t bit = h >> 23;
+                    const std::uint32_t byte = line + (bit >> 3);
+                    atomicOr(&words[byte >> 2], 1u << ((byte & 3u) * 8u + (bit & 7u)));
+                }
+            }
+        }
+
+        struct FilterContext
+        {
+            std::mutex mutex;
+            cudaStream_t stream = nullptr;
+            DeviceArray<std::uint64_t> hashes;
+            DeviceArray<std::uint32_t> words;
+        };
+    }
+
+    rocksdb::Status cuda_build_bloom_filter(const std::uint64_t *hashes, std::size_t count, std::uint32_t len_bytes,
+                                            int num_probes, char *data)
+    {
+        try
+        {
+            if (len_bytes == 0 || (len_bytes & 63) != 0 || num_probes <= 0)
+                return rocksdb::Status::InvalidArgument("filter length must be a positive multiple of 64");
+            // Never destroyed: it may outlive the CUDA runtime at process exit.
+            static auto *context = new FilterContext();
+            const std::lock_guard guard(context->mutex);
+            if (context->stream == nullptr)
+                cuda_ok(cudaStreamCreateWithFlags(&context->stream, cudaStreamNonBlocking), "filter stream");
+            auto *d_hashes = context->hashes.reserve(count);
+            auto *d_words = context->words.reserve(len_bytes / 4);
+            cuda_ok(cudaMemcpyAsync(d_hashes, hashes, count * sizeof(std::uint64_t), cudaMemcpyHostToDevice,
+                                    context->stream),
+                    "upload filter hashes");
+            cuda_ok(cudaMemsetAsync(d_words, 0, len_bytes, context->stream), "clear filter");
+            const auto blocks = static_cast<unsigned>(std::min<std::size_t>((count + 255) / 256, 4096));
+            bloom_bits<<<std::max(blocks, 1u), 256, 0, context->stream>>>(d_hashes, count, len_bytes, num_probes, d_words);
+            cuda_ok(cudaGetLastError(), "bloom_bits");
+            cuda_ok(cudaMemcpyAsync(data, d_words, len_bytes, cudaMemcpyDeviceToHost, context->stream),
+                    "download filter");
+            cuda_ok(cudaStreamSynchronize(context->stream), "synchronize filter");
+            return rocksdb::Status::OK();
+        }
+        catch (const std::exception &error)
+        {
+            return rocksdb::Status::Aborted(error.what());
+        }
+    }
 }

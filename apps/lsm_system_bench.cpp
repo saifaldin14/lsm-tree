@@ -109,6 +109,7 @@ namespace
         bool pipelined_write = false;
         bool concurrent_memtable = true;
         std::uint32_t flush_jobs = 0;
+        bool allow_fallocate = true;
         // Primary-backup replication (lsm_lab/replication.hpp): none, physical or logical, to the
         // comma-separated lsm_replica_server endpoints; logical replicas compact with replica_backend.
         std::string replication = "none";
@@ -273,6 +274,7 @@ namespace
         shape.pipelined_write = config.pipelined_write;
         shape.concurrent_memtable = config.concurrent_memtable;
         shape.flush_jobs = config.flush_jobs;
+        shape.allow_fallocate = config.allow_fallocate;
         return shape;
     }
 
@@ -1299,6 +1301,8 @@ namespace
                 config.concurrent_memtable = value() == "true";
             else if (name == "--flush-jobs")
                 config.flush_jobs = static_cast<std::uint32_t>(number());
+            else if (name == "--allow-fallocate")
+                config.allow_fallocate = value() == "true";
             else if (name == "--replication")
                 config.replication = value();
             else if (name == "--replicate-to")
@@ -1373,7 +1377,7 @@ int main(int argc, char **argv)
                             {"scan_percent", config.scan_percent}, {"scan_length", config.scan_length},
                             {"retention", config.retention},
                             {"pipelined_write", config.pipelined_write}, {"concurrent_memtable", config.concurrent_memtable},
-                            {"flush_jobs", config.flush_jobs},
+                            {"flush_jobs", config.flush_jobs}, {"allow_fallocate", config.allow_fallocate},
                             {"replication", config.replication}, {"replicate_to", config.replicate_to},
                             {"replica_backend", config.replica_backend},
                             {"warmup_seconds", config.warmup_seconds}, {"duration_seconds", config.duration_seconds},

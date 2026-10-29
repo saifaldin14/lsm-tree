@@ -117,6 +117,7 @@ namespace lsm_lab
                     built_.block_count = header.block_count;
                     offset = align_up(header.block_count * sizeof(rocksdb::CompactionBuiltBlock));
                     built_.contents = payload + offset;
+                    built_.contents_capacity = header.contents_bytes;
                     offset = align_up(offset + header.contents_bytes);
                     built_.keys = payload + offset;
                     offset = align_up(offset + header.keys_bytes);
@@ -322,8 +323,12 @@ namespace lsm_lab
                 for (std::size_t index = 0; index < built->block_count; ++index)
                 {
                     const auto &block = built->blocks[index];
-                    header.contents_bytes =
-                        std::max<std::uint64_t>(header.contents_bytes, block.contents_offset + block.contents_bytes);
+                    // Includes each block's trailer gap when the producer left one.
+                    header.contents_bytes = std::max<std::uint64_t>(
+                        header.contents_bytes,
+                        std::min<std::uint64_t>(block.contents_offset + block.contents_bytes + rocksdb::kBuiltTrailerGap,
+                                                std::max(built->contents_capacity,
+                                                         block.contents_offset + block.contents_bytes)));
                     header.keys_bytes = std::max<std::uint64_t>(
                         header.keys_bytes, block.keys_offset + block.first_key_bytes + block.last_key_bytes);
                     header.hash_count = std::max<std::uint64_t>(header.hash_count, block.hash_offset + block.hash_count);

@@ -66,6 +66,10 @@ namespace lsm_lab
         std::atomic<std::uint64_t> output_batches_{0};
         std::atomic<std::uint64_t> output_blocks_{0};
         std::atomic<std::uint64_t> output_gpu_batches_{0};
+        // Filters built by the transform (GPU) for built compaction output.
+        std::atomic<std::uint64_t> filter_builds_{0};
+        std::atomic<std::uint64_t> filter_keys_{0};
+        std::atomic<std::uint64_t> filter_ns_{0};
 
     private:
         mutable std::mutex mutex_;

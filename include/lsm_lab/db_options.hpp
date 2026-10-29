@@ -45,6 +45,8 @@ namespace lsm_lab
         bool pipelined_write = false;
         bool concurrent_memtable = true;
         std::uint32_t flush_jobs = 0;
+        // RocksDB's allow_fallocate (preallocation; on tmpfs it zeroes pages before they are written).
+        bool allow_fallocate = true;
     };
 
     NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(DbShape, write_buffer_bytes, max_write_buffer_number,
@@ -52,7 +54,7 @@ namespace lsm_lab
                                                     subcompactions, levels, l0_trigger, level_multiplier,
                                                     use_direct_io, adaptive_yield, compression, block_bytes,
                                                     block_cache_bytes, blob_min_bytes, pipelined_write,
-                                                    concurrent_memtable, flush_jobs)
+                                                    concurrent_memtable, flush_jobs, allow_fallocate)
 
     inline rocksdb::Options make_db_options(const DbShape &shape, const std::shared_ptr<BatchTransform> &transform)
     {
@@ -69,6 +71,7 @@ namespace lsm_lab
                 std::max<int>(1, static_cast<int>(shape.background_jobs) - static_cast<int>(shape.flush_jobs));
         }
         options.enable_pipelined_write = shape.pipelined_write;
+        options.allow_fallocate = shape.allow_fallocate;
         options.allow_concurrent_memtable_write = shape.concurrent_memtable;
         options.max_subcompactions = shape.subcompactions;
         options.num_levels = static_cast<int>(shape.levels);

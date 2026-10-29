@@ -10,6 +10,7 @@
 #include <map>
 #include <numeric>
 #include <stdexcept>
+#include <chrono>
 #include <mutex>
 #include <tuple>
 #include <type_traits>
@@ -557,6 +558,23 @@ namespace lsm_lab
 
             std::string name() const override { return hybrid_ ? "cuda_hybrid" : "cuda_batched"; }
             std::string device() const override { return device_name_; }
+
+            rocksdb::Status BuildBloomFilter(const std::uint64_t *hashes, std::size_t count, std::uint32_t len_bytes,
+                                             int num_probes, char *data) noexcept override
+            {
+                const auto started = std::chrono::steady_clock::now();
+                const auto status = cuda_build_bloom_filter(hashes, count, len_bytes, num_probes, data);
+                if (status.ok())
+                {
+                    filter_builds_.fetch_add(1, std::memory_order_relaxed);
+                    filter_keys_.fetch_add(count, std::memory_order_relaxed);
+                    filter_ns_.fetch_add(static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                                                         std::chrono::steady_clock::now() - started)
+                                                                         .count()),
+                                         std::memory_order_relaxed);
+                }
+                return status;
+            }
 
         protected:
             rocksdb::Status execute_merge(const rocksdb::CompactionMergeRequest &request,

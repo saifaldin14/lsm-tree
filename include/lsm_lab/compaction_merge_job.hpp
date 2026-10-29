@@ -292,8 +292,27 @@ static const CompactionBuiltOutput *LsmBuiltOutputOf(InternalIterator *merged)
     return merged == nullptr ? nullptr : static_cast<LsmMergedInputIterator *>(merged)->built_output();
 }
 
-// Replaces ProcessKeyValue for built output: adds each finished block to the
-// current output file, letting CompactionOutputs decide file cuts at block
+// Whether built output can be written in runs: every block has its trailer gap inside the
+// buffer, blocks lie back to back, none is compressed on the host, and file cuts do not need
+// the table builder's tail estimate (which lags inside a run).
+static bool LsmBuiltRunsUsable(const CompactionBuiltOutput &built, const Compaction *compaction)
+{
+    if (built.contents_capacity == 0 || compaction->mutable_cf_options().target_file_size_is_upper_bound ||
+        std::getenv("LSM_DISABLE_BUILT_RUNS") != nullptr)
+        return false;
+    for (std::size_t index = 0; index < built.block_count; ++index)
+    {
+        const auto &block = built.blocks[index];
+        const auto end = block.contents_offset + block.contents_bytes + kBuiltTrailerGap;
+        if (block.flags != 0 || end > built.contents_capacity ||
+            (index + 1 < built.block_count && built.blocks[index + 1].contents_offset != end))
+            return false;
+    }
+    return true;
+}
+
+// Replaces ProcessKeyValue for built output: adds the finished blocks to the
+// output files, letting CompactionOutputs decide file cuts at block
 // boundaries that do not split a user key.
 static Status LsmProcessBuiltOutput(const CompactionBuiltOutput &built, SubcompactionState *sub_compact,
                                     ColumnFamilyData *cfd, const CompactionFileOpenFunc &open_file_func,
@@ -301,6 +320,24 @@ static Status LsmProcessBuiltOutput(const CompactionBuiltOutput &built, Subcompa
                                     const std::atomic<int> &compaction_aborted)
 {
     CompactionOutputs &outputs = *sub_compact->Outputs(false);
+    if (LsmBuiltRunsUsable(built, sub_compact->compaction))
+    {
+        // Runs of up to 1,024 blocks (a few MiB), checking for an abort between them.
+        constexpr std::size_t kChunk = 1024;
+        Slice previous_last;
+        for (std::size_t begin = 0; begin < built.block_count; begin += kChunk)
+        {
+            if (compaction_aborted.load(std::memory_order_acquire) > 0)
+                return Status::Incomplete(Status::SubCode::kCompactionAborted);
+            if (cfd->IsDropped())
+                break;
+            const auto status = outputs.LsmAddBuiltBlocks(built, begin, std::min(built.block_count, begin + kChunk),
+                                                          open_file_func, close_file_func, &previous_last);
+            if (!status.ok())
+                return status;
+        }
+        return Status::OK();
+    }
     ParsedInternalKey previous;
     Slice previous_last;
     Status status;

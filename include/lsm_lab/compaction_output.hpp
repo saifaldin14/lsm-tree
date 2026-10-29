@@ -185,6 +185,80 @@ Status BlockBasedTableBuilder::LsmAddBuiltBlock(const CompactionBuiltBlock &bloc
     return status();
 }
 
+// Adds count finished data blocks that lie back to back in contents, each followed by a
+// kBuiltTrailerGap-byte gap: writes every block's trailer (type byte and checksum with the
+// format_version 6 context modifier for its file offset) into its gap and appends the whole
+// run with one write. The file bytes, index entries, filter and properties are the same as
+// adding the blocks one by one with LsmAddBuiltBlock.
+Status BlockBasedTableBuilder::LsmAddBuiltRun(const CompactionBuiltBlock *blocks, size_t count, char *contents,
+                                              const char *keys, const uint64_t *hashes)
+{
+    Rep *r = rep_.get();
+    if (!ok())
+        return status();
+    if (count == 0)
+        return Status::OK();
+    if (r->state != Rep::State::kUnbuffered || r->IsParallelCompressionActive() || !r->data_block.empty() ||
+        !compaction_output_.empty() || !submitted_compaction_output_.empty() ||
+        r->table_properties_collectors.size() != 1 || r->warm_cache_config.enabled ||
+        r->table_options.super_block_alignment_size != 0 || r->table_options.block_align)
+        return Status::NotSupported("built data blocks require an idle unbuffered table builder");
+    IOOptions io_options;
+    IOStatus io_s = WritableFileWriter::PrepareIOOptions(r->write_options, io_options);
+    if (!io_s.ok())
+    {
+        r->SetIOStatus(io_s);
+        return io_s;
+    }
+    const uint64_t start = r->get_offset();
+    uint64_t offset = start;
+    for (size_t index = 0; index < count; ++index)
+    {
+        const auto &block = blocks[index];
+        const Slice first_key(keys + block.keys_offset, block.first_key_bytes);
+        const Slice last_key(first_key.data() + block.first_key_bytes, block.last_key_bytes);
+        // The file's key hashes are contiguous across its blocks; the filter builder keeps a
+        // pointer to them (and builds the filter on the GPU) instead of copying them.
+        if (r->filter_builder != nullptr && block.hash_count > 0 &&
+            !r->filter_builder->LsmAddExternalKeyHashes(hashes + block.hash_offset, block.hash_count,
+                                                        r->table_options.compaction_block_transform.get()) &&
+            !r->filter_builder->LsmAddKeyHashes(hashes + block.hash_offset, block.hash_count))
+            return Status::NotSupported("filter builder does not accept precomputed key hashes");
+        LsmFinishPendingIndex(&first_key);
+        r->props.num_entries += block.entries;
+        r->props.num_deletions += block.deletions;
+        r->props.raw_key_size += block.raw_key_bytes;
+        r->props.raw_value_size += block.raw_value_bytes;
+        r->props.key_smallest_seqno = std::min(r->props.key_smallest_seqno, block.smallest_seqno);
+        r->props.key_largest_seqno = std::max(r->props.key_largest_seqno, block.largest_seqno);
+        ++r->props.num_data_blocks;
+        if (r->filter_builder != nullptr)
+            r->filter_builder->OnDataBlockFinalized(r->props.num_data_blocks);
+        r->pending_handle.set_offset(offset);
+        r->pending_handle.set_size(block.contents_bytes);
+        char *trailer = contents + block.contents_offset + block.contents_bytes;
+        trailer[0] = static_cast<char>(block.compressed);
+        EncodeFixed32(trailer + 1, block.checksum + ChecksumModifierForContext(r->base_context_checksum, offset));
+        r->compression_types_used.Add(static_cast<CompressionType>(block.compressed));
+        r->pre_compression_size += block.uncompressed_bytes + kBlockTrailerSize;
+        r->props.uncompressed_data_size += block.uncompressed_bytes;
+        offset += block.contents_bytes + kBlockTrailerSize;
+        lsm_pending_index_key_.assign(last_key.data(), last_key.size());
+        lsm_pending_index_ = true;
+        if (index + 1 == count)
+            r->last_ikey.assign(last_key.data(), last_key.size());
+    }
+    io_s = r->file->Append(io_options, Slice(contents + blocks[0].contents_offset, offset - start));
+    if (!io_s.ok())
+    {
+        r->SetIOStatus(io_s);
+        return io_s;
+    }
+    r->set_offset(offset);
+    r->props.data_size = offset;
+    return status();
+}
+
 void BlockBasedTableBuilder::LsmFinishPendingIndex(const Slice *first_key_in_next_block)
 {
     if (!lsm_pending_index_ || !ok())
