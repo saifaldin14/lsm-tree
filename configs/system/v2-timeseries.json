@@ -1,0 +1,92 @@
+{
+ "_comment": "V2: timeseries workload (docs/workloads.md) with tuned concurrency settings.",
+ "common": {
+  "records": 50000000,
+  "verify": true,
+  "read-percent": 0,
+  "warmup-seconds": 60,
+  "duration-seconds": 300
+ },
+ "trials": [
+  {
+   "design": "native",
+   "mode": "native_cpu",
+   "cores": 8,
+   "writes": "timeseries",
+   "flags": {
+    "threads": 16,
+    "subcompactions": 8,
+    "pipelined-write": false,
+    "adaptive-yield": false,
+    "background-jobs": 8,
+    "workload": "timeseries",
+    "retention": 1250,
+    "value-bytes": 32,
+    "batch-size": 100,
+    "read-percent": 5,
+    "scan-percent": 5,
+    "scan-length": 60
+   }
+  },
+  {
+   "design": "native",
+   "mode": "native_cpu",
+   "cores": 16,
+   "writes": "timeseries",
+   "flags": {
+    "threads": 32,
+    "subcompactions": 16,
+    "pipelined-write": true,
+    "adaptive-yield": false,
+    "background-jobs": 16,
+    "workload": "timeseries",
+    "retention": 1250,
+    "value-bytes": 32,
+    "batch-size": 100,
+    "read-percent": 5,
+    "scan-percent": 5,
+    "scan-length": 60
+   }
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 8,
+   "writes": "timeseries",
+   "flags": {
+    "threads": 16,
+    "subcompactions": 4,
+    "pipelined-write": false,
+    "adaptive-yield": false,
+    "background-jobs": 8,
+    "workload": "timeseries",
+    "retention": 1250,
+    "value-bytes": 32,
+    "batch-size": 100,
+    "read-percent": 5,
+    "scan-percent": 5,
+    "scan-length": 60
+   }
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 16,
+   "writes": "timeseries",
+   "flags": {
+    "threads": 32,
+    "subcompactions": 4,
+    "pipelined-write": true,
+    "adaptive-yield": false,
+    "background-jobs": 16,
+    "workload": "timeseries",
+    "retention": 1250,
+    "value-bytes": 32,
+    "batch-size": 100,
+    "read-percent": 5,
+    "scan-percent": 5,
+    "scan-length": 60
+   }
+  }
+ ]
+}

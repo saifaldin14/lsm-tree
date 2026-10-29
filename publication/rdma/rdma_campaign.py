@@ -82,11 +82,16 @@ class Cluster:
         out = self.run(host, "cat /proc/loadavg; who | wc -l", check=False).split()
         return {"load_1m": float(out[0]), "users": int(out[-1])} if out else {}
 
-    def cpu_seconds(self, host: str, pid: int) -> float:
-        """User + system CPU of a process and its waited-for children, from /proc."""
-        out = self.run(host, f"cat /proc/{pid}/stat; getconf CLK_TCK", check=False).split("\n")
-        fields = out[0].rsplit(")", 1)[-1].split()
-        return sum(int(value) for value in fields[11:15]) / int(out[1])
+    def cpu_seconds(self, host: str, pid: int) -> float | None:
+        """User + system CPU of a process and its waited-for children, from /proc. Retries an
+        empty read (a dropped ssh session); None if the process cannot be read."""
+        for _ in range(5):
+            out = self.run(host, f"cat /proc/{pid}/stat; getconf CLK_TCK", check=False).split("\n")
+            fields = out[0].rsplit(")", 1)[-1].split()
+            if len(fields) >= 15 and len(out) > 1 and out[1].strip().isdigit():
+                return sum(int(value) for value in fields[11:15]) / int(out[1])
+            time.sleep(2)
+        return None
 
 
 def pin(machine: dict) -> str:
@@ -230,7 +235,9 @@ def experiment_r6(cluster: Cluster, out: Path, repetitions: int, records: int, s
                     result.pop("timeline", None)
                     append(results, {"experiment": "r6", "repetition": repetition, "design": design, "writes": write,
                                      "server_backend": s["backend"], "load_before": load_before,
-                                     "server_cpu_seconds": server_cpu_after - server_cpu_before, "result": result})
+                                     "server_cpu_seconds": (server_cpu_after - server_cpu_before
+                                                            if None not in (server_cpu_after, server_cpu_before) else None),
+                                     "result": result})
                     print(f"r6 repetition {repetition} {design} {write}: "
                           f"{result['ingest_and_compact']['ops_per_second']:.0f} ops/s "
                           f"match={result['replication']['match']}", flush=True)

@@ -1,0 +1,121 @@
+{
+ "_comment": "Frozen tuning choice (PREREGISTRATION.md, Methodology v2): per design and core count, the highest-throughput setting with stall < 5% and passing verification.",
+ "excluded_trials": [
+  "tune-search:1",
+  "tune-search:2"
+ ],
+ "choices": [
+  {
+   "design": "full",
+   "cores": 16,
+   "flags": {
+    "threads": 32,
+    "subcompactions": 4,
+    "pipelined-write": true,
+    "adaptive-yield": false,
+    "background-jobs": 16
+   },
+   "ops_per_second": 2098049.2894493244,
+   "trial_index": 7,
+   "campaign": "tune-search"
+  },
+  {
+   "design": "full",
+   "cores": 32,
+   "flags": {
+    "threads": 64,
+    "subcompactions": 4,
+    "pipelined-write": true,
+    "adaptive-yield": false,
+    "background-jobs": 32
+   },
+   "ops_per_second": 2302658.1225864287,
+   "trial_index": 10,
+   "campaign": "tune-search"
+  },
+  {
+   "design": "full",
+   "cores": 4,
+   "flags": {
+    "threads": 8,
+    "subcompactions": 4,
+    "pipelined-write": false,
+    "adaptive-yield": false,
+    "background-jobs": 4
+   },
+   "ops_per_second": 646918.5080549727,
+   "trial_index": 46,
+   "campaign": "tune-search"
+  },
+  {
+   "design": "full",
+   "cores": 8,
+   "flags": {
+    "threads": 16,
+    "subcompactions": 4,
+    "pipelined-write": false,
+    "adaptive-yield": false,
+    "background-jobs": 8
+   },
+   "ops_per_second": 1111050.1795783709,
+   "trial_index": 54,
+   "campaign": "tune-search"
+  },
+  {
+   "design": "native",
+   "cores": 16,
+   "flags": {
+    "threads": 32,
+    "subcompactions": 16,
+    "pipelined-write": true,
+    "adaptive-yield": false,
+    "background-jobs": 16
+   },
+   "ops_per_second": 1330260.209574194,
+   "trial_index": 16,
+   "campaign": "tune-search"
+  },
+  {
+   "design": "native",
+   "cores": 32,
+   "flags": {
+    "threads": 64,
+    "subcompactions": 32,
+    "pipelined-write": true,
+    "adaptive-yield": false,
+    "background-jobs": 32
+   },
+   "ops_per_second": 1606882.6636855754,
+   "trial_index": 38,
+   "campaign": "tune-search"
+  },
+  {
+   "design": "native",
+   "cores": 4,
+   "flags": {
+    "threads": 4,
+    "subcompactions": 4,
+    "pipelined-write": false,
+    "adaptive-yield": true,
+    "background-jobs": 4
+   },
+   "ops_per_second": 541241.3438322219,
+   "trial_index": 37,
+   "campaign": "tune-search"
+  },
+  {
+   "design": "native",
+   "cores": 8,
+   "flags": {
+    "threads": 16,
+    "subcompactions": 8,
+    "pipelined-write": false,
+    "adaptive-yield": false,
+    "background-jobs": 8
+   },
+   "ops_per_second": 781856.5535583352,
+   "trial_index": 13,
+   "campaign": "tune-search"
+  }
+ ]
+}

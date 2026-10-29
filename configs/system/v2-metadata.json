@@ -1,0 +1,108 @@
+{
+ "_comment": "V2: metadata workload (docs/workloads.md) with tuned concurrency settings.",
+ "common": {
+  "records": 50000000,
+  "verify": true,
+  "read-percent": 0,
+  "warmup-seconds": 60,
+  "duration-seconds": 300
+ },
+ "trials": [
+  {
+   "design": "native",
+   "mode": "native_cpu",
+   "cores": 8,
+   "writes": "metadata",
+   "flags": {
+    "threads": 8,
+    "subcompactions": 8,
+    "pipelined-write": false,
+    "adaptive-yield": true,
+    "background-jobs": 8,
+    "key-bytes": 20,
+    "key-bytes-max": 60,
+    "value-bytes": 0,
+    "value-bytes-max": 200,
+    "key-families": 6,
+    "read-percent": 25,
+    "scan-percent": 5,
+    "scan-length": 20,
+    "delete-percent": 20,
+    "distribution": "zipfian",
+    "zipf-theta": 0.8
+   }
+  },
+  {
+   "design": "native",
+   "mode": "native_cpu",
+   "cores": 16,
+   "writes": "metadata",
+   "flags": {
+    "threads": 16,
+    "subcompactions": 16,
+    "pipelined-write": true,
+    "adaptive-yield": true,
+    "background-jobs": 16,
+    "key-bytes": 20,
+    "key-bytes-max": 60,
+    "value-bytes": 0,
+    "value-bytes-max": 200,
+    "key-families": 6,
+    "read-percent": 25,
+    "scan-percent": 5,
+    "scan-length": 20,
+    "delete-percent": 20,
+    "distribution": "zipfian",
+    "zipf-theta": 0.8
+   }
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 8,
+   "writes": "metadata",
+   "flags": {
+    "threads": 8,
+    "subcompactions": 4,
+    "pipelined-write": false,
+    "adaptive-yield": true,
+    "background-jobs": 8,
+    "key-bytes": 20,
+    "key-bytes-max": 60,
+    "value-bytes": 0,
+    "value-bytes-max": 200,
+    "key-families": 6,
+    "read-percent": 25,
+    "scan-percent": 5,
+    "scan-length": 20,
+    "delete-percent": 20,
+    "distribution": "zipfian",
+    "zipf-theta": 0.8
+   }
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 16,
+   "writes": "metadata",
+   "flags": {
+    "threads": 16,
+    "subcompactions": 4,
+    "pipelined-write": true,
+    "adaptive-yield": true,
+    "background-jobs": 16,
+    "key-bytes": 20,
+    "key-bytes-max": 60,
+    "value-bytes": 0,
+    "value-bytes-max": 200,
+    "key-families": 6,
+    "read-percent": 25,
+    "scan-percent": 5,
+    "scan-length": 20,
+    "delete-percent": 20,
+    "distribution": "zipfian",
+    "zipf-theta": 0.8
+   }
+  }
+ ]
+}

@@ -1,0 +1,34 @@
+[
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 32,
+  "writes": "batched",
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 32,
+   "threads": 64,
+   "subcompactions": 32,
+   "pipelined-write": true,
+   "adaptive-yield": false
+  },
+  "block": 0
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 32,
+  "writes": "batched",
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 32,
+   "threads": 32,
+   "subcompactions": 32,
+   "pipelined-write": false,
+   "adaptive-yield": true
+  },
+  "block": 0
+ }
+]

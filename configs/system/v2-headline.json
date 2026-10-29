@@ -1,0 +1,132 @@
+{
+ "_comment": "V1: batched writes, LZ4, /dev/shm, tuned settings (configs/system/tuned.json).",
+ "common": {
+  "records": 50000000,
+  "verify": true,
+  "read-percent": 0,
+  "warmup-seconds": 120,
+  "duration-seconds": 600
+ },
+ "trials": [
+  {
+   "design": "native",
+   "mode": "native_cpu",
+   "cores": 4,
+   "writes": "batched",
+   "flags": {
+    "threads": 4,
+    "subcompactions": 4,
+    "pipelined-write": false,
+    "adaptive-yield": true,
+    "background-jobs": 4,
+    "batch-size": 100,
+    "disable-wal": true
+   }
+  },
+  {
+   "design": "native",
+   "mode": "native_cpu",
+   "cores": 8,
+   "writes": "batched",
+   "flags": {
+    "threads": 16,
+    "subcompactions": 8,
+    "pipelined-write": false,
+    "adaptive-yield": false,
+    "background-jobs": 8,
+    "batch-size": 100,
+    "disable-wal": true
+   }
+  },
+  {
+   "design": "native",
+   "mode": "native_cpu",
+   "cores": 16,
+   "writes": "batched",
+   "flags": {
+    "threads": 32,
+    "subcompactions": 16,
+    "pipelined-write": true,
+    "adaptive-yield": false,
+    "background-jobs": 16,
+    "batch-size": 100,
+    "disable-wal": true
+   }
+  },
+  {
+   "design": "native",
+   "mode": "native_cpu",
+   "cores": 32,
+   "writes": "batched",
+   "flags": {
+    "threads": 64,
+    "subcompactions": 32,
+    "pipelined-write": true,
+    "adaptive-yield": false,
+    "background-jobs": 32,
+    "batch-size": 100,
+    "disable-wal": true
+   }
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 4,
+   "writes": "batched",
+   "flags": {
+    "threads": 8,
+    "subcompactions": 4,
+    "pipelined-write": false,
+    "adaptive-yield": false,
+    "background-jobs": 4,
+    "batch-size": 100,
+    "disable-wal": true
+   }
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 8,
+   "writes": "batched",
+   "flags": {
+    "threads": 16,
+    "subcompactions": 4,
+    "pipelined-write": false,
+    "adaptive-yield": false,
+    "background-jobs": 8,
+    "batch-size": 100,
+    "disable-wal": true
+   }
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 16,
+   "writes": "batched",
+   "flags": {
+    "threads": 32,
+    "subcompactions": 4,
+    "pipelined-write": true,
+    "adaptive-yield": false,
+    "background-jobs": 16,
+    "batch-size": 100,
+    "disable-wal": true
+   }
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 32,
+   "writes": "batched",
+   "flags": {
+    "threads": 64,
+    "subcompactions": 4,
+    "pipelined-write": true,
+    "adaptive-yield": false,
+    "background-jobs": 32,
+    "batch-size": 100,
+    "disable-wal": true
+   }
+  }
+ ]
+}
