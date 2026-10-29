@@ -312,6 +312,54 @@ The pilots that motivated v2 (`perf` profiles, subcompaction checks, small MixGr
 workload runs) are not results and are not reported as such. Analysis, statistics and
 exclusions are as in the main plan.
 
+## Methodology v3 (added before the v3 campaigns)
+
+The v2 campaigns were stopped after 6 headline trials, at the authors' decision, to
+remove the host-side costs that profiling of the measured compaction exposed (AUDIT items
+24–28). v3 measures the resulting system. The v2 tuning choice is reused unchanged for both
+designs (`configs/system/tuned.json`; it was chosen before these changes, so if anything it
+favours native), and both designs run with `allow_fallocate = false` (a RocksDB option that
+helps both on tmpfs).
+
+### Changes since v2 (all verified against native RocksDB with the differential matrix)
+
+- Built blocks written in runs with one write each, instead of block by block.
+- Bloom filter bits set on the GPU from the per-file key hashes (RocksDB's sizing and
+  metadata unchanged).
+- Sorted runs merged on the GPU instead of fully sorted.
+- Output block checksums computed by a warp instead of one thread.
+- Pinned buffers grow by powers of two.
+- Flush compression through the GPU output path.
+
+### Campaigns
+
+| ID | Campaign | Designs | Settings | Repetitions |
+|---|---|---|---|---|
+| X1 | Isolated compaction: 32 B, 128 B, 1 KB LZ4; 128 B ZSTD; 128 B none; 128 B LZ4 with 10% deletes | native, full | 1 subcompaction (one job, one core for native) | 1 cold + 3 warm |
+| X2 | Concurrent compaction, 2.6 GiB input: 128 B LZ4 and ZSTD | native, full | 8 subcompactions on 8 cores | 1 cold + 3 warm |
+| X3 | Whole database, LZ4, closed loop, 120 s warm-up + 300 s | native, full | 4, 8, 16 cores, tuned | 2 blocks |
+| X4 | Whole database, LZ4 above and ZSTD at the bottom (`bottommost_compression`) | native, full | 4, 8 cores, tuned | 2 blocks |
+| X5 | Open-loop tail latency, LZ4, 8 cores, 60 s warm-up + 180 s, at 430k, 600k and 770k writes/s (50%, 70% and 90% of tuned native's pilot maximum) | native, full | tuned | 2 blocks |
+
+### Hypotheses
+
+- **H25 (host CPU per compacted GiB, X1):** full offload uses at least 8× less than native
+  for 128 B LZ4, and at least 12× less for 32 B LZ4 and for 128 B ZSTD.
+- **H26 (time of one compaction, X1):** at least 7× faster than native's single-threaded
+  job for 128 B LZ4, and at least 10× for 32 B LZ4 and 128 B ZSTD.
+- **H27 (cores one GPU replaces, X2):** the GPU's concurrent compaction throughput equals
+  that of at least 12 native cores for LZ4 and at least 15 for ZSTD (GPU GiB/s divided by
+  native GiB/s per core from X1).
+- **H28 (whole database, X3/X4):** at 8 cores, full offload gives at least 1.4× throughput
+  and at least 1.6× less CPU per write than native, for both codec setups.
+- **H29 (tail latency, X5):** at 430k and 600k writes/s, full offload's p99.9 write latency
+  is at least 2.5× lower than native's.
+
+Not claimed: a 10× whole-database gain. With compaction removed from the CPU, RocksDB's
+own write path (memtable insert and write queue, about 2.3 µs per write) and flush remain,
+which bounds the whole-database gain near 2×. The order-of-magnitude results are about
+compaction itself (H25–H27).
+
 ## Changes after data collection
 
 - **Shared GPU, first attempt (discarded, kept as `shared-gpu-attempt1`):** all
