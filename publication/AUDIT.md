@@ -48,6 +48,21 @@ everything (PREREGISTRATION.md, "Methodology v2").
 | 22 | **Leaked monitors.** Interrupted campaigns left `perf stat` and `iostat` running for days. | Four orphaned processes on Zyra (stopped). | The campaign driver stops its monitors in a `finally` block. |
 | 23 | **Fixed-size runs and memory-only storage.** `lsm_compaction_bench` and YCSB ran a fixed amount of work; every whole-database run used `/dev/shm`. | On `/dev/shm` a 32-core native run writes about 540 MiB/s through system calls, more than a SATA SSD sustains, so real disks may move the bottleneck. | `lsm_compaction_bench --duration`, YCSB `maxexecutiontime`, and SATA SSD runs with direct I/O (V4). |
 
+## Problems found while pushing compaction further (methodology v3)
+
+Profiling only the measured compaction (`perf` switched on and off through a control FIFO by
+`lsm_compaction_bench`, with DWARF call stacks) showed where the remaining host time went.
+
+| # | Problem | Evidence | Fix |
+|---|---|---|---|
+| 24 | **Profiles mixed setup and measurement.** Whole-run profiles were dominated by building the input and by the setup's native compactions. | An early profile blamed CPU LZ4 decompression (43% of the compaction thread), which came from the setup, not the measured job. | `LSM_PERF_CTL`: profiling only around the measured `CompactRange`. |
+| 25 | **tmpfs preallocation.** RocksDB's `allow_fallocate` makes tmpfs zero every page before it is written. | 29% of our host CPU in a warm job; native pays the same cost (about 0.6 CPU-s/GiB). | `allow_fallocate = false` for every design in v3 (a RocksDB option). |
+| 26 | **Block-by-block output.** Each 4 KiB built block was copied into RocksDB's write buffer and written with its trailer separately. | 19% of host CPU (appends, copies). | Blocks carry a trailer gap; runs of blocks are written with one write. Files differ from the block-by-block path only in per-file random bytes. |
+| 27 | **Filters on the CPU.** Every key hash was copied into RocksDB's entry queue and the bits set on the CPU. | 20% of host CPU after item 26. | The filter builder keeps a pointer to each file's hashes; the GPU sets the bits; sizing and metadata stay RocksDB's. |
+| 28 | **GPU time.** A full comparison sort of entries that already arrive as sorted runs, and one thread per block computing output checksums. | Sort 220 ms and checksums 50 ms of 743 ms of kernel time per 1.3 GiB. | Pairwise merge of runs (28 ms); warp-parallel CRC32C. The remaining limit is nvCOMP's LZ4 compressor (about half of kernel time). |
+| 29 | **Pinned allocations blocked compactions.** Each growth of the pinned buffer pool (600–990 MiB) took 0.4–0.6 s inside a compaction. | `LSM_TRACE_PINNED` timestamps. | Buffers grow to powers of two, so a few allocations cover later jobs. |
+| 30 | **Intermittent CTest failure under parallel load.** `remote.replication` (and once `remote.compaction`) failed about once in five parallel runs and always passed alone. | 3 of 3 later parallel runs passed. | Not yet diagnosed; the tests are not used for measurements. |
+
 ## Data and provenance
 
 - The raw results behind every current figure and table are in

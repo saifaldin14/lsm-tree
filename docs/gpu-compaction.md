@@ -29,8 +29,11 @@ The CUDA engine ([src/gpu/cuda_merge.cu](../src/gpu/cuda_merge.cu)):
 1. reads the blocks into pinned memory with `LSM_MERGE_READ_THREADS` threads;
 2. verifies CRC32C and decodes LZ4 and ZSTD blocks (nvCOMP, one call per codec,
    in sub-batches of at most `LSM_NVCOMP_BATCH` blocks) on the device;
-3. parses every restart interval in parallel and merge-sorts all entries by
-   internal key (CUB);
+3. parses every restart interval in parallel and orders all entries by internal
+   key. Entries arrive as sorted runs (each L0 file, and each lower level, whose
+   files are ordered and disjoint), so the runs are merged pairwise with a
+   merge-path kernel rather than sorted (`LSM_GPU_FULL_SORT=1` uses a full CUB
+   merge sort instead);
 4. drops entries hidden by a newer entry of the same user key in the same
    snapshot stripe, exactly as `CompactionIterator` does without a
    `SnapshotChecker`;
@@ -47,18 +50,23 @@ The CUDA engine ([src/gpu/cuda_merge.cu](../src/gpu/cuda_merge.cu)):
    ends every 2,048 entries so the cut can run in parallel); encodes the blocks;
    compresses them with nvCOMP LZ4 or ZSTD (same block layout as RocksDB: a
    varint32 size prefix and a standard frame), keeping a compressed block only within
-   `max_compressed_bytes_per_kb`; and computes the masked CRC32C. Only the
+   `max_compressed_bytes_per_kb`; and computes the masked CRC32C (one warp per
+   block). Each block is followed by a 5-byte gap for its trailer. Only the
    finished blocks, two boundary keys per block and the filter hashes are
    copied back.
 
 With Stage 3 output, `LsmProcessBuiltOutput` replaces
-`CompactionJob::ProcessKeyValue`. Each block goes through
-`CompactionOutputs::LsmAddBuiltBlock`, which runs RocksDB's own file-cut
-decision (`ShouldStopBefore`, refactored to take a key) and cuts files only
-between user keys. `BlockBasedTableBuilder::LsmAddBuiltBlock` writes the block
-with the precomputed checksum and context modifier, defers its index entry
-until the next block's first key is known, and feeds the hashes to the
-built-in Bloom/Ribbon builder. Job statistics (input and output records, raw
+`CompactionJob::ProcessKeyValue`. `CompactionOutputs::LsmAddBuiltBlocks` runs
+RocksDB's own file-cut decision (`ShouldStopBefore`, refactored to take a key)
+for every block and cuts files only between user keys. Each run of blocks that
+stays in one file goes to `BlockBasedTableBuilder::LsmAddBuiltRun`, which writes
+every block's trailer (type byte, precomputed checksum plus the format-6 context
+modifier for its file offset) into its gap and appends the whole run with one
+write, adding index entries as it goes. The filter builder keeps a pointer to the
+file's key hashes; when the file is finished, the GPU sets the FastLocalBloom bits
+(`BuildBloomFilter`), while RocksDB still chooses the filter size, probe count and
+metadata. Without trailer gaps (or with `LSM_DISABLE_BUILT_RUNS=1`) blocks are added
+one at a time (`LsmAddBuiltBlock`), with hashes copied into the filter builder. Job statistics (input and output records, raw
 bytes, replaced records) are accounted so RocksDB's record-count verification
 holds.
 
@@ -118,19 +126,27 @@ error fails the compaction as RocksDB would.
 | `LSM_GPU_CPU_COMPRESS=1` | Earlier-design emulation: Stage 3 returns uncompressed blocks flagged `kCompressOnHost`, and RocksDB's own `WriteBlock` compresses and checksums them in the compaction thread. No effect with no compression. |
 | `LSM_CUDA_SYNC=auto\|spin\|blocking` | How host threads wait for the GPU; `blocking` is used in published runs. |
 | `LSM_MERGE_TRACE=1` | Prints per-phase timings of each merge to stderr. |
+| `LSM_DISABLE_BUILT_RUNS=1` | Adds built blocks one at a time instead of in runs. |
+| `LSM_GPU_FULL_SORT=1` | Orders merged entries with a full merge sort instead of merging sorted runs. |
+| `LSM_DISABLE_GPU_FLUSH=1` | Keeps flush compression on the CPU (by default flushes use the output-only GPU path). |
+| `LSM_TRACE_PINNED=1` | Prints every pinned host allocation (time, size, duration) to stderr. |
 | `LSM_DISABLE_JOB_PREFETCH=1` | Disables block prefetch in the batched input path. |
 
 The transform's `statistics()` (in `lsm_db` summaries and benchmark output)
 reports `merge_jobs`, `merge_fallbacks`, `merge_last_fallback`,
 `merge_built_jobs`, `merge_built_blocks`, `merge_built_bytes`,
 `merge_host_compressed_blocks`, `merge_cpu_decoded_bytes`, entry and byte
-counts, and read, device and wall time.
+counts, read, device and wall time, and GPU filter builds (`filter_builds`,
+`filter_keys`, `filter_ns`).
 
 ## Limits
 
 - One GPU per process; up to `LSM_GPU_MERGE_STREAMS` compactions use it at
   once, and further ones wait.
-- Device and pinned memory grow with the largest compaction job, per engine.
+- Device and pinned memory grow with the largest compaction job, per engine; pinned
+  buffers grow to powers of two.
+- The GPU's own throughput (about 1.4 GiB/s of LZ4 input, 0.9 GiB/s of ZSTD input on an
+  RTX A6000 with 8 concurrent subcompactions) is limited mainly by nvCOMP compression.
 - GPU ZSTD output uses nvCOMP's compression level, so compressed bytes and
   ratio differ from libzstd at RocksDB's configured level. The stored data is
   identical once decompressed.
