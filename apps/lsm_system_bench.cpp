@@ -110,6 +110,7 @@ namespace
         bool concurrent_memtable = true;
         std::uint32_t flush_jobs = 0;
         bool allow_fallocate = true;
+        std::string bottommost_compression;
         // Primary-backup replication (lsm_lab/replication.hpp): none, physical or logical, to the
         // comma-separated lsm_replica_server endpoints; logical replicas compact with replica_backend.
         std::string replication = "none";
@@ -117,6 +118,10 @@ namespace
         std::string replica_backend = "native_cpu";
         bool verify = true;
         std::uint64_t seed = 1;
+        // Open loop: operations (keys) per second over all clients, issued on a fixed schedule;
+        // latency is measured from each operation's scheduled time, so time spent behind
+        // schedule counts (no coordinated omission). 0 runs closed loop.
+        double rate = 0;
     };
 
     std::uint64_t mix64(std::uint64_t value)
@@ -275,6 +280,7 @@ namespace
         shape.concurrent_memtable = config.concurrent_memtable;
         shape.flush_jobs = config.flush_jobs;
         shape.allow_fallocate = config.allow_fallocate;
+        shape.bottommost_compression = config.bottommost_compression;
         return shape;
     }
 
@@ -477,6 +483,8 @@ namespace
         std::uint64_t window_writes = 0;
         Histogram read_latency;
         Histogram write_latency;
+        // Open loop: how far behind its schedule the client was at the end, in nanoseconds.
+        std::int64_t schedule_lag_ns = 0;
         std::string error;
         // Where sampled foreground writes spend their time (RocksDB PerfContext), nanoseconds.
         std::uint64_t sampled_writes = 0;
@@ -654,6 +662,8 @@ namespace
         else if (config.distribution != "uniform")
             throw std::invalid_argument("--distribution must be uniform or zipfian");
 
+        // Common start of every client's open-loop schedule.
+        const auto schedule_start = Clock::now() + std::chrono::milliseconds(10);
         auto worker = [&](std::uint32_t thread)
         {
             auto &state = states[thread];
@@ -724,9 +734,25 @@ namespace
                     replicate(single);
                     check(db->Write(write, &single), "delete");
                 };
+                // Open loop: this client's operations are due every per_op ns from a common start.
+                const auto per_op = config.rate > 0 ? std::chrono::nanoseconds(static_cast<std::int64_t>(
+                                                          1e9 * config.threads / config.rate))
+                                                    : std::chrono::nanoseconds(0);
+                std::uint64_t issued = 0;
+                Clock::time_point scheduled = schedule_start;
+                const auto due = [&](std::uint64_t operations) {
+                    if (config.rate <= 0)
+                        return;
+                    scheduled = schedule_start + per_op * static_cast<std::int64_t>(issued);
+                    issued += operations;
+                    if (scheduled > Clock::now())
+                        std::this_thread::sleep_until(scheduled);
+                };
+                // Start of an operation for its latency: the scheduled time in open loop.
+                const auto start_of = [&] { return config.rate > 0 ? scheduled : Clock::now(); };
                 // Timed reads: point reads and scans share the read counters and latency.
                 const auto timed_read = [&](bool measuring, auto &&body) {
-                    const auto begin = Clock::now();
+                    const auto begin = start_of();
                     body();
                     const auto ns = static_cast<std::uint64_t>((Clock::now() - begin).count());
                     if (measuring)
@@ -747,7 +773,14 @@ namespace
                 {
                     const auto current = phase.load(std::memory_order_relaxed);
                     if (current == 2)
+                    {
+                        if (config.rate > 0)
+                            state.schedule_lag_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                                        Clock::now() - (schedule_start + per_op * static_cast<std::int64_t>(issued)))
+                                                        .count();
                         break;
+                    }
+                    due(config.batch_size);
                     if (timeseries)
                     {
                         const auto series = thread + config.threads * pick(random);
@@ -802,7 +835,7 @@ namespace
                             heads[target] = time + 1;
                         }
                         const bool sampled = sample_begin(current == 1);
-                        const auto begin = Clock::now();
+                        const auto begin = start_of();
                         replicate(batch);
                         check(db->Write(write, &batch), "write batch");
                         const auto ns = static_cast<std::uint64_t>((Clock::now() - begin).count());
@@ -869,7 +902,7 @@ namespace
                     }
                     if (is_read)
                     {
-                        const auto begin = Clock::now();
+                        const auto begin = start_of();
                         checked_get();
                         const auto ns = static_cast<std::uint64_t>((Clock::now() - begin).count());
                         if (current == 1)
@@ -881,7 +914,7 @@ namespace
                     else if (is_rmw || is_delete)
                     {
                         const auto version = (versions[index] & ~kDeleted) + 1;
-                        const auto begin = Clock::now();
+                        const auto begin = start_of();
                         if (is_rmw)
                         {
                             checked_get();
@@ -906,7 +939,7 @@ namespace
                         const auto version = (versions[index] & ~kDeleted) + 1;
                         make_value(config, index, version, value);
                         const bool sampled = sample_begin(current == 1);
-                        const auto begin = Clock::now();
+                        const auto begin = start_of();
                         put(key, value);
                         const auto ns = static_cast<std::uint64_t>((Clock::now() - begin).count());
                         sample_end(sampled);
@@ -931,7 +964,7 @@ namespace
                             check(batch.Put(key, value), "batch put");
                         }
                         const bool sampled = sample_begin(current == 1);
-                        const auto begin = Clock::now();
+                        const auto begin = start_of();
                         replicate(batch);
                         check(db->Write(write, &batch), "write batch");
                         const auto ns = static_cast<std::uint64_t>((Clock::now() - begin).count());
@@ -1105,6 +1138,13 @@ namespace
                                     {"reads_per_second", window_reads / window_seconds},
                                     {"user_mib_per_second", user_bytes / 1048576.0 / window_seconds}}},
                     {"write_latency", writes.json()},
+                    {"open_loop", config.rate > 0 ? Json{{"rate", config.rate}, {"max_schedule_lag_ms", [&] {
+                                                             std::int64_t lag = 0;
+                                                             for (const auto &state : states)
+                                                                 lag = std::max(lag, state.schedule_lag_ns);
+                                                             return lag / 1e6;
+                                                         }()}}
+                                                  : Json(nullptr)},
                     {"read_latency", reads.json()},
                     {"process_cpu", {{"user_seconds", cpu_end.user - cpu_start.user},
                                      {"system_seconds", cpu_end.system - cpu_start.system},
@@ -1281,6 +1321,8 @@ namespace
                 config.level_multiplier = std::stod(value());
             else if (name == "--blob-min-bytes")
                 config.blob_min_bytes = static_cast<std::uint32_t>(number());
+            else if (name == "--rate")
+                config.rate = std::stod(value());
             else if (name == "--workload")
                 config.workload = value();
             else if (name == "--key-bytes-max")
@@ -1303,6 +1345,8 @@ namespace
                 config.flush_jobs = static_cast<std::uint32_t>(number());
             else if (name == "--allow-fallocate")
                 config.allow_fallocate = value() == "true";
+            else if (name == "--bottommost-compression")
+                config.bottommost_compression = value();
             else if (name == "--replication")
                 config.replication = value();
             else if (name == "--replicate-to")
@@ -1346,6 +1390,8 @@ namespace
         }
         else if (config.workload != "kv")
             throw std::invalid_argument("--workload must be kv or timeseries");
+        if (config.rate < 0 || (config.rate > 0 && config.workload != "kv"))
+            throw std::invalid_argument("--rate must be positive and needs the kv workload");
         else if (config.batch_size > 1 && (config.read_percent + config.rmw_percent + config.delete_percent + config.scan_percent) > 0)
             throw std::invalid_argument("--batch-size > 1 supports write-only runs (except timeseries)");
         if (config.threads == 0 || config.read_percent > 100 || config.duration_seconds == 0 || config.records == 0 || config.batch_size == 0 ||
@@ -1372,12 +1418,13 @@ int main(int argc, char **argv)
                             {"distribution", config.distribution}, {"zipf_theta", config.zipf_theta},
                             {"use_direct_io", config.use_direct_io}, {"l0_trigger", config.l0_trigger},
                             {"level_multiplier", config.level_multiplier}, {"blob_min_bytes", config.blob_min_bytes},
-                            {"workload", config.workload}, {"key_bytes_max", config.key_bytes_max},
+                            {"workload", config.workload}, {"rate", config.rate}, {"key_bytes_max", config.key_bytes_max},
                             {"value_bytes_max", config.value_bytes_max}, {"key_families", config.key_families},
                             {"scan_percent", config.scan_percent}, {"scan_length", config.scan_length},
                             {"retention", config.retention},
                             {"pipelined_write", config.pipelined_write}, {"concurrent_memtable", config.concurrent_memtable},
                             {"flush_jobs", config.flush_jobs}, {"allow_fallocate", config.allow_fallocate},
+                            {"bottommost_compression", config.bottommost_compression},
                             {"replication", config.replication}, {"replicate_to", config.replicate_to},
                             {"replica_backend", config.replica_backend},
                             {"warmup_seconds", config.warmup_seconds}, {"duration_seconds", config.duration_seconds},

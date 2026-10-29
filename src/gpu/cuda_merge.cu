@@ -5,6 +5,7 @@
 #include "lsm_lab/cuda_merge.hpp"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -96,6 +97,28 @@ namespace lsm_lab
             std::size_t capacity_ = 0;
         };
 
+        // LSM_TRACE_PINNED: report every pinned host allocation (time, bytes, duration) on stderr.
+        void trace_pinned(const char *what, std::size_t bytes, std::chrono::steady_clock::time_point started)
+        {
+            static const bool enabled = std::getenv("LSM_TRACE_PINNED") != nullptr;
+            if (!enabled)
+                return;
+            const auto now = std::chrono::system_clock::now().time_since_epoch();
+            std::fprintf(stderr, "lsm_pinned %s unix=%.3f bytes=%zu ms=%.1f\n", what,
+                         std::chrono::duration<double>(now).count(), bytes,
+                         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count());
+        }
+
+        // Pinned allocations are slow (about 0.6 ms per MiB) and block the calling compaction, so
+        // pinned buffers grow to the next power of two: a few allocations cover every later job.
+        std::size_t pinned_capacity(std::size_t bytes)
+        {
+            std::size_t capacity = 1ULL << 20;
+            while (capacity < bytes)
+                capacity <<= 1;
+            return capacity;
+        }
+
         template <typename T>
         class HostArray
         {
@@ -113,13 +136,15 @@ namespace lsm_lab
                 count = std::max<std::size_t>(count, 1);
                 if (count > capacity_)
                 {
-                    const auto grown = std::max(count, capacity_ + capacity_ / 2);
+                    const auto grown = pinned_capacity(count * sizeof(T)) / sizeof(T);
                     if (data_ != nullptr)
                         cuda_ok(cudaFreeHost(data_), "cudaFreeHost");
                     data_ = nullptr;
                     capacity_ = 0;
+                    const auto started = std::chrono::steady_clock::now();
                     cuda_ok(cudaHostAlloc(reinterpret_cast<void **>(&data_), grown * sizeof(T), cudaHostAllocPortable),
                             "cudaHostAlloc");
+                    trace_pinned("array", grown * sizeof(T), started);
                     capacity_ = grown;
                 }
                 return data_;
@@ -162,9 +187,11 @@ namespace lsm_lab
                 }
                 if (pointer == nullptr)
                 {
-                    capacity = bytes + bytes / 4;
+                    capacity = pinned_capacity(bytes);
+                    const auto started = std::chrono::steady_clock::now();
                     cuda_ok(cudaHostAlloc(reinterpret_cast<void **>(&pointer), capacity, cudaHostAllocPortable),
                             "cudaHostAlloc output");
+                    trace_pinned("pool", capacity, started);
                 }
                 std::weak_ptr<PinnedPool> pool = shared_from_this();
                 return std::shared_ptr<char>(pointer, [pool, capacity](char *released) {
@@ -480,6 +507,49 @@ namespace lsm_lab
                 return load64(left_key + left_user) > load64(right_key + right_user);
             }
         };
+
+        // Entries arrive as a few sorted runs (each L0 file, and each lower level's files in key
+        // order), so they are ordered by merging runs pairwise (merge path) instead of sorting.
+        constexpr unsigned kMergeItems = 8;
+
+        // Merges sorted index ranges a and b into out; on equal keys a comes first.
+        template <typename Less>
+        __global__ void merge_pair(const std::uint32_t *a, std::uint64_t na, const std::uint32_t *b, std::uint64_t nb,
+                                   std::uint32_t *out, Less less)
+        {
+            const std::uint64_t total = na + nb;
+            const std::uint64_t diagonal = (blockIdx.x * static_cast<std::uint64_t>(blockDim.x) + threadIdx.x) * kMergeItems;
+            if (diagonal >= total)
+                return;
+            std::uint64_t low = diagonal > nb ? diagonal - nb : 0;
+            std::uint64_t high = diagonal < na ? diagonal : na;
+            while (low < high)
+            {
+                const auto middle = (low + high) / 2;
+                if (less(b[diagonal - 1 - middle], a[middle]))
+                    high = middle;
+                else
+                    low = middle + 1;
+            }
+            std::uint64_t i = low, j = diagonal - low;
+            const std::uint64_t end = total < diagonal + kMergeItems ? total : diagonal + kMergeItems;
+            for (std::uint64_t k = diagonal; k < end; ++k)
+            {
+                if (j >= nb || (i < na && !less(b[j], a[i])))
+                    out[k] = a[i++];
+                else
+                    out[k] = b[j++];
+            }
+        }
+
+        // First entry of each run: the entry offset of the first restart interval of its first block.
+        __global__ void run_starts(const std::uint64_t *first_interval, const std::uint64_t *entry_offsets,
+                                   const std::uint32_t *run_first_block, std::uint32_t runs, std::uint64_t *starts)
+        {
+            const std::uint32_t index = blockIdx.x * blockDim.x + threadIdx.x;
+            if (index < runs)
+                starts[index] = entry_offsets[first_interval[run_first_block[index]]];
+        }
 
         __device__ std::uint32_t snapshot_stripe(const std::uint64_t *snapshots, std::uint32_t count,
                                                  std::uint64_t sequence)
@@ -1066,6 +1136,79 @@ namespace lsm_lab
             contents_bytes[block] = stored + rocksdb::kBuiltTrailerGap;
         }
 
+        // CRC32C combination (as zlib's crc32_combine, reflected polynomial 0x82f63b78):
+        // kX2n[k] = x^(2^k) mod P, filled once per process (crc32c_x2n_table).
+        __constant__ std::uint32_t kX2n[32];
+
+        __host__ __device__ inline std::uint32_t crc32c_multmodp(std::uint32_t a, std::uint32_t b)
+        {
+            std::uint32_t m = 1u << 31, p = 0;
+            for (;;)
+            {
+                if (a & m)
+                {
+                    p ^= b;
+                    if ((a & (m - 1)) == 0)
+                        break;
+                }
+                m >>= 1;
+                b = (b & 1) ? (b >> 1) ^ 0x82f63b78u : b >> 1;
+            }
+            return p;
+        }
+
+        std::array<std::uint32_t, 32> crc32c_x2n_table()
+        {
+            std::array<std::uint32_t, 32> table{};
+            std::uint32_t p = 1u << 30; // x^1
+            table[0] = p;
+            for (int n = 1; n < 32; ++n)
+                table[n] = p = crc32c_multmodp(p, p);
+            return table;
+        }
+
+        __device__ std::uint32_t crc32c_x8n(std::uint64_t bytes)
+        {
+            std::uint32_t p = 1u << 31; // x^0
+            unsigned k = 3;             // x^(8 * bytes)
+            for (; bytes != 0; bytes >>= 1, ++k)
+                if (bytes & 1)
+                    p = crc32c_multmodp(kX2n[k & 31], p);
+            return p;
+        }
+
+        // CRC32C of data[0, n) computed by one full warp: each lane takes a slice, lane 0 combines
+        // them (crc(A || B) = crc(A) * x^(8|B|) xor crc(B)). The result is valid in lane 0.
+        __device__ std::uint32_t warp_crc32c(const unsigned char *data, std::uint32_t n, const std::uint32_t *table)
+        {
+            const unsigned lane = threadIdx.x & 31u;
+            const std::uint32_t slice = (n + 31) / 32;
+            const std::uint32_t begin = min(n, lane * slice);
+            const std::uint32_t end = min(n, begin + slice);
+            std::uint32_t crc = 0xffffffffu;
+            for (std::uint32_t i = begin; i < end; ++i)
+                crc = table[(crc ^ data[i]) & 0xff] ^ (crc >> 8);
+            crc = ~crc;
+            const std::uint32_t full = slice == 0 ? 0u : crc32c_x8n(slice);
+            std::uint32_t total = 0;
+            for (unsigned i = 0; i < 32; ++i)
+            {
+                const std::uint32_t part = __shfl_sync(0xffffffffu, crc, i);
+                if (lane == 0)
+                {
+                    const std::uint32_t b = min(n, i * slice);
+                    const std::uint32_t length = min(n, b + slice) - b;
+                    if (i == 0)
+                        total = part;
+                    else if (length == slice)
+                        total = crc32c_multmodp(full, total) ^ part;
+                    else if (length > 0)
+                        total = crc32c_multmodp(crc32c_x8n(length), total) ^ part;
+                }
+            }
+            return total;
+        }
+
         // One CUDA block per data block: copy the stored form, then CRC32C of
         // contents plus the compression-type byte (masked, no context modifier).
         __global__ void finalize_contents(rocksdb::CompactionBuiltBlock *built, const unsigned char *raw,
@@ -1090,15 +1233,18 @@ namespace lsm_lab
             for (std::uint32_t offset = threadIdx.x; offset < source_bytes; offset += blockDim.x)
                 out[prefix + offset] = source[offset];
             __syncthreads();
-            if (threadIdx.x != 0)
+            // The first warp computes the checksum (blockDim.x >= 32).
+            if (threadIdx.x >= 32)
                 return;
-            built[block].contents_offset = final_offset[block];
+            if (threadIdx.x == 0)
+                built[block].contents_offset = final_offset[block];
             if (info.flags & rocksdb::CompactionBuiltBlock::kCompressOnHost)
                 return;
-            std::uint32_t crc = 0xffffffffu;
-            const unsigned char *p = out;
-            for (std::uint32_t remaining = info.contents_bytes; remaining > 0; --remaining)
-                crc = tables[(crc ^ *p++) & 0xff] ^ (crc >> 8);
+            const std::uint32_t contents_crc = warp_crc32c(out, info.contents_bytes, tables);
+            if (threadIdx.x != 0)
+                return;
+            // Extend with the compression-type byte.
+            std::uint32_t crc = ~contents_crc;
             const auto type = static_cast<unsigned char>(info.compressed);
             crc = tables[(crc ^ type) & 0xff] ^ (crc >> 8);
             crc = ~crc;
@@ -1204,6 +1350,8 @@ namespace lsm_lab
                 cuda_ok(cudaMemcpy(tables_.reserve(tables.size()), tables.data(), tables.size() * sizeof(std::uint32_t),
                                    cudaMemcpyHostToDevice),
                         "copy CRC tables");
+                const auto x2n = crc32c_x2n_table();
+                cuda_ok(cudaMemcpyToSymbol(kX2n, x2n.data(), sizeof(std::uint32_t) * x2n.size()), "copy CRC combine table");
                 options_ = nvcompBatchedLZ4DecompressDefaultOpts;
                 options_.backend = NVCOMP_DECOMPRESS_BACKEND_CUDA;
                 nvcomp_ok(nvcompBatchedLZ4DecompressGetRequiredAlignments(options_, &alignments_),
@@ -1641,14 +1789,85 @@ namespace lsm_lab
                 iota<<<grid(entry_count, 256), 256, 0, stream_>>>(d_order, entry_count);
                 cuda_ok(cudaGetLastError(), "iota");
                 const InternalKeyLess less{d_entries, d_keys};
-                std::size_t sort_temp_bytes = 0;
-                cuda_ok(cub::DeviceMergeSort::SortKeys(nullptr, sort_temp_bytes, d_order,
-                                                       static_cast<std::int64_t>(entry_count), less, stream_),
-                        "merge sort temp size");
-                auto *d_sort_temp = d_sort_temp_.reserve(sort_temp_bytes);
-                cuda_ok(cub::DeviceMergeSort::SortKeys(d_sort_temp, sort_temp_bytes, d_order,
-                                                       static_cast<std::int64_t>(entry_count), less, stream_),
-                        "merge sort");
+                // Sorted runs: each level-0 file, and each other level (its files are ordered and disjoint).
+                std::vector<std::uint32_t> run_first_block;
+                {
+                    std::uint32_t block = 0;
+                    int previous_level = -1;
+                    for (const auto &file : request.files)
+                    {
+                        if (file.level == 0 || file.level != previous_level)
+                            run_first_block.push_back(block);
+                        previous_level = file.level;
+                        block += static_cast<std::uint32_t>(file.blocks.size());
+                    }
+                }
+                static const bool full_sort = std::getenv("LSM_GPU_FULL_SORT") != nullptr;
+                if (full_sort)
+                {
+                    std::size_t sort_temp_bytes = 0;
+                    cuda_ok(cub::DeviceMergeSort::SortKeys(nullptr, sort_temp_bytes, d_order,
+                                                           static_cast<std::int64_t>(entry_count), less, stream_),
+                            "merge sort temp size");
+                    auto *d_sort_temp = d_sort_temp_.reserve(sort_temp_bytes);
+                    cuda_ok(cub::DeviceMergeSort::SortKeys(d_sort_temp, sort_temp_bytes, d_order,
+                                                           static_cast<std::int64_t>(entry_count), less, stream_),
+                            "merge sort");
+                }
+                else if (run_first_block.size() > 1)
+                {
+                    const auto runs = static_cast<std::uint32_t>(run_first_block.size());
+                    auto *h_runs = h_run_blocks_.reserve(runs);
+                    std::memcpy(h_runs, run_first_block.data(), runs * sizeof(std::uint32_t));
+                    auto *d_runs = d_run_blocks_.reserve(runs);
+                    auto *d_starts = d_run_starts_.reserve(runs);
+                    cuda_ok(cudaMemcpyAsync(d_runs, h_runs, runs * sizeof(std::uint32_t), cudaMemcpyHostToDevice, stream_),
+                            "upload runs");
+                    run_starts<<<grid(runs, 128), 128, 0, stream_>>>(d_first_interval, d_entry_offsets, d_runs, runs,
+                                                                    d_starts);
+                    cuda_ok(cudaGetLastError(), "run_starts");
+                    auto *h_starts = h_run_starts_.reserve(runs);
+                    cuda_ok(cudaMemcpyAsync(h_starts, d_starts, runs * sizeof(std::uint64_t), cudaMemcpyDeviceToHost,
+                                            stream_),
+                            "download run starts");
+                    cuda_ok(cudaStreamSynchronize(stream_), "synchronize run starts");
+                    std::vector<std::uint64_t> bounds_of(h_starts, h_starts + runs);
+                    bounds_of.push_back(entry_count);
+                    std::uint32_t *source = d_order;
+                    std::uint32_t *target = d_order_spare_.reserve(entry_count);
+                    while (bounds_of.size() > 2)
+                    {
+                        std::vector<std::uint64_t> merged{bounds_of.front()};
+                        for (std::size_t run = 0; run + 1 < bounds_of.size(); run += 2)
+                        {
+                            const auto begin = bounds_of[run], middle = bounds_of[run + 1];
+                            const auto end = run + 2 < bounds_of.size() ? bounds_of[run + 2] : middle;
+                            if (end > begin)
+                            {
+                                if (end == middle)
+                                    cuda_ok(cudaMemcpyAsync(target + begin, source + begin,
+                                                            (end - begin) * sizeof(std::uint32_t),
+                                                            cudaMemcpyDeviceToDevice, stream_),
+                                            "copy run");
+                                else
+                                {
+                                    const auto threads = (end - begin + kMergeItems - 1) / kMergeItems;
+                                    merge_pair<<<static_cast<unsigned>((threads + 255) / 256), 256, 0, stream_>>>(
+                                        source + begin, middle - begin, source + middle, end - middle, target + begin,
+                                        less);
+                                    cuda_ok(cudaGetLastError(), "merge_pair");
+                                }
+                            }
+                            merged.push_back(end);
+                        }
+                        bounds_of = std::move(merged);
+                        std::swap(source, target);
+                    }
+                    if (source != d_order)
+                        cuda_ok(cudaMemcpyAsync(d_order, source, entry_count * sizeof(std::uint32_t),
+                                                cudaMemcpyDeviceToDevice, stream_),
+                                "copy merged order");
+                }
                 rocksdb::CompactionMergeDropped dropped;
                 std::uint64_t sorted_count = entry_count;
                 if (request.drop_hidden)
@@ -2195,7 +2414,10 @@ namespace lsm_lab
             HostArray<void *> h_destinations_;
             HostArray<std::size_t> h_input_sizes_, h_output_sizes_, h_actual_sizes_;
             HostArray<std::uint32_t> h_compressed_index_, h_crc_status_, h_u32_;
-            HostArray<std::uint64_t> h_staged_offsets_, h_scalars_;
+            HostArray<std::uint64_t> h_staged_offsets_, h_scalars_, h_run_starts_;
+            HostArray<std::uint32_t> h_run_blocks_;
+            DeviceArray<std::uint32_t> d_order_spare_, d_run_blocks_;
+            DeviceArray<std::uint64_t> d_run_starts_;
             HostArray<nvcompStatus_t> h_statuses_;
             HostArray<unsigned char> h_bounds_;
             DeviceArray<unsigned char> d_serialized_, d_decoded_, d_staged_, d_bounds_, d_keys_, d_packed_;

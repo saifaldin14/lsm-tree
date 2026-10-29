@@ -47,6 +47,9 @@ namespace lsm_lab
         std::uint32_t flush_jobs = 0;
         // RocksDB's allow_fallocate (preallocation; on tmpfs it zeroes pages before they are written).
         bool allow_fallocate = true;
+        // Codec of the bottommost level ("" = same as compression), e.g. LZ4 above and ZSTD at
+        // the bottom, as commonly deployed.
+        std::string bottommost_compression;
     };
 
     NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(DbShape, write_buffer_bytes, max_write_buffer_number,
@@ -54,7 +57,8 @@ namespace lsm_lab
                                                     subcompactions, levels, l0_trigger, level_multiplier,
                                                     use_direct_io, adaptive_yield, compression, block_bytes,
                                                     block_cache_bytes, blob_min_bytes, pipelined_write,
-                                                    concurrent_memtable, flush_jobs, allow_fallocate)
+                                                    concurrent_memtable, flush_jobs, allow_fallocate,
+                                                    bottommost_compression)
 
     inline rocksdb::Options make_db_options(const DbShape &shape, const std::shared_ptr<BatchTransform> &transform)
     {
@@ -100,6 +104,14 @@ namespace lsm_lab
             options.compression = rocksdb::kNoCompression;
         else
             throw std::invalid_argument("compression must be lz4, zstd or none");
+        if (shape.bottommost_compression == "zstd")
+            options.bottommost_compression = rocksdb::kZSTD;
+        else if (shape.bottommost_compression == "lz4")
+            options.bottommost_compression = rocksdb::kLZ4Compression;
+        else if (shape.bottommost_compression == "none")
+            options.bottommost_compression = rocksdb::kNoCompression;
+        else if (!shape.bottommost_compression.empty())
+            throw std::invalid_argument("bottommost compression must be lz4, zstd or none");
         rocksdb::BlockBasedTableOptions table;
         table.format_version = 6;
         table.checksum = rocksdb::kCRC32c;

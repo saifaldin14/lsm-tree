@@ -23,7 +23,9 @@ bool BlockBasedTableBuilder::QueueCompactionOutput(
     const auto &transform = r->table_options.compaction_block_transform;
     const bool eligible =
         std::getenv("LSM_DISABLE_GPU_OUTPUT") == nullptr && transform &&
-        r->reason == TableFileCreationReason::kCompaction &&
+        // Flushes use the same path (LSM_DISABLE_GPU_FLUSH keeps their compression on the CPU).
+        (r->reason == TableFileCreationReason::kCompaction ||
+         (r->reason == TableFileCreationReason::kFlush && std::getenv("LSM_DISABLE_GPU_FLUSH") == nullptr)) &&
         !r->IsParallelCompressionActive() && uncompressed.size() >= LsmGpuOutputMinBlockBytes() &&
         // The output-only GPU path produces LZ4 blocks.
         r->basic_compressor && r->basic_compressor->GetPreferredCompressionType() == kLZ4Compression &&
