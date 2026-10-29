@@ -18,7 +18,7 @@ ssd=${SSD:-/tmp/$USER/v2-ssd}
 blocks=${BLOCKS:-3}
 only=${ONLY:-headline stream metadata timeseries mixgraph ssd loopback}
 bench=$LSM_BUILD_DIR/lsm_system_bench
-mkdir -p "$out" "$shm" "$ssd"
+mkdir -p "$out" "$shm/scratch" "$ssd/scratch"
 
 wanted() { [[ " $only " == *" $1 "* ]]; }
 

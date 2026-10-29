@@ -298,6 +298,16 @@ throttled seconds, and GPU fallbacks.
   remote GPU server gives higher throughput than a remote CPU server on the same 8 cores
   (V6).
 
+### Outcomes so far (v2)
+
+- **V5 / H23 (replication with parallel broadcast): not supported.** 18 runs, all backups
+  identical to the primary. Time spent replicating fell 35% (batched, compact once) and 10%
+  (single writes), but throughput did not change: compact once with single writes ran at 46k
+  writes/s against 74k for per-replica compaction (38% slower; 25% in R6). Physical
+  replication ships each WAL append inside RocksDB's serial write path, so only one round
+  trip is in flight whether backups are contacted in parallel or not. Cluster CPU per write
+  is unchanged: 3.3× less than per-replica for batched writes, 1.7× less for single writes.
+
 The pilots that motivated v2 (`perf` profiles, subcompaction checks, small MixGraph and
 workload runs) are not results and are not reported as such. Analysis, statistics and
 exclusions are as in the main plan.

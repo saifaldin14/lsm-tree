@@ -169,6 +169,7 @@ def run_trial(out: Path, golden: Path, scratch: Path, trial: dict, common: dict,
     copy_started = time.time()
     for instance in range(instances):
         database = Path(trial.get("scratch", scratch)) / f"trial-db-{instance}"
+        database.parent.mkdir(parents=True, exist_ok=True)
         shutil.rmtree(database, ignore_errors=True)
         # Reflink copies are instant on btrfs/XFS; tmpfs falls back to a full copy.
         subprocess.run(["cp", "-a", "--reflink=auto", str(golden), str(database)], check=True)
