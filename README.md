@@ -434,8 +434,11 @@ compaction server; (c, f) replication traffic per operation. Medians of 5 runs.
   catch-up compaction.
 - **Edge cases:** the differential tests cover snapshots, subcompactions,
   uncompressed data, keys up to 200 bytes, values up to 5 KB, and deletes
-  (which correctly fall back to the merge-only path). The GPU code passes
-  `compute-sanitizer` with no errors.
+  (which correctly fall back to the merge-only path). The GPU code, including run
+  merging, warp checksums and GPU Bloom filters, passes `compute-sanitizer` memcheck,
+  racecheck and synccheck with no errors or hazards.
+- **Built output in runs:** SST files written in runs differ from files written block by
+  block only in per-file random bytes (session IDs and checksum context).
 
 ## Repository
 

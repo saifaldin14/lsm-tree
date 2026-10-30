@@ -64,12 +64,17 @@ def gib_per_second(entry):
     return [g / w for g, w in zip(entry["gib"], entry["wall"])]
 
 
-def load_campaign(name):
-    """{(design, key): [result, ...]} for a system_campaign.py directory; key is cores or rate."""
-    path = V3 / name / "results.jsonl"
-    if not path.exists():
-        return {}
+def load_campaign(*names):
+    """{(design, key): [result, ...]} over system_campaign.py directories; key is cores or rate."""
     runs = {}
+    for name in names:
+        path = V3 / name / "results.jsonl"
+        if path.exists():
+            load_into(runs, name, path)
+    return runs
+
+
+def load_into(runs, name, path):
     for line in path.read_text().splitlines():
         record = json.loads(line)
         if record.get("exit_code") != 0:
@@ -80,7 +85,6 @@ def load_campaign(name):
         flags = record["flags"]
         key = flags.get("rate") or record["trial"]["cores"]
         runs.setdefault((DESIGN[record["trial"]["design"]], key), []).append(result)
-    return runs
 
 
 def window_ops(result):
@@ -221,7 +225,88 @@ def figure_tail(openloop):
     save(fig, "fig20_v3_tail")
 
 
-def write_summary(isolated, headline, bottom, openloop):
+def latency_ms(results, kind, key):
+    values = [r[kind][key] for r in results if r[kind].get("count")]
+    return median(values) / 1e6 if values else float("nan")
+
+
+def workload_lines():
+    lines = []
+    for name, title in (("stream", "stream-processing state store"), ("metadata", "storage metadata"),
+                        ("timeseries", "time series")):
+        runs = load_campaign(f"v3-{name}")
+        if not runs:
+            continue
+        lines += ["", f"## X6: {title} workload (docs/workloads.md)", "",
+                  "| Cores | Design | Runs | k ops/s | vs native | CPU µs/op | vs native | p99 write ms | p99 read ms |",
+                  "|---|---|---|---|---|---|---|---|---|"]
+        for cores in (8, 16):
+            base = runs.get((NATIVE, cores))
+            for design in (NATIVE, FULL):
+                results = runs.get((design, cores))
+                if not results or not base:
+                    continue
+                ops, cpu = median([window_ops(r) for r in results]), median([cpu_us(r) for r in results])
+                bops, bcpu = median([window_ops(r) for r in base]), median([cpu_us(r) for r in base])
+                lines.append(f"| {cores} | {design} | {len(results)} | {ops / 1e3:.0f} | {ops / bops:.2f}× | {cpu:.2f} | "
+                             f"{bcpu / cpu:.2f}× | {latency_ms(results, 'write_latency', 'p99_ns'):.2f} | "
+                             f"{latency_ms(results, 'read_latency', 'p99_ns'):.2f} |")
+    return lines
+
+
+def mixgraph_lines():
+    directory = V3 / "v3-mixgraph"
+    if not directory.exists():
+        return []
+    import re
+    runs = {}
+    for path in sorted(directory.glob("*-c*-r*.txt")):
+        workload, mode, cores, _ = re.match(r"(.+)-(native_cpu|cuda_merge)-c(\d+)-r(\d+)\.txt", path.name).groups()
+        text = path.read_text()
+        ops = re.search(r"^mixgraph\s*:.*?([0-9.]+) ops/sec", text, re.M)
+        cpu = re.search(r"lsm_cpu user_s=([0-9.]+) system_s=([0-9.]+) wall_s=([0-9.]+)", text)
+        if not ops or not cpu:
+            continue
+        rate = float(ops.group(1))
+        runs.setdefault((workload, int(cores), DESIGN[mode]), []).append(
+            (rate, (float(cpu.group(1)) + float(cpu.group(2))) / float(cpu.group(3))))
+    lines = ["", "## X7: MixGraph (Meta's ZippyDB model, db_bench)", "",
+             "CPU per operation is the whole process's CPU time over the whole run (including database open), divided by "
+             "operations.", "",
+             "| Workload | Cores | Design | Runs | k ops/s | vs native | Cores busy |", "|---|---|---|---|---|---|---|"]
+    for (workload, cores, design) in sorted(runs, key=lambda k: (k[0], k[1], k[2] != NATIVE)):
+        values = runs[(workload, cores, design)]
+        base = runs.get((workload, cores, NATIVE))
+        ops = median([v[0] for v in values])
+        lines.append(f"| {workload} | {cores} | {design} | {len(values)} | {ops / 1e3:.0f} | "
+                     f"{ops / median([v[0] for v in base]):.2f}× | {median([v[1] for v in values]):.2f} |"
+                     if base else f"| {workload} | {cores} | {design} | {len(values)} | {ops / 1e3:.0f} | - | - |")
+    return lines
+
+
+def ssd_lines():
+    runs = load_campaign("v3-ssd")
+    if not runs:
+        return []
+    lines = ["", "## X8: SATA SSD with direct I/O, LZ4", "",
+             "| Cores | Design | Runs | M writes/s | vs native | CPU µs/write | Device write MiB/s | Device utilisation | p99.9 ms |",
+             "|---|---|---|---|---|---|---|---|---|"]
+    for cores in (8, 16):
+        base = runs.get((NATIVE, cores))
+        for design in (NATIVE, FULL):
+            results = runs.get((design, cores))
+            if not results or not base:
+                continue
+            device = [r["accounting"]["window"].get("device") or {} for r in results]
+            lines.append(f"| {cores} | {design} | {len(results)} | {median([window_ops(r) for r in results]) / 1e6:.3f} | "
+                         f"{median([window_ops(r) for r in results]) / median([window_ops(r) for r in base]):.2f}× | "
+                         f"{median([cpu_us(r) for r in results]):.2f} | {median([d.get('write_mib_s', float('nan')) for d in device]):.0f} | "
+                         f"{100 * median([d.get('utilisation', float('nan')) for d in device]):.0f}% | "
+                         f"{median([r['write_latency']['p999_ns'] for r in results]) / 1e6:.1f} |")
+    return lines
+
+
+def write_summary(isolated, headline, bottom, openloop, openloop_original=None, extra_lines=()):
     lines = ["# v3 results", "", "Generated by `make_figures_v3.py` from `data/v3/`. Medians over warm repetitions "
              "(isolated) or blocks (whole database); every run matched native RocksDB.", ""]
     lines += ["## X1: isolated compaction, one job", "",
@@ -265,8 +350,14 @@ def write_summary(isolated, headline, bottom, openloop):
                              f"{bcpu / cpu:.2f}× | {median([r['ingest_and_compact']['ops_per_second'] for r in results]) / 1e6:.3f} | "
                              f"{median([r['write_latency']['p999_ns'] for r in results]) / 1e6:.1f} | "
                              f"{100 * median([r['stall_fraction'] for r in results]):.1f} |")
-    if openloop:
-        lines += ["", "## X5: open-loop write latency, 8 cores, LZ4", "",
+    first = ("X5: open-loop write latency, 8 cores, LZ4 (re-run with pinned buffers allocated at open)"
+             if openloop_original else "X5: open-loop write latency, 8 cores, LZ4 (first run, before the fix)")
+    for title, runs in ((first, openloop),
+                        ("X5 as first run (before the fix; one of two runs at 430k and 600k paused)", openloop_original)):
+        if not runs:
+            continue
+        openloop = runs
+        lines += ["", f"## {title}", "",
                   "| Offered k writes/s | Design | Runs | Achieved k writes/s | Max lag ms | p50 ms | p99 ms | p99.9 ms | CPU µs/write |",
                   "|---|---|---|---|---|---|---|---|---|"]
         for rate in sorted({r for _, r in openloop}):
@@ -278,13 +369,19 @@ def write_summary(isolated, headline, bottom, openloop):
                 lines.append(f"| {rate / 1000:.0f} | {design} | {len(results)} | {median([window_ops(r) for r in results]) / 1000:.0f} | "
                              f"{max(r['open_loop']['max_schedule_lag_ms'] for r in results):.1f} | {pct('p50_ns'):.2f} | "
                              f"{pct('p99_ns'):.2f} | {pct('p999_ns'):.2f} | {median([cpu_us(r) for r in results]):.2f} |")
+    lines += extra_lines
     (V3 / "summary.md").write_text("\n".join(lines) + "\n")
 
 
 if __name__ == "__main__":
     isolated = {tag: load_isolated(tag) for tag, _ in X1 + X2}
-    headline, bottom, openloop = load_campaign("v3-headline"), load_campaign("v3-bottomzstd"), load_campaign("v3-openloop")
-    write_summary(isolated, headline, bottom, openloop)
+    headline = load_campaign("v3-headline", "v3-headline-more")
+    bottom = load_campaign("v3-bottomzstd", "v3-bottomzstd-more")
+    original = load_campaign("v3-openloop")
+    fixed = load_campaign("v3-openloop-fixed")
+    openloop = fixed or original
+    write_summary(isolated, headline, bottom, openloop, original if fixed else None,
+                  workload_lines() + mixgraph_lines() + ssd_lines())
     figure_compaction(isolated)
     figure_cores(isolated)
     figure_database(headline, bottom)
