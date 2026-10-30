@@ -390,6 +390,24 @@ online read checks and full verification). Data in `data/v3/`, numbers in
 - **Not pre-registered:** in the 16-core closed-loop runs, p99.9 write latency was 9.2 ms
   against 209.7 ms for native.
 
+### Additions after the v3 outcomes (registered before these runs)
+
+- **Deviation: more repetitions.** X3, X4 and X5 had 2 blocks each. Three more blocks of
+  each are run (`*-more`, schedule seed 2) with the same build and settings. Outcomes are
+  reported over all 5 blocks, and over the first 2 as registered; a hypothesis is called
+  supported only if it holds in both.
+- **The pause (H29).** The benchmark now records where every thread sleeps whenever no
+  write completes for 150 ms. If a cause is found and fixed, the fix is described here and
+  X5 is re-run in full with the fixed build; the original X5 runs stay reported.
+- **X6, workloads** (stream, metadata, time series; `docs/workloads.md`): 8 and 16 cores,
+  60 s warm-up + 300 s, 3 blocks; tests H20 as stated in v2.
+- **X7, MixGraph** (`zippydb`, `zippydb_write`, `lsm_db_bench`): 8 and 16 cores, 300 s,
+  3 repetitions; tests H21 as stated in v2. `db_bench` keeps RocksDB's default
+  `allow_fallocate` for both designs.
+- **X8, SATA SSD with direct I/O:** LZ4, 8 and 16 cores, 3 blocks; tests H22 as stated in
+  v2. Our path still reads compaction input with buffered reads (`docs/gpu-compaction.md`,
+  Limits).
+
 ## Changes after data collection
 
 - **Shared GPU, first attempt (discarded, kept as `shared-gpu-attempt1`):** all

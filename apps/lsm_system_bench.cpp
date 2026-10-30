@@ -39,6 +39,8 @@
 #include <condition_variable>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
+#include <map>
 #include <iostream>
 #include <mutex>
 #include <numeric>
@@ -335,6 +337,30 @@ namespace
     }
 
     // Every key must be present exactly once with the version its owner last wrote.
+    // Where every thread of this process is at this moment: counts of (thread name, state,
+    // kernel function it sleeps in) from /proc/self/task (Linux; empty elsewhere).
+    Json thread_snapshot()
+    {
+        std::map<std::string, int> counts;
+#if defined(__linux__)
+        for (const auto &task : fs::directory_iterator("/proc/self/task"))
+        {
+            std::ifstream comm_file(task.path() / "comm"), stat_file(task.path() / "stat"), wchan_file(task.path() / "wchan");
+            std::string comm, stat, wchan;
+            std::getline(comm_file, comm);
+            std::getline(stat_file, stat);
+            std::getline(wchan_file, wchan);
+            const auto close = stat.rfind(')');
+            const char state = close != std::string::npos && close + 2 < stat.size() ? stat[close + 2] : '?';
+            ++counts[comm + " " + state + " " + (wchan.empty() || wchan == "0" ? "-" : wchan)];
+        }
+#endif
+        Json result = Json::object();
+        for (const auto &[key, count] : counts)
+            result[key] = count;
+        return result;
+    }
+
     Json verify_all(rocksdb::DB *db, const Config &config, const std::vector<std::uint32_t> &versions)
     {
         const auto started = Clock::now();
@@ -1021,6 +1047,43 @@ namespace
         std::vector<std::thread> workers;
         for (std::uint32_t thread = 0; thread < config.threads; ++thread)
             workers.emplace_back(worker, thread);
+        // Watchdog: when no operation completes for 150 ms, record where every thread is (a few
+        // snapshots per pause), to explain rare whole-process pauses.
+        Json pauses = Json::array();
+        std::thread watchdog([&] {
+            constexpr auto kPause = std::chrono::milliseconds(150);
+            auto last_ops = total_ops();
+            auto last_progress = Clock::now();
+            bool in_pause = false;
+            while (phase.load() != 2)
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                const auto ops = total_ops();
+                const auto now = Clock::now();
+                if (ops != last_ops)
+                {
+                    if (in_pause && !pauses.empty())
+                        pauses.back()["seconds"] = std::chrono::duration<double>(now - last_progress).count();
+                    last_ops = ops;
+                    last_progress = now;
+                    in_pause = false;
+                    continue;
+                }
+                if (!in_pause && now - last_progress >= kPause && pauses.size() < 8)
+                {
+                    in_pause = true;
+                    Json pause{{"start_unix", unix_seconds() - std::chrono::duration<double>(now - last_progress).count()},
+                               {"phase", phase.load() == 1 ? "measurement" : "warmup"},
+                               {"snapshots", Json::array()}};
+                    for (int snapshot = 0; snapshot < 3 && total_ops() == last_ops; ++snapshot)
+                    {
+                        pause["snapshots"].push_back(thread_snapshot());
+                        std::this_thread::sleep_for(std::chrono::milliseconds(40));
+                    }
+                    pauses.push_back(std::move(pause));
+                }
+            }
+        });
 
         Json timeline = Json::array();
         std::uint64_t previous_ops = 0;
@@ -1085,6 +1148,7 @@ namespace
         phase.store(2);
         for (auto &thread : workers)
             thread.join();
+        watchdog.join();
         const auto workers_end = Clock::now();
         const auto all_ops = total_ops();
         for (const auto &state : states)
@@ -1138,6 +1202,7 @@ namespace
                                     {"reads_per_second", window_reads / window_seconds},
                                     {"user_mib_per_second", user_bytes / 1048576.0 / window_seconds}}},
                     {"write_latency", writes.json()},
+                    {"pauses", pauses},
                     {"open_loop", config.rate > 0 ? Json{{"rate", config.rate}, {"max_schedule_lag_ms", [&] {
                                                              std::int64_t lag = 0;
                                                              for (const auto &state : states)

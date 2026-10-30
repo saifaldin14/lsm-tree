@@ -16,6 +16,16 @@ CONFIGS = ROOT / "configs" / "system"
 MODES = {"native": "native_cpu", "full": "cuda_merge"}
 BATCHED = {"batch-size": 100, "disable-wal": True, "allow-fallocate": False}
 OPEN_LOOP_RATES = [430000, 600000, 770000]
+# docs/workloads.md (as v2_grids.py)
+WORKLOADS = {
+    "stream": {"key-bytes": 24, "value-bytes": 64, "value-bytes-max": 512, "distribution": "zipfian",
+               "zipf-theta": 0.99, "rmw-percent": 70, "delete-percent": 10, "disable-wal": True},
+    "metadata": {"key-bytes": 20, "key-bytes-max": 60, "value-bytes": 0, "value-bytes-max": 200,
+                 "key-families": 6, "read-percent": 25, "scan-percent": 5, "scan-length": 20,
+                 "delete-percent": 20, "distribution": "zipfian", "zipf-theta": 0.8},
+    "timeseries": {"workload": "timeseries", "retention": 1250, "value-bytes": 32, "batch-size": 100,
+                   "read-percent": 5, "scan-percent": 5, "scan-length": 60},
+}
 
 
 def write(name: str, comment: str, common: dict, trials: list[dict]) -> None:
@@ -37,6 +47,20 @@ def main() -> int:
     write("v3-bottomzstd.json", "X4: LZ4 above, ZSTD at the bottommost level, closed loop, tuned.",
           {**common, "warmup-seconds": 120, "duration-seconds": 300, "compression": "lz4"},
           [trial(d, c, {"bottommost-compression": "zstd"}, "batched") for d in MODES for c in (4, 8)])
+    for name, shape in WORKLOADS.items():
+        trials = []
+        for d in MODES:
+            for c in (8, 16):
+                flags = {**choices[(d, c)], "allow-fallocate": False}
+                # Single-operation workloads keep one client per core (more clients only queue).
+                if shape.get("batch-size", 1) == 1:
+                    flags.update({"threads": c, "adaptive-yield": True})
+                trials.append({"design": d, "mode": MODES[d], "cores": c, "writes": name, "flags": {**flags, **shape}})
+        write(f"v3-{name}.json", f"X6: {name} workload (docs/workloads.md), tuned concurrency, fallocate off.",
+              {**common, "warmup-seconds": 60, "duration-seconds": 300}, trials)
+    write("v3-ssd.json", "X8: SATA SSD with direct I/O, batched writes, LZ4, tuned, fallocate off.",
+          {**common, "warmup-seconds": 120, "duration-seconds": 300, "use-direct-io": True},
+          [trial(d, c, {}, "batched") for d in MODES for c in (8, 16)])
     write("v3-openloop.json", "X5: open loop at fixed rates (keys/s), LZ4, 8 cores, tuned.",
           {**common, "warmup-seconds": 60, "duration-seconds": 180},
           [trial(d, 8, {"rate": rate}, f"open-{rate}") for d in MODES for rate in OPEN_LOOP_RATES])
