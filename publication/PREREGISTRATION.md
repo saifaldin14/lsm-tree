@@ -360,6 +360,36 @@ own write path (memtable insert and write queue, about 2.3 µs per write) and fl
 which bounds the whole-database gain near 2×. The order-of-magnitude results are about
 compaction itself (H25–H27).
 
+### Outcomes (v3)
+
+Every run matched native RocksDB (isolated: version and lookup digests; whole database:
+online read checks and full verification). Data in `data/v3/`, numbers in
+`data/v3/summary.md`.
+
+- **H25 supported.** Host CPU per GiB of input: 8.8× less for 128 B LZ4 (10.58 against
+  1.21 CPU-s/GiB), 14.2× for 32 B LZ4, 15.5× for 128 B ZSTD. Also 4.4× for 1 KB LZ4,
+  4.3× with no compression and 8.9× with 10% deletes (not pre-registered).
+- **H26 supported.** One compaction job: 8.0× faster for 128 B LZ4 (6.96 against
+  0.87 s), 11.7× for 32 B LZ4, 10.7× for 128 B ZSTD.
+- **H27 supported.** With 8 subcompactions the GPU compacted 1.42 GiB/s of LZ4 input
+  (using 2.0 host cores) and 0.89 GiB/s of ZSTD input (1.3 cores): the throughput of
+  15.0 and 17.7 native cores.
+- **H28 supported.** At 8 cores: 1.51× throughput and 1.90× less CPU per write with LZ4;
+  1.67× and 2.23× with LZ4 above and ZSTD at the bottom. At 4 and 16 cores: 1.53× and
+  1.79× throughput with LZ4, 1.64× at 4 cores with ZSTD at the bottom.
+- **H29 not supported.** p99.9 write latency (median of 2 runs) at 430k writes/s: 73.0 ms
+  for full offload against 6.0 ms for native; at 600k: 290.5 against 44.0 ms.
+  - One run at each of these rates had a p99.9 of 3.4 and 10.5 ms. The other run had a
+    single 0.3–0.6 s pause of all writers, which by itself sets the p99.9.
+  - During the pauses RocksDB recorded no write stall, and other users' load was below
+    1% of the machine.
+  - A post-hoc diagnostic (2 more runs at 600k with pinned allocations traced) had no
+    pause (p99.9 12.6 and 9.4 ms), so the cause is not yet known.
+  - p99 was lower at every rate (1.9 against 2.5 ms; 3.9 against 15.7; 14.7 against
+    102.8). At 770k writes/s (90% of native's maximum) p99.9 was 39.3 against 172.0 ms.
+- **Not pre-registered:** in the 16-core closed-loop runs, p99.9 write latency was 9.2 ms
+  against 209.7 ms for native.
+
 ## Changes after data collection
 
 - **Shared GPU, first attempt (discarded, kept as `shared-gpu-attempt1`):** all

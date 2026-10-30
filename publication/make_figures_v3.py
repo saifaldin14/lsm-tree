@@ -151,7 +151,7 @@ def figure_cores(isolated):
         bar(ax, [index + width / 2], [gpu], width * 0.95, FULL)
         ax.annotate(f"{gpu:.2f}\n(GPU + {gpu_cores:.1f} cores)", (index + width / 2, gpu), xytext=(0, 1.5),
                     textcoords="offset points", ha="center", va="bottom", fontsize=5.6, color=INK)
-        ratio_label(ax, index, max(gpu, native8) * 1.32, f"= {gpu / per_core:.0f} native cores")
+        ratio_label(ax, index, max(gpu, native8) * 1.32, f"GPU matches {gpu / per_core:.0f} native cores")
         del rects
     ax.set_xticks(range(len(rows)), [r[0] for r in rows])
     ax.set_ylim(0, max(max(r[2], r[3]) for r in rows) * 1.6)
@@ -163,8 +163,8 @@ def figure_cores(isolated):
 
 def figure_database(headline, bottom):
     """Whole database: (a) throughput and (b) CPU per write, by cores and codec setup."""
-    groups = [(f"LZ4\n{c} cores", headline, c) for c in (4, 8, 16)] + \
-             [(f"LZ4 + ZSTD bottom\n{c} cores", bottom, c) for c in (4, 8)]
+    groups = [(f"{c} cores\nLZ4", headline, c) for c in (4, 8, 16)] + \
+             [(f"{c} cores\nZSTD bottom", bottom, c) for c in (4, 8)]
     groups = [g for g in groups if g[1].get((NATIVE, g[2])) and g[1].get((FULL, g[2]))]
     if not groups:
         return
@@ -181,10 +181,10 @@ def figure_database(headline, bottom):
                 ax.annotate(fmt.format(value), (index + offset, value), xytext=(0, 1.5), textcoords="offset points",
                             ha="center", va="bottom", fontsize=5.6, color=INK)
             better = ours / native if letter == "a" else native / ours
-            ratio_label(ax, index, max(native, ours) * 1.1, f"{better:.2f}×")
+            ratio_label(ax, index, max(native, ours) * 1.17, f"{better:.2f}×")
         ax.set_xticks(range(len(groups)), [g[0] for g in groups], fontsize=6.4)
         top = max(max(median([metric(r) for r in runs[(d, c)]]) * scale for d in (NATIVE, FULL)) for _, runs, c in groups)
-        ax.set_ylim(0, top * 1.3)
+        ax.set_ylim(0, top * 1.38)
         finish_axis(ax, ylabel)
         panel_label(ax, letter)
     fig.tight_layout(w_pad=2.5, rect=(0, 0, 1, 0.87))
@@ -204,7 +204,11 @@ def figure_tail(openloop):
             ys = [median([res["write_latency"][percentile] / 1e6 for res in openloop[(design, r)]]) for r in xs]
             style = STYLE[design]
             ax.plot([x / 1000 for x in xs], ys, marker="o", markersize=3.5, color=style["color"], linewidth=1.2,
-                    label=LABELS[design])
+                    label=f"{LABELS[design]}, median")
+            # Every run, since one rare pause can set a run's p99.9.
+            points = [(x / 1000, res["write_latency"][percentile] / 1e6) for x in xs for res in openloop[(design, x)]]
+            ax.scatter([p[0] for p in points], [p[1] for p in points], s=9, marker="x", color=style["color"],
+                       linewidths=0.8, zorder=3, label=f"{LABELS[design]}, each run")
             for x, y in zip(xs, ys):
                 ax.annotate(f"{y:.1f}", (x / 1000, y), xytext=(0, 3), textcoords="offset points", ha="center",
                             fontsize=5.6, color=INK)

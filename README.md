@@ -9,24 +9,28 @@ lookups.
 
 ## Results at a glance
 
-- **Single compactions run 2.3–7.1× faster and use 2.7–9.0× less CPU**, with
-  output identical to native RocksDB.
-- **With batched writes the whole database handles 1.72× more writes**
-  (602k vs 349k ops/s). p99 write latency drops from 7.1 ms to 1.1 ms, and
-  writers never stall.
-- **With single writes it handles 1.92× more** (232k vs 121k ops/s).
-- **Native RocksDB postpones compaction** and needs 68–114 s to catch up
-  after a 2.5-minute run; the GPU version needs 3–4 s. Throughput measured
-  only during a run overstates native RocksDB by 34–74%.
-- **Offloading only compression, this project's original design, is not
-  enough:** at most 1.2× faster, with no benefit to the database.
-- **It beats earlier GPU and FPGA compaction designs** rebuilt in the same
-  RocksDB on the same machine. With compression on, a single compaction uses
-  2–6.5× less CPU than the best earlier design. In the whole database ours is
-  1.75× native with LZ4 and 2.27× with ZSTD, against at most 1.41× and 1.20×
-  for the earlier designs, with up to 4× lower p99 write latency. With no
-  compression the earlier pipeline design matches ours
-  ([details](#4-compared-with-earlier-gpu-and-fpga-designs)).
+Current results (methodology v3: native RocksDB tuned with the same search as ours, every
+hypothesis registered before the runs, every run checked against native RocksDB):
+
+- **A compaction uses 9–16× less CPU.** Host CPU per GiB compacted: 8.8× less for
+  128-byte values with LZ4, 14.2× for 32-byte values, 15.5× with ZSTD.
+- **One compaction runs 8–12× faster:** 8.0× (128 B, LZ4), 11.7× (32 B, LZ4), 10.7×
+  (128 B, ZSTD).
+- **One GPU does the compaction work of 15–18 CPU cores** (15 with LZ4, 17.7 with ZSTD),
+  while using only 1.3–2 host cores.
+- **The whole database handles 1.5–1.8× more writes with 1.7–2.2× less CPU per write**,
+  and never stalls. With 16 cores the p99.9 write latency is 9 ms against 210 ms.
+- **Why not 10× for the whole database:** compaction is no longer the bottleneck.
+  RocksDB's own write path (memtable insert and write queue, about 2.3 µs per write)
+  and flush remain on the CPU. That caps the whole-database gain near 2×.
+- **Tail latency is mixed.** p99 is lower at every load (up to 7× at 90% of native's
+  maximum), but at 50–70% load one of two runs had a single pause of about 0.5 s whose
+  cause is still unknown, so p99.9 there is worse than native's
+  ([details](#current-results-methodology-v3)).
+- **It beats earlier GPU and FPGA compaction designs** rebuilt in the same RocksDB on
+  the same machine (v1 methodology; [details](#4-compared-with-earlier-gpu-and-fpga-designs)).
+- **Offloading only compression, this project's original design, is not enough:** at
+  most 1.2× faster, with no benefit to the database.
 
 Measured on Zyra: 4 × Xeon Gold 5220, RTX A6000, data on `/dev/shm`.
 Native RocksDB is built with hardware CRC32C.
@@ -49,6 +53,94 @@ A compaction:
 | GPU merge + block building | 1–4 | 5 (plus an index entry per block and filter construction) |
 
 Details: [docs/gpu-compaction.md](docs/gpu-compaction.md).
+
+### Current results (methodology v3)
+
+What changed since the earlier campaigns, and why the numbers differ from sections 1–5:
+
+- **Native RocksDB is tuned properly.** The earlier campaigns left RocksDB at one
+  subcompaction, which slowed its largest compactions. Both designs now use settings
+  chosen by the same search and rule ([configs/system/tuned.json](configs/system/tuned.json)).
+  This raised native's throughput by about 1.4× at 4 cores (349k to 489k writes/s) and
+  1.5× at 32 cores, and is why the whole-database ratios below are lower than in
+  sections 2–4.
+- **Our host-side work is much smaller.** Profiling only the measured compaction showed
+  the host was busy with file writes, Bloom filters and allocation, not the GPU. Blocks
+  are now written in whole runs, filter bits are set on the GPU, sorted runs are merged
+  instead of sorted, and checksums use a whole GPU warp ([publication/AUDIT.md](publication/AUDIT.md)
+  items 24–30).
+- **Both designs run with `allow_fallocate = false`**, a RocksDB option that stops tmpfs
+  zeroing every page before it is written.
+
+**One compaction** (a bottom level plus 8 overlapping level-0 files, 0.6–0.7 GiB; median of
+3 warm runs, log scale):
+
+![One compaction, native against ours](publication/figures/fig17_v3_compaction.png)
+
+| Workload | One job: native → ours | Faster | Host CPU per GiB: native → ours | Less CPU |
+|---|---|---|---|---|
+| 32 B values, LZ4 | 11.77 → 1.01 s | **11.7×** | 16.63 → 1.17 s | **14.2×** |
+| 128 B values, LZ4 | 6.96 → 0.87 s | **8.0×** | 10.58 → 1.21 s | **8.8×** |
+| 128 B values, ZSTD | 11.81 → 1.11 s | **10.7×** | 19.92 → 1.28 s | **15.5×** |
+| 128 B values, LZ4, 10% deletes | 6.80 → 0.83 s | 8.2× | 10.72 → 1.20 s | 8.9× |
+| 1 KB values, LZ4 | 5.18 → 1.29 s | 4.0× | 5.30 → 1.21 s | 4.4× |
+| 128 B values, no compression | 5.05 → 1.57 s | 3.2× | 4.60 → 1.07 s | 4.3× |
+
+The gain is largest where compaction is most expensive on a CPU: small values (more keys
+per byte) and stronger compression. With 1 KB values or no compression, native
+compaction is already cheap per byte, and ours is limited by copying data through memory.
+
+**How many cores one GPU replaces** (8 subcompactions on 8 cores, 2.5–2.6 GiB of input):
+
+![Compaction throughput and equivalent native cores](publication/figures/fig18_v3_cores.png)
+
+The GPU compacts 1.42 GiB/s of LZ4 input and 0.89 GiB/s of ZSTD input, while the host
+uses 2.0 and 1.3 cores. One native core compacts 0.094 and 0.050 GiB/s, so the GPU does
+the work of **15 and 18 native cores**. Native on 8 cores reaches 0.62 and 0.32 GiB/s.
+
+**The whole database** (50 M keys, batched writes, 2-minute warm-up, 5-minute measurement,
+median of 2 runs):
+
+![Whole database, native against ours](publication/figures/fig19_v3_database.png)
+
+| Setup | Cores | Native | Ours | Throughput | CPU per write: native → ours |
+|---|---|---|---|---|---|
+| LZ4 | 4 | 489k writes/s | 746k | **1.53×** | 6.6 → 3.8 µs (1.74×) |
+| LZ4 | 8 | 835k | 1,258k | **1.51×** | 7.5 → 4.0 µs (1.90×) |
+| LZ4 | 16 | 1,265k | 2,261k | **1.79×** | 7.1 → 4.0 µs (1.80×) |
+| LZ4 above, ZSTD at the bottom | 4 | 454k | 746k | **1.64×** | 6.8 → 3.8 µs (1.79×) |
+| LZ4 above, ZSTD at the bottom | 8 | 756k | 1,266k | **1.67×** | 8.7 → 3.9 µs (2.23×) |
+
+Our compaction now costs about 0.8 µs of CPU per write, against 3.5–5.5 µs for native.
+What is left is RocksDB's write path (memtable insert and write queue, about 2.3 µs per
+write) and flush (0.7 µs for ours, whose flush compression runs on the GPU; 1.0 µs for
+native). That is why the whole database gains about 2× rather than 10×.
+Ours never throttled writes; native was throttled for 0.7–6.3% of the time.
+
+**Tail latency at a fixed load** (open loop: writes are issued on a schedule, and latency
+counts from the scheduled time; 8 cores, 3-minute measurement, 2 runs per point):
+
+![Write latency at fixed loads](publication/figures/fig20_v3_tail.png)
+
+- **p99 is lower at every load:** 1.9 against 2.5 ms at 430k writes/s, 3.9 against
+  15.7 ms at 600k, and 14.7 against 102.8 ms at 770k (90% of native's maximum).
+- **p99.9 is mixed.** At 770k it is 39 against 172 ms. At 430k and 600k, one of our two
+  runs was better than native (3.4 and 10.5 ms). The other had one pause of all writers
+  lasting about 0.3–0.6 s, which alone sets the p99.9 (73 and 290 ms).
+- **The pause is not explained yet.** RocksDB recorded no write stall, the machine was
+  otherwise idle, and two more traced runs had no pause. The pre-registered hypothesis
+  (p99.9 at least 2.5× lower at these loads) is therefore not supported.
+
+All numbers: [publication/data/v3/summary.md](publication/data/v3/summary.md). The
+hypotheses and their outcomes: [publication/PREREGISTRATION.md](publication/PREREGISTRATION.md)
+("Methodology v3").
+
+### Earlier results (methodology v1)
+
+Sections 1–5 below come from the earlier campaigns. Their native baseline used RocksDB's
+default of one subcompaction, which slowed native's largest compactions, so their
+whole-database ratios are higher than a fairly tuned native gives. The comparisons between
+GPU designs, and the RDMA and replication results, are unaffected by this.
 
 ### 1. Single compactions
 
@@ -333,7 +425,7 @@ compaction server; (c, f) replication traffic per operation. Medians of 5 runs.
 - **Compaction server:** compacting once on the server is slower here because its CPU
   merge is slower than RocksDB's own. A GPU server is the configuration still to measure.
 
-### Correctness### Correctness
+### Correctness
 
 - **Single compactions:** every run compares a digest of every stored key
   version, and of up to 200,000 point lookups, against native RocksDB. Point
