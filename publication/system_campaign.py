@@ -33,7 +33,9 @@ BUILD = Path(os.environ.get("LSM_BUILD_DIR", ROOT / "build" / "dev"))
 BENCH = BUILD / "lsm_system_bench"
 BURN = BUILD / "lsm_burn"
 GPU_ENV = {"LSM_DISABLE_GPU_INPUT": "1", "LSM_CUDA_SYNC": "blocking", "LSM_GPU_OUTPUT_MIN_BLOCK_BYTES": "1024",
-           "LSM_MERGE_READ_THREADS": "4", "LSM_GPU_MERGE_STREAMS": "2"}
+           "LSM_MERGE_READ_THREADS": "4", "LSM_GPU_MERGE_STREAMS": "2",
+           # Pin GPU host buffers when the database opens (AUDIT item 31).
+           "LSM_GPU_PINNED_PREALLOC_MB": "1024"}
 
 
 def node_cpus(node: int) -> list[int]:

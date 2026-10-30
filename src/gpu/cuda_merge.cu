@@ -167,6 +167,14 @@ namespace lsm_lab
                     cudaFreeHost(pointer);
             }
 
+            // Pins buffers of these sizes now and keeps them free for later jobs.
+            void prefill(const std::vector<std::size_t> &sizes)
+            {
+                std::vector<std::shared_ptr<char>> held;
+                for (const auto bytes : sizes)
+                    held.push_back(take(bytes));
+            }
+
             std::shared_ptr<char> take(std::size_t bytes)
             {
                 bytes = std::max<std::size_t>(bytes, 1);
@@ -1374,6 +1382,21 @@ namespace lsm_lab
                     cudaStreamDestroy(stream_);
             }
 
+            void preallocate(std::size_t bytes) override
+            {
+                if (bytes == 0)
+                    return;
+                const auto started = std::chrono::steady_clock::now();
+                host_serialized_.reserve(bytes);
+                // Two jobs' outputs (one may still be written while the next merges): contents,
+                // filter hashes, block descriptors and boundary keys.
+                std::vector<std::size_t> sizes;
+                for (int set = 0; set < 2; ++set)
+                    sizes.insert(sizes.end(), {bytes, bytes / 8, bytes / 32, bytes / 64});
+                pool_->prefill(sizes);
+                trace_pinned("preallocate", bytes, started);
+            }
+
             rocksdb::Status merge(const rocksdb::CompactionMergeRequest &request,
                                   std::unique_ptr<rocksdb::CompactionMergedInput> *output,
                                   MergeRunStats *stats) override
@@ -2471,6 +2494,12 @@ namespace lsm_lab
     }
 
     std::unique_ptr<CudaMergeEngine> make_cuda_merge_engine() { return std::make_unique<Engine>(); }
+
+    std::size_t pinned_prealloc_bytes()
+    {
+        const char *configured = std::getenv("LSM_GPU_PINNED_PREALLOC_MB");
+        return configured == nullptr ? 0 : static_cast<std::size_t>(std::strtoull(configured, nullptr, 10)) << 20;
+    }
 
     namespace
     {

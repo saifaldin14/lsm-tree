@@ -396,9 +396,18 @@ online read checks and full verification). Data in `data/v3/`, numbers in
   each are run (`*-more`, schedule seed 2) with the same build and settings. Outcomes are
   reported over all 5 blocks, and over the first 2 as registered; a hypothesis is called
   supported only if it holds in both.
-- **The pause (H29).** The benchmark now records where every thread sleeps whenever no
-  write completes for 150 ms. If a cause is found and fixed, the fix is described here and
-  X5 is re-run in full with the fixed build; the original X5 runs stay reported.
+- **The pause (H29): cause found and fixed.** The benchmark now records where every thread
+  sleeps whenever no write completes for 150 ms. In 4 runs every warm-up had 3–4 pauses of
+  0.2–0.5 s. During each, writers were blocked in page faults (`do_user_addr_fault`) and
+  `mmap` (`rwsem_down_write_slowpath`) while a compaction pinned 512 MiB–1 GiB of host
+  memory with `cudaHostAlloc`, which holds the process's memory-map lock. Fix: with
+  `LSM_GPU_PINNED_PREALLOC_MB=1024`, each GPU merge engine is created and pins its buffers
+  when the database opens. In 4 runs with the fix (430k and 600k writes/s) there was no
+  pause and no pinned allocation after startup; p99.9 was 3.0–3.2 and 11.0–12.6 ms.
+  - Consequence: X5 is re-run in full (5 blocks, schedule seed 3, `v3-openloop-fixed`)
+    with the fix. H29 is judged on that re-run; the original X5 stays reported.
+  - The 3 extra blocks of X3 and X4 also use the fixed build. The fix changes only when
+    pinned memory is allocated, not compaction itself.
 - **X6, workloads** (stream, metadata, time series; `docs/workloads.md`): 8 and 16 cores,
   60 s warm-up + 300 s, 3 blocks; tests H20 as stated in v2.
 - **X7, MixGraph** (`zippydb`, `zippydb_write`, `lsm_db_bench`): 8 and 16 cores, 300 s,

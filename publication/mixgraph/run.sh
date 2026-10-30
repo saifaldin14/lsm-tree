@@ -42,7 +42,7 @@ zippydb=(--keyrange_dist_a=14.18 --keyrange_dist_b=-2.917 --keyrange_dist_c=0.01
          --keyrange_num=30 --value_k=0.2615 --value_sigma=25.45 --iter_k=2.517 --iter_sigma=14.236)
 # GPU settings used by every campaign (publication/system_campaign.py, GPU_ENV).
 export LSM_DISABLE_GPU_INPUT=1 LSM_CUDA_SYNC=blocking LSM_GPU_OUTPUT_MIN_BLOCK_BYTES=1024 \
-       LSM_MERGE_READ_THREADS=4 LSM_GPU_MERGE_STREAMS=2
+       LSM_MERGE_READ_THREADS=4 LSM_GPU_MERGE_STREAMS=2 LSM_GPU_PINNED_PREALLOC_MB=1024
 
 cpus_for() {
   python3 -c "

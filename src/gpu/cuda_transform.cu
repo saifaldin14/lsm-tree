@@ -556,6 +556,34 @@ namespace lsm_lab
             }
             ~CudaTransform() override { cudaSetDevice(0); }
 
+            static std::size_t merge_stream_limit()
+            {
+                static const std::size_t limit = [] {
+                    const char *configured = std::getenv("LSM_GPU_MERGE_STREAMS");
+                    const auto parsed = configured == nullptr ? 0 : std::strtoull(configured, nullptr, 10);
+                    return parsed == 0 ? std::size_t{2} : static_cast<std::size_t>(parsed);
+                }();
+                return limit;
+            }
+
+            // With LSM_GPU_PINNED_PREALLOC_MB, every merge engine is created (and pins its host
+            // buffers) when the database opens rather than during the first compactions.
+            void prepare_merged_input() override { prepare_merge_engines(); }
+
+            void prepare_merge_engines()
+            {
+                const auto bytes = pinned_prealloc_bytes();
+                if (bytes == 0)
+                    return;
+                const std::lock_guard lock(merge_engine_mutex_);
+                while (merge_engines_.size() < merge_stream_limit())
+                {
+                    merge_engines_.push_back(make_cuda_merge_engine());
+                    merge_engines_.back()->preallocate(bytes);
+                    merge_engines_idle_.push_back(merge_engines_.back().get());
+                }
+            }
+
             std::string name() const override { return hybrid_ ? "cuda_hybrid" : "cuda_batched"; }
             std::string device() const override { return device_name_; }
 
@@ -583,11 +611,7 @@ namespace lsm_lab
             {
                 // A pool of engines, each with its own stream and buffers, lets several
                 // background compactions use the GPU at once (LSM_GPU_MERGE_STREAMS, default 2).
-                static const std::size_t limit = [] {
-                    const char *configured = std::getenv("LSM_GPU_MERGE_STREAMS");
-                    const auto parsed = configured == nullptr ? 0 : std::strtoull(configured, nullptr, 10);
-                    return parsed == 0 ? std::size_t{2} : static_cast<std::size_t>(parsed);
-                }();
+                const std::size_t limit = merge_stream_limit();
                 CudaMergeEngine *engine = nullptr;
                 {
                     std::unique_lock lock(merge_engine_mutex_);

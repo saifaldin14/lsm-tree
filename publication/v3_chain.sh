@@ -7,7 +7,8 @@
 #              golden-50m and golden-50m-lz4zstd), BLOCKS (default 2), SSD (a directory on the SSD,
 #              default /tmp/$USER/v3-ssd), ONLY (subset of: isolated headline bottomzstd openloop
 #              more stream metadata timeseries mixgraph ssd; default: the first four). "more" adds
-#              3 blocks (seed 2) to headline, bottomzstd and openloop (PREREGISTRATION, deviation).
+#              3 blocks (seed 2) to headline and bottomzstd and re-runs openloop with 5 blocks
+#              (PREREGISTRATION, deviation).
 set -euo pipefail
 out=${1:?usage: v3_chain.sh OUT_ROOT}
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -57,7 +58,8 @@ wanted openloop && campaign v3-openloop "$shm/golden-50m" configs/system/v3-open
 if wanted more; then
   campaign v3-headline-more "$shm/golden-50m" configs/system/v3-headline.json 3 2
   campaign v3-bottomzstd-more "$shm/golden-50m-lz4zstd" configs/system/v3-bottomzstd.json 3 2
-  campaign v3-openloop-more "$shm/golden-50m" configs/system/v3-openloop.json 3 2
+  # X5 again in full (5 blocks) with pinned buffers allocated at open (PREREGISTRATION).
+  campaign v3-openloop-fixed "$shm/golden-50m" configs/system/v3-openloop.json 5 3
 fi
 for workload in stream metadata timeseries; do
   if wanted "$workload"; then

@@ -15,9 +15,17 @@ namespace lsm_lab
         virtual rocksdb::Status merge(const rocksdb::CompactionMergeRequest &request,
                                       std::unique_ptr<rocksdb::CompactionMergedInput> *output,
                                       MergeRunStats *stats) = 0;
+        // Pins host buffers for jobs of up to `bytes` of input now, so later jobs do not pin
+        // memory (pinning holds the process's memory-map lock and stalls every thread that
+        // page-faults meanwhile).
+        virtual void preallocate(std::size_t /*bytes*/) {}
     };
 
     std::unique_ptr<CudaMergeEngine> make_cuda_merge_engine();
+
+    // LSM_GPU_PINNED_PREALLOC_MB in bytes (0 when unset): pinned host memory each merge engine
+    // reserves when it is created.
+    std::size_t pinned_prealloc_bytes();
 
     // Sets the bits of a FastLocalBloom filter on the GPU (see
     // rocksdb::CompactionBlockTransform::BuildBloomFilter). Thread-safe; data is len_bytes zeroed

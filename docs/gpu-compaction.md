@@ -130,6 +130,7 @@ error fails the compaction as RocksDB would.
 | `LSM_GPU_FULL_SORT=1` | Orders merged entries with a full merge sort instead of merging sorted runs. |
 | `LSM_DISABLE_GPU_FLUSH=1` | Keeps flush compression on the CPU (by default flushes use the output-only GPU path). |
 | `LSM_TRACE_PINNED=1` | Prints every pinned host allocation (time, size, duration) to stderr. |
+| `LSM_GPU_PINNED_PREALLOC_MB` | Creates every merge engine when the database opens and pins this much host memory per engine for inputs (and twice that for outputs), so compactions do not pin memory later. Pinning holds the process's memory-map lock and stalls threads that page-fault meanwhile. Published runs use 1024. |
 | `LSM_DISABLE_JOB_PREFETCH=1` | Disables block prefetch in the batched input path. |
 
 The transform's `statistics()` (in `lsm_db` summaries and benchmark output)

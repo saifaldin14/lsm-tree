@@ -41,12 +41,18 @@ namespace lsm_lab
         rocksdb::Status merge_with_stats(const rocksdb::CompactionMergeRequest &request,
                                          std::unique_ptr<rocksdb::CompactionMergedInput> *output,
                                          MergeRunStats *stats) noexcept;
-        void enable_merged_input() { merged_input_ = true; }
+        void enable_merged_input()
+        {
+            merged_input_ = true;
+            prepare_merged_input();
+        }
         nlohmann::json statistics() const;
         virtual std::string name() const = 0;
         virtual std::string device() const { return "host_cpu"; }
 
     protected:
+        // Called once merged input is enabled (e.g. to set up GPU engines ahead of compactions).
+        virtual void prepare_merged_input() {}
         virtual rocksdb::Status execute(const std::string &input, const std::vector<BlockDescriptor> &blocks,
                                         std::vector<std::string> *output) = 0;
         virtual rocksdb::Status execute_output(const std::vector<rocksdb::Slice> &input,
