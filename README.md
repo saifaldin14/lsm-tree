@@ -18,14 +18,23 @@ hypothesis registered before the runs, every run checked against native RocksDB)
   (128 B, ZSTD).
 - **One GPU does the compaction work of 15–18 CPU cores** (15 with LZ4, 17.7 with ZSTD),
   while using only 1.3–2 host cores.
-- **The whole database handles 1.5–1.8× more writes with 1.7–2.2× less CPU per write**,
-  and never stalls. With 16 cores the p99.9 write latency is 9 ms against 210 ms.
+- **The whole database handles 1.5–1.8× more writes with 1.8–2.2× less CPU per write**,
+  and never stalls (5 runs per setting). With 16 cores the p99.9 write latency is 9 ms
+  against 210 ms.
+- **Real-world workloads gain 1.4–1.8×:** a stream-processing state store, storage
+  metadata, time series, and Meta's write-heavy MixGraph model. Read-heavy MixGraph
+  (85% reads) gains 1.05–1.10×.
+- **On a SATA SSD the disk is the limit for both designs** (100% busy): throughput is
+  equal, and ours uses half the CPU per write.
 - **Why not 10× for the whole database:** compaction is no longer the bottleneck.
   RocksDB's own write path (memtable insert and write queue, about 2.3 µs per write)
   and flush remain on the CPU. That caps the whole-database gain near 2×.
-- **Tail latency is mixed.** p99 is lower at every load (up to 7× at 90% of native's
-  maximum), but at 50–70% load one of two runs had a single pause of about 0.5 s whose
-  cause is still unknown, so p99.9 there is worse than native's
+- **Tail latency at a fixed load is lower at every load:**
+  - p99.9 is 1.75× lower at 50% of native's maximum, 3.8× at 70% and 9.6× at 90%;
+  - p99 is 1.4×, 5.4× and 10.9× lower.
+
+  An earlier run had rare 0.5 s pauses. Pinning GPU memory during compactions held the
+  process's memory lock; buffers are now pinned at startup
   ([details](#current-results-methodology-v3)).
 - **It beats earlier GPU and FPGA compaction designs** rebuilt in the same RocksDB on
   the same machine (v1 methodology; [details](#4-compared-with-earlier-gpu-and-fpga-designs)).
@@ -99,17 +108,17 @@ uses 2.0 and 1.3 cores. One native core compacts 0.094 and 0.050 GiB/s, so the G
 the work of **15 and 18 native cores**. Native on 8 cores reaches 0.62 and 0.32 GiB/s.
 
 **The whole database** (50 M keys, batched writes, 2-minute warm-up, 5-minute measurement,
-median of 2 runs):
+median of 5 runs):
 
 ![Whole database, native against ours](publication/figures/fig19_v3_database.png)
 
 | Setup | Cores | Native | Ours | Throughput | CPU per write: native → ours |
 |---|---|---|---|---|---|
-| LZ4 | 4 | 489k writes/s | 746k | **1.53×** | 6.6 → 3.8 µs (1.74×) |
-| LZ4 | 8 | 835k | 1,258k | **1.51×** | 7.5 → 4.0 µs (1.90×) |
-| LZ4 | 16 | 1,265k | 2,261k | **1.79×** | 7.1 → 4.0 µs (1.80×) |
-| LZ4 above, ZSTD at the bottom | 4 | 454k | 746k | **1.64×** | 6.8 → 3.8 µs (1.79×) |
-| LZ4 above, ZSTD at the bottom | 8 | 756k | 1,266k | **1.67×** | 8.7 → 3.9 µs (2.23×) |
+| LZ4 | 4 | 480k writes/s | 748k | **1.56×** | 6.7 → 3.8 µs (1.76×) |
+| LZ4 | 8 | 837k | 1,260k | **1.51×** | 7.5 → 3.9 µs (1.90×) |
+| LZ4 | 16 | 1,262k | 2,260k | **1.79×** | 7.1 → 4.0 µs (1.80×) |
+| LZ4 above, ZSTD at the bottom | 4 | 452k | 745k | **1.65×** | 6.9 → 3.8 µs (1.80×) |
+| LZ4 above, ZSTD at the bottom | 8 | 759k | 1,268k | **1.67×** | 8.6 → 3.9 µs (2.21×) |
 
 Our compaction now costs about 0.8 µs of CPU per write, against 3.5–5.5 µs for native.
 What is left is RocksDB's write path (memtable insert and write queue, about 2.3 µs per
@@ -118,18 +127,42 @@ native). That is why the whole database gains about 2× rather than 10×.
 Ours never throttled writes; native was throttled for 0.7–6.3% of the time.
 
 **Tail latency at a fixed load** (open loop: writes are issued on a schedule, and latency
-counts from the scheduled time; 8 cores, 3-minute measurement, 2 runs per point):
+counts from the scheduled time; 8 cores, 3-minute measurement, 5 runs per point):
 
 ![Write latency at fixed loads](publication/figures/fig20_v3_tail.png)
 
-- **p99 is lower at every load:** 1.9 against 2.5 ms at 430k writes/s, 3.9 against
-  15.7 ms at 600k, and 14.7 against 102.8 ms at 770k (90% of native's maximum).
-- **p99.9 is mixed.** At 770k it is 39 against 172 ms. At 430k and 600k, one of our two
-  runs was better than native (3.4 and 10.5 ms). The other had one pause of all writers
-  lasting about 0.3–0.6 s, which alone sets the p99.9 (73 and 290 ms).
-- **The pause is not explained yet.** RocksDB recorded no write stall, the machine was
-  otherwise idle, and two more traced runs had no pause. The pre-registered hypothesis
-  (p99.9 at least 2.5× lower at these loads) is therefore not supported.
+| Offered load | p99: native → ours | p99.9: native → ours |
+|---|---|---|
+| 430k writes/s (50% of native's maximum) | 2.5 → 1.8 ms (1.4×) | 5.5 → 3.2 ms (1.75×) |
+| 600k (70%) | 14.2 → 2.6 ms (5.4×) | 41.9 → 11.0 ms (3.8×) |
+| 770k (90%) | 142.6 → 13.1 ms (10.9×) | 251.7 → 26.2 ms (9.6×) |
+
+The first run of this experiment found rare pauses of 0.2–0.6 s in our design. A
+watchdog showed every writer blocked in page faults while a compaction pinned up to
+1 GiB of host memory for the GPU (`cudaHostAlloc` holds the process's memory-map lock).
+Pinned buffers are now allocated when the database opens
+(`LSM_GPU_PINNED_PREALLOC_MB`), and none of the 15 re-runs paused. The pre-registered
+threshold (p99.9 at least 2.5× lower at both 430k and 600k) is still missed at 430k.
+
+**Real-world workloads** (3 runs each; [docs/workloads.md](docs/workloads.md)):
+
+![Workloads, MixGraph and SATA SSD](publication/figures/fig21_v3_workloads.png)
+
+| Workload | 8 cores: throughput, CPU per operation | 16 cores |
+|---|---|---|
+| Stream-processing state store (Flink/Kafka Streams style) | 1.38×, 1.30× less | 1.55×, 1.53× less |
+| Storage metadata (Ceph/TiKV style) | 1.48×, 1.40× less | 1.77×, 1.69× less |
+| Time series with retention deletes | 1.42×, 1.59× less | 1.48×, 1.54× less |
+| Meta MixGraph, ZippyDB model (85% reads) | 1.05× | 1.10× |
+| Meta MixGraph, write-heavy (50% puts) | 1.34× | 1.70× |
+| SATA SSD, direct I/O (disk 100% busy for both) | 0.93×, 1.87× less | 1.04×, 2.00× less |
+
+- MixGraph runs through RocksDB's own `db_bench` with our compaction plugged in. Its
+  client threads keep every core busy in both designs, so only throughput is compared.
+- The gains follow how much of the work is compaction: little for read-heavy MixGraph,
+  most for writes.
+- On the SSD, the disk caps both designs at the same rate. The GPU still saves half the
+  CPU, and p99.9 write latency is 84 against 336 ms with 16 cores.
 
 All numbers: [publication/data/v3/summary.md](publication/data/v3/summary.md). The
 hypotheses and their outcomes: [publication/PREREGISTRATION.md](publication/PREREGISTRATION.md)

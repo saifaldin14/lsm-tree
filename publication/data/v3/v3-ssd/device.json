@@ -1,0 +1,98 @@
+{
+ "0": {
+  "device": "sda",
+  "method": "iostat -dxm 1, seconds 125-415 after the trial copy (the measurement window)",
+  "utilisation": 1.0,
+  "write_mib_s": 253.10500000000002,
+  "read_mib_s": 209.595,
+  "mean_queue_depth": 25.47
+ },
+ "1": {
+  "device": "sda",
+  "method": "iostat -dxm 1, seconds 125-415 after the trial copy (the measurement window)",
+  "utilisation": 1.0,
+  "write_mib_s": 224.89,
+  "read_mib_s": 224.28,
+  "mean_queue_depth": 11.53
+ },
+ "2": {
+  "device": "sda",
+  "method": "iostat -dxm 1, seconds 125-415 after the trial copy (the measurement window)",
+  "utilisation": 1.0,
+  "write_mib_s": 252.89,
+  "read_mib_s": 221.22000000000003,
+  "mean_queue_depth": 22.315
+ },
+ "3": {
+  "device": "sda",
+  "method": "iostat -dxm 1, seconds 125-415 after the trial copy (the measurement window)",
+  "utilisation": 1.0,
+  "write_mib_s": 219.865,
+  "read_mib_s": 230.29,
+  "mean_queue_depth": 24.33
+ },
+ "4": {
+  "device": "sda",
+  "method": "iostat -dxm 1, seconds 125-415 after the trial copy (the measurement window)",
+  "utilisation": 1.0,
+  "write_mib_s": 234.615,
+  "read_mib_s": 237.755,
+  "mean_queue_depth": 27.134999999999998
+ },
+ "5": {
+  "device": "sda",
+  "method": "iostat -dxm 1, seconds 125-415 after the trial copy (the measurement window)",
+  "utilisation": 1.0,
+  "write_mib_s": 218.97,
+  "read_mib_s": 227.115,
+  "mean_queue_depth": 23.525
+ },
+ "6": {
+  "device": "sda",
+  "method": "iostat -dxm 1, seconds 125-415 after the trial copy (the measurement window)",
+  "utilisation": 1.0,
+  "write_mib_s": 223.55,
+  "read_mib_s": 225.45999999999998,
+  "mean_queue_depth": 11.79
+ },
+ "7": {
+  "device": "sda",
+  "method": "iostat -dxm 1, seconds 125-415 after the trial copy (the measurement window)",
+  "utilisation": 1.0,
+  "write_mib_s": 227.7,
+  "read_mib_s": 259.135,
+  "mean_queue_depth": 23.91
+ },
+ "8": {
+  "device": "sda",
+  "method": "iostat -dxm 1, seconds 125-415 after the trial copy (the measurement window)",
+  "utilisation": 1.0,
+  "write_mib_s": 225.89499999999998,
+  "read_mib_s": 223.03,
+  "mean_queue_depth": 11.415
+ },
+ "9": {
+  "device": "sda",
+  "method": "iostat -dxm 1, seconds 125-415 after the trial copy (the measurement window)",
+  "utilisation": 1.0,
+  "write_mib_s": 244.47500000000002,
+  "read_mib_s": 245.745,
+  "mean_queue_depth": 22.325000000000003
+ },
+ "10": {
+  "device": "sda",
+  "method": "iostat -dxm 1, seconds 125-415 after the trial copy (the measurement window)",
+  "utilisation": 1.0,
+  "write_mib_s": 222.58499999999998,
+  "read_mib_s": 231.13,
+  "mean_queue_depth": 24.415
+ },
+ "11": {
+  "device": "sda",
+  "method": "iostat -dxm 1, seconds 125-415 after the trial copy (the measurement window)",
+  "utilisation": 1.0,
+  "write_mib_s": 211.945,
+  "read_mib_s": 271.12,
+  "mean_queue_depth": 28.415
+ }
+}

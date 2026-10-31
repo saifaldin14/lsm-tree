@@ -417,6 +417,45 @@ online read checks and full verification). Data in `data/v3/`, numbers in
   v2. Our path still reads compaction input with buffered reads (`docs/gpu-compaction.md`,
   Limits).
 
+### Outcomes of the additions
+
+All runs verified against native RocksDB. Numbers: `data/v3/summary.md`.
+
+- **H28 (with 5 blocks): supported in both the first 2 and all 5 blocks.**
+  - 8 cores: 1.51× throughput and 1.90× less CPU per write (LZ4); 1.67× and 2.21×
+    (ZSTD at the bottom).
+  - 4 and 16 cores: 1.56× and 1.79× (LZ4); 4 cores with ZSTD at the bottom: 1.65×.
+- **H29 (X5 re-run with the fix, 5 blocks each): not supported**, because it required both
+  rates.
+  - p99.9 at 430k writes/s: 3.15 against 5.51 ms (1.75×, below the 2.5× threshold).
+  - At 600k: 11.0 against 41.9 ms (3.8×).
+  - Not pre-registered: at 770k, 26.2 against 251.7 ms (9.6×); p99 was 1.4×, 5.4× and
+    10.9× lower at the three rates.
+  - No run had a pause.
+- **H20 (workloads): partly supported.**
+  - Stream state store: 1.38× (8 cores) and 1.55× (16 cores) throughput, 1.30× and 1.53×
+    less CPU per operation.
+  - Metadata: 1.48× and 1.77× throughput, 1.40× and 1.69× less CPU.
+  - Both meet the prediction. The time-series prediction (within ±10% of native) was wrong:
+    it gained 1.42× and 1.48× throughput with 1.59× and 1.54× less CPU. Native spent
+    2.5–2.75 µs of CPU per operation compacting (about 37% of its CPU), ours 0.2 µs:
+    retention deletes and batched appends still make compaction a large share.
+  - Write amplification during the window was higher for ours in every workload (time
+    series 4.8 against 2.4; stream 2.7 against 2.3; metadata 3.9 against 3.6). The likely
+    reason is that native postpones compaction beyond the window.
+- **H21 (MixGraph): supported.**
+  - `zippydb` (85% reads): 1.05× and 1.10× (within ±10%).
+  - `zippydb_write`: 1.34× and 1.70× (at least 1.1×).
+  - CPU per operation is not compared: `db_bench` client threads keep their cores busy in
+    both designs.
+- **H22 (SATA SSD): supported.**
+  - Both designs keep the disk 100% busy (about 220–250 MiB/s of writes and 210–270 MiB/s
+    of reads, from `iostat`), so throughput is equal (0.93× and 1.04×).
+  - Ours uses 1.87× and 2.00× less CPU per write, and p99.9 write latency was 28 against
+    48 ms (8 cores) and 84 against 336 ms (16 cores).
+  - The disk statistics come from the campaign's `iostat` log (`v3-ssd/device.json`),
+    because btrfs hides the disk from the benchmark's own device lookup.
+
 ## Changes after data collection
 
 - **Shared GPU, first attempt (discarded, kept as `shared-gpu-attempt1`):** all

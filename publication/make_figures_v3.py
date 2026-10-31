@@ -288,6 +288,17 @@ def ssd_lines():
     runs = load_campaign("v3-ssd")
     if not runs:
         return []
+    # btrfs hides the disk from the benchmark's own device statistics; the campaign's iostat
+    # log gives them (extracted to device.json, keyed by trial index).
+    device_path = V3 / "v3-ssd" / "device.json"
+    devices = json.loads(device_path.read_text()) if device_path.exists() else {}
+    for line in (V3 / "v3-ssd" / "results.jsonl").read_text().splitlines():
+        record = json.loads(line)
+        if str(record["index"]) in devices:
+            record["result"]["accounting"]["window"]["device"] = devices[str(record["index"])]
+            for result in runs.get((DESIGN[record["trial"]["design"]], record["trial"]["cores"]), []):
+                if result["window"] == record["result"]["window"]:
+                    result["accounting"]["window"]["device"] = devices[str(record["index"])]
     lines = ["", "## X8: SATA SSD with direct I/O, LZ4", "",
              "| Cores | Design | Runs | M writes/s | vs native | CPU µs/write | Device write MiB/s | Device utilisation | p99.9 ms |",
              "|---|---|---|---|---|---|---|---|---|"]
@@ -304,6 +315,62 @@ def ssd_lines():
                          f"{100 * median([d.get('utilisation', float('nan')) for d in device]):.0f}% | "
                          f"{median([r['write_latency']['p999_ns'] for r in results]) / 1e6:.1f} |")
     return lines
+
+
+def workload_ratios():
+    """[(label, throughput ratio, CPU-per-operation ratio or None)] for X6-X8, medians over runs."""
+    import re
+    rows = []
+    for name, title in (("stream", "Stream state"), ("metadata", "Metadata"), ("timeseries", "Time series")):
+        runs = load_campaign(f"v3-{name}")
+        for cores in (8, 16):
+            if runs.get((NATIVE, cores)) and runs.get((FULL, cores)):
+                n, o = runs[(NATIVE, cores)], runs[(FULL, cores)]
+                rows.append((f"{title}\n{cores} cores", median([window_ops(r) for r in o]) / median([window_ops(r) for r in n]),
+                             median([cpu_us(r) for r in n]) / median([cpu_us(r) for r in o])))
+    directory = V3 / "v3-mixgraph"
+    if directory.exists():
+        rates = {}
+        for path in directory.glob("*-c*-r*.txt"):
+            workload, mode, cores, _ = re.match(r"(.+)-(native_cpu|cuda_merge)-c(\d+)-r(\d+)\.txt", path.name).groups()
+            found = re.search(r"^mixgraph\s*:.*?([0-9.]+) ops/sec", path.read_text(), re.M)
+            if found:
+                rates.setdefault((workload, int(cores), DESIGN[mode]), []).append(float(found.group(1)))
+        for workload, title in (("zippydb", "MixGraph\nZippyDB"), ("zippydb_write", "MixGraph\nwrite-heavy")):
+            for cores in (8, 16):
+                if rates.get((workload, cores, NATIVE)) and rates.get((workload, cores, FULL)):
+                    rows.append((f"{title}\n{cores} cores", median(rates[(workload, cores, FULL)]) /
+                                 median(rates[(workload, cores, NATIVE)]), None))
+    runs = load_campaign("v3-ssd")
+    for cores in (8, 16):
+        if runs.get((NATIVE, cores)) and runs.get((FULL, cores)):
+            n, o = runs[(NATIVE, cores)], runs[(FULL, cores)]
+            rows.append((f"SATA SSD\n{cores} cores", median([window_ops(r) for r in o]) / median([window_ops(r) for r in n]),
+                         median([cpu_us(r) for r in n]) / median([cpu_us(r) for r in o])))
+    return rows
+
+
+def figure_workloads():
+    rows = workload_ratios()
+    if not rows:
+        return
+    fig, axes = plt.subplots(2, 1, figsize=(DOUBLE_COLUMN, 3.9), sharex=True)
+    for ax, letter, (index, ylabel) in zip(axes, "ab", [(1, "Throughput vs native"), (2, "CPU saving per operation")]):
+        xs = [i for i, row in enumerate(rows) if row[index] is not None]
+        values = [rows[i][index] for i in xs]
+        rects = bar(ax, xs, values, 0.6, FULL)
+        for x, value in zip(xs, values):
+            ax.annotate(f"{value:.2f}×", (x, value), xytext=(0, 1.5), textcoords="offset points", ha="center",
+                        va="bottom", fontsize=6, color=INK)
+        del rects
+        ax.axhline(1.0, color=STYLE[NATIVE]["color"], linewidth=1.0, linestyle="--", zorder=1)
+        ax.set_ylim(0, max(values) * 1.25)
+        finish_axis(ax, ylabel)
+        panel_label(ax, letter)
+    axes[1].set_xticks(range(len(rows)), [row[0] for row in rows], fontsize=5.8)
+    axes[0].text(-0.45, 1.03, "native = 1", ha="left", va="bottom", fontsize=6, color=STYLE[NATIVE]["color"])
+    fig.tight_layout(h_pad=0.8)
+    save(fig, "fig21_v3_workloads")
 
 
 def write_summary(isolated, headline, bottom, openloop, openloop_original=None, extra_lines=()):
@@ -386,4 +453,5 @@ if __name__ == "__main__":
     figure_cores(isolated)
     figure_database(headline, bottom)
     figure_tail(openloop)
+    figure_workloads()
     print((V3 / "summary.md").read_text())
