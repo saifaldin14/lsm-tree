@@ -1,0 +1,114 @@
+{
+ "_comment": "X5: open loop at fixed rates (keys/s), LZ4, 8 cores, tuned.",
+ "common": {
+  "records": 50000000,
+  "verify": true,
+  "read-percent": 0,
+  "warmup-seconds": 60,
+  "duration-seconds": 180
+ },
+ "trials": [
+  {
+   "design": "native",
+   "mode": "native_cpu",
+   "cores": 8,
+   "writes": "open-430000",
+   "flags": {
+    "threads": 16,
+    "subcompactions": 8,
+    "pipelined-write": false,
+    "adaptive-yield": false,
+    "background-jobs": 8,
+    "batch-size": 100,
+    "disable-wal": true,
+    "allow-fallocate": false,
+    "rate": 430000
+   }
+  },
+  {
+   "design": "native",
+   "mode": "native_cpu",
+   "cores": 8,
+   "writes": "open-600000",
+   "flags": {
+    "threads": 16,
+    "subcompactions": 8,
+    "pipelined-write": false,
+    "adaptive-yield": false,
+    "background-jobs": 8,
+    "batch-size": 100,
+    "disable-wal": true,
+    "allow-fallocate": false,
+    "rate": 600000
+   }
+  },
+  {
+   "design": "native",
+   "mode": "native_cpu",
+   "cores": 8,
+   "writes": "open-770000",
+   "flags": {
+    "threads": 16,
+    "subcompactions": 8,
+    "pipelined-write": false,
+    "adaptive-yield": false,
+    "background-jobs": 8,
+    "batch-size": 100,
+    "disable-wal": true,
+    "allow-fallocate": false,
+    "rate": 770000
+   }
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 8,
+   "writes": "open-430000",
+   "flags": {
+    "threads": 16,
+    "subcompactions": 4,
+    "pipelined-write": false,
+    "adaptive-yield": false,
+    "background-jobs": 8,
+    "batch-size": 100,
+    "disable-wal": true,
+    "allow-fallocate": false,
+    "rate": 430000
+   }
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 8,
+   "writes": "open-600000",
+   "flags": {
+    "threads": 16,
+    "subcompactions": 4,
+    "pipelined-write": false,
+    "adaptive-yield": false,
+    "background-jobs": 8,
+    "batch-size": 100,
+    "disable-wal": true,
+    "allow-fallocate": false,
+    "rate": 600000
+   }
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 8,
+   "writes": "open-770000",
+   "flags": {
+    "threads": 16,
+    "subcompactions": 4,
+    "pipelined-write": false,
+    "adaptive-yield": false,
+    "background-jobs": 8,
+    "batch-size": 100,
+    "disable-wal": true,
+    "allow-fallocate": false,
+    "rate": 770000
+   }
+  }
+ ]
+}

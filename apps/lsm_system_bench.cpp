@@ -1455,10 +1455,11 @@ namespace
         }
         else if (config.workload != "kv")
             throw std::invalid_argument("--workload must be kv or timeseries");
+        if (config.workload == "kv" && config.batch_size > 1 &&
+            (config.read_percent + config.rmw_percent + config.delete_percent + config.scan_percent) > 0)
+            throw std::invalid_argument("--batch-size > 1 supports write-only runs (except timeseries)");
         if (config.rate < 0 || (config.rate > 0 && config.workload != "kv"))
             throw std::invalid_argument("--rate must be positive and needs the kv workload");
-        else if (config.batch_size > 1 && (config.read_percent + config.rmw_percent + config.delete_percent + config.scan_percent) > 0)
-            throw std::invalid_argument("--batch-size > 1 supports write-only runs (except timeseries)");
         if (config.threads == 0 || config.read_percent > 100 || config.duration_seconds == 0 || config.records == 0 || config.batch_size == 0 ||
             config.records >= (1ULL << 32))
             throw std::invalid_argument("invalid --threads, --read-percent, --duration-seconds or --records");

@@ -217,16 +217,26 @@ def run_trial(out: Path, golden: Path, scratch: Path, trial: dict, common: dict,
             if process.poll() is None:
                 process.kill()
                 process.wait()
+        # A monitor that has not yet installed its handler (the benchmark failed at once), or that
+        # inherited an ignored SIGINT from a background shell, is killed after a grace period.
+        def stop(process, sig):
+            process.send_signal(sig)
+            try:
+                process.wait(timeout=15)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
         if burner:
-            burner.send_signal(signal.SIGTERM)
-            burner.wait()
-        perf.send_signal(signal.SIGINT)
-        perf.wait()
+            stop(burner, signal.SIGTERM)
+        stop(perf, signal.SIGINT)
         if iostat:
-            iostat.send_signal(signal.SIGTERM)
-            iostat.wait()
+            stop(iostat, signal.SIGTERM)
         gpu.send_signal(signal.SIGTERM)
-        gpu_lines, _ = gpu.communicate()
+        try:
+            gpu_lines, _ = gpu.communicate(timeout=15)
+        except subprocess.TimeoutExpired:
+            gpu.kill()
+            gpu_lines, _ = gpu.communicate()
     converted, utilization = [], []
     for line in gpu_lines.splitlines():
         fields = [field.strip() for field in line.split(",")]
