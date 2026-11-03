@@ -124,7 +124,16 @@ namespace
         // latency is measured from each operation's scheduled time, so time spent behind
         // schedule counts (no coordinated omission). 0 runs closed loop.
         double rate = 0;
+        // Independent databases in this process (dir/shard-<k>), sharing the core budget, the
+        // block cache, statistics and the compaction transform. Key i lives in shard i % shards,
+        // and client thread t serves shard t % shards (threads must be a multiple of shards).
+        std::uint32_t shards = 1;
     };
+
+    fs::path shard_dir(const Config &config, std::uint32_t shard)
+    {
+        return config.shards == 1 ? config.dir : config.dir / ("shard-" + std::to_string(shard));
+    }
 
     std::uint64_t mix64(std::uint64_t value)
     {
@@ -361,7 +370,8 @@ namespace
         return result;
     }
 
-    Json verify_all(rocksdb::DB *db, const Config &config, const std::vector<std::uint32_t> &versions)
+    Json verify_all(rocksdb::DB *db, const Config &config, const std::vector<std::uint32_t> &versions,
+                    std::uint32_t shard = 0)
     {
         const auto started = Clock::now();
         rocksdb::ReadOptions read;
@@ -393,7 +403,7 @@ namespace
                 if (index < config.records && key.size() != key_size(config, index))
                     throw std::runtime_error("verification: unexpected key size");
             }
-            if (index >= config.records || seen[index])
+            if (index >= config.records || seen[index] || index % config.shards != shard)
                 throw std::runtime_error("verification: unexpected or duplicate key " + std::to_string(index));
             seen[index] = true;
             if (versions[index] & kDeleted)
@@ -405,12 +415,15 @@ namespace
             ++count;
         }
         check(iterator->status(), "verification iterator");
-        std::uint64_t live = 0;
-        for (const auto version : versions)
-            live += (version & kDeleted) ? 0 : 1;
+        std::uint64_t live = 0, owned = 0;
+        for (std::uint64_t index = shard; index < versions.size(); index += config.shards)
+        {
+            live += (versions[index] & kDeleted) ? 0 : 1;
+            ++owned;
+        }
         if (count != live)
             throw std::runtime_error("verification: found " + std::to_string(count) + " of " + std::to_string(live) + " live keys");
-        return {{"keys", count}, {"deleted_keys", config.records - live},
+        return {{"keys", count}, {"deleted_keys", owned - live},
                 {"seconds", std::chrono::duration<double>(Clock::now() - started).count()}};
     }
 
@@ -529,14 +542,18 @@ namespace
         if (config.records % config.threads != 0)
             throw std::invalid_argument("--records must be a multiple of --threads");
         fs::remove_all(config.dir);
-        fs::create_directories(config.dir.parent_path());
+        fs::create_directories(config.shards == 1 ? config.dir.parent_path() : config.dir);
         auto options = make_options(config, nullptr);
         options.create_if_missing = true;
         options.error_if_exists = true;
         options.max_background_jobs = std::max<int>(options.max_background_jobs, 16);
         options.max_subcompactions = std::max<std::uint32_t>(options.max_subcompactions, 8);
+        Json shards = Json::array();
+        const auto all_started = Clock::now();
+        for (std::uint32_t shard = 0; shard < config.shards; ++shard)
+        {
         std::unique_ptr<rocksdb::DB> db;
-        check(rocksdb::DB::Open(options, config.dir.string(), &db), "open");
+        check(rocksdb::DB::Open(options, shard_dir(config, shard).string(), &db), "open");
         const auto started = Clock::now();
         const unsigned producers = std::min<unsigned>(16, std::max(1U, std::thread::hardware_concurrency()));
         std::vector<std::thread> workers;
@@ -565,6 +582,8 @@ namespace
                     {
                         // records < 2^32, so position * step fits in 64 bits.
                         const auto index = position * step % config.records;
+                        if (index % config.shards != shard)
+                            continue;
                         if (config.workload == "timeseries")
                             make_series_key(index / config.retention, index % config.retention, key);
                         else
@@ -594,13 +613,20 @@ namespace
         wait_for_compactions(db.get());
         const auto loaded = Clock::now();
         const std::vector<std::uint32_t> versions(config.records, 0);
-        const auto verification = verify_all(db.get(), config, versions);
+        const auto verification = verify_all(db.get(), config, versions, shard);
+        shards.push_back({{"load_seconds", std::chrono::duration<double>(loaded - started).count()},
+                          {"verification", verification},
+                          {"levels", level_shape(db.get())}});
+        check(db->Close(), "close");
+        }
         Json result{{"phase", "preload"},
                     {"records", config.records},
-                    {"load_seconds", std::chrono::duration<double>(loaded - started).count()},
-                    {"verification", verification},
-                    {"levels", level_shape(db.get())}};
-        check(db->Close(), "close");
+                    {"shards", config.shards},
+                    {"load_seconds", std::chrono::duration<double>(Clock::now() - all_started).count()},
+                    {"verification", shards[0]["verification"]},
+                    {"levels", shards[0]["levels"]}};
+        if (config.shards > 1)
+            result["by_shard"] = shards;
         return result;
     }
 
@@ -666,8 +692,25 @@ namespace
                                           batch.Data().size()),
                       "replicate");
         };
-        std::unique_ptr<rocksdb::DB> db;
-        check(rocksdb::DB::Open(options, config.dir.string(), &db), "open");
+        // Every shard opens with the same options object, so they share the statistics, the
+        // block cache, the listeners and the compaction transform (one GPU).
+        std::vector<std::unique_ptr<rocksdb::DB>> dbs(config.shards);
+        for (std::uint32_t shard = 0; shard < config.shards; ++shard)
+            check(rocksdb::DB::Open(options, shard_dir(config, shard).string(), &dbs[shard]), "open");
+        auto &db = dbs[0];
+        // Sum of an integer property over the shards.
+        const auto summed = [&](const char *name) {
+            std::uint64_t total = 0;
+            for (const auto &shard : dbs)
+                total += property(shard.get(), name);
+            return total;
+        };
+        const auto summed_string = [&](const char *name) {
+            std::uint64_t total = 0;
+            for (const auto &shard : dbs)
+                total += string_property(shard.get(), name);
+            return total;
+        };
         const auto statistics = options.statistics;
         const auto levels_before = level_shape(db.get());
 
@@ -682,17 +725,24 @@ namespace
         // Keys (or series) each thread chooses among.
         const auto items = timeseries ? series_count / config.threads : per_thread;
 
+        // "latest" (YCSB D): writes go to each thread's keys in turn, and reads pick recently
+        // written keys with Zipfian probability by recency.
+        const bool latest = config.distribution == "latest";
         std::unique_ptr<Zipfian> zipf;
-        if (config.distribution == "zipfian")
+        if (config.distribution == "zipfian" || latest)
             zipf = std::make_unique<Zipfian>(items, config.zipf_theta);
         else if (config.distribution != "uniform")
-            throw std::invalid_argument("--distribution must be uniform or zipfian");
+            throw std::invalid_argument("--distribution must be uniform, zipfian or latest");
+        if (latest && (timeseries || config.batch_size > 1))
+            throw std::invalid_argument("--distribution latest needs the kv workload with single operations");
 
         // Common start of every client's open-loop schedule.
         const auto schedule_start = Clock::now() + std::chrono::milliseconds(10);
         auto worker = [&](std::uint32_t thread)
         {
             auto &state = states[thread];
+            // This thread's keys (thread + threads * k) all live in shard thread % shards.
+            rocksdb::DB *const target = dbs[thread % config.shards].get();
 #if defined(__linux__)
             pthread_setname_np(pthread_self(), "lsm-foreground");
 #endif
@@ -702,9 +752,12 @@ namespace
                 std::uniform_int_distribution<std::uint64_t> uniform(0, items - 1);
                 std::uniform_real_distribution<double> unit(0.0, 1.0);
                 // Scrambled Zipfian over this thread's keys (YCSB): rank r maps to a hashed slot.
+                std::uint64_t cursor = 0; // "latest": this thread's next key to write
                 const auto pick = [&](auto &generator) -> std::uint64_t {
                     if (!zipf)
                         return uniform(generator);
+                    if (latest)
+                        return (cursor + items - 1 - std::min<std::uint64_t>(zipf->next(unit(generator)), items - 1)) % items;
                     const auto rank = zipf->next(unit(generator));
                     return mix64(rank ^ 0x5bd1e9955bd1e995ULL) % items;
                 };
@@ -746,19 +799,19 @@ namespace
                 };
                 const auto put = [&](const std::string &k, const std::string &v) {
                     if (!logical)
-                        return check(db->Put(write, k, v), "put");
+                        return check(target->Put(write, k, v), "put");
                     single.Clear();
                     check(single.Put(k, v), "batch put");
                     replicate(single);
-                    check(db->Write(write, &single), "put");
+                    check(target->Write(write, &single), "put");
                 };
                 const auto remove = [&](const std::string &k) {
                     if (!logical)
-                        return check(db->Delete(write, k), "delete");
+                        return check(target->Delete(write, k), "delete");
                     single.Clear();
                     check(single.Delete(k), "batch delete");
                     replicate(single);
-                    check(db->Write(write, &single), "delete");
+                    check(target->Write(write, &single), "delete");
                 };
                 // Open loop: this client's operations are due every per_op ns from a common start.
                 const auto per_op = config.rate > 0 ? std::chrono::nanoseconds(static_cast<std::int64_t>(
@@ -819,7 +872,7 @@ namespace
                             timed_read(current == 1, [&] {
                                 make_series_key(series, time, key);
                                 found.Reset();
-                                check(db->Get(read, db->DefaultColumnFamily(), key, &found), "get");
+                                check(target->Get(read, target->DefaultColumnFamily(), key, &found), "get");
                                 expect_point(found, series, time);
                             });
                             continue;
@@ -829,7 +882,7 @@ namespace
                             // The latest scan_length points of the series, in time order.
                             const auto length = std::min<std::uint64_t>(config.scan_length, config.retention);
                             timed_read(current == 1, [&] {
-                                std::unique_ptr<rocksdb::Iterator> iterator(db->NewIterator(read));
+                                std::unique_ptr<rocksdb::Iterator> iterator(target->NewIterator(read));
                                 make_series_key(series, head - length, key);
                                 iterator->Seek(key);
                                 for (std::uint64_t time = head - length; time < head; ++time, iterator->Next())
@@ -863,7 +916,7 @@ namespace
                         const bool sampled = sample_begin(current == 1);
                         const auto begin = start_of();
                         replicate(batch);
-                        check(db->Write(write, &batch), "write batch");
+                        check(target->Write(write, &batch), "write batch");
                         const auto ns = static_cast<std::uint64_t>((Clock::now() - begin).count());
                         sample_end(sampled);
                         if (current == 1)
@@ -874,9 +927,12 @@ namespace
                         state.ops.fetch_add(config.batch_size, std::memory_order_relaxed);
                         continue;
                     }
-                    const auto index = thread + config.threads * pick(random);
                     const auto roll = percent(random);
                     const bool is_read = roll < config.read_percent;
+                    // "latest": writes take the next key in turn; reads and scans favour recent ones.
+                    const bool latest_write = latest && roll >= config.read_percent + config.rmw_percent +
+                                                                    config.delete_percent + config.scan_percent;
+                    const auto index = thread + config.threads * (latest_write ? cursor++ % items : pick(random));
                     const bool is_rmw = !is_read && roll < config.read_percent + config.rmw_percent;
                     const bool is_delete = !is_read && !is_rmw &&
                                            roll < config.read_percent + config.rmw_percent + config.delete_percent;
@@ -887,7 +943,7 @@ namespace
                     // version this thread last wrote; a deleted key must be absent.
                     const auto checked_get = [&]() {
                         found.Reset();
-                        const auto status = db->Get(read, db->DefaultColumnFamily(), key, &found);
+                        const auto status = target->Get(read, target->DefaultColumnFamily(), key, &found);
                         if (versions[index] & kDeleted)
                         {
                             if (!status.IsNotFound())
@@ -904,7 +960,7 @@ namespace
                         // scan_length keys from this key on; keys this thread owns are checked (the
                         // others change concurrently).
                         timed_read(current == 1, [&] {
-                            std::unique_ptr<rocksdb::Iterator> iterator(db->NewIterator(read));
+                            std::unique_ptr<rocksdb::Iterator> iterator(target->NewIterator(read));
                             iterator->Seek(key);
                             for (std::uint32_t item = 0; item < config.scan_length && iterator->Valid(); ++item, iterator->Next())
                             {
@@ -992,7 +1048,7 @@ namespace
                         const bool sampled = sample_begin(current == 1);
                         const auto begin = start_of();
                         replicate(batch);
-                        check(db->Write(write, &batch), "write batch");
+                        check(target->Write(write, &batch), "write batch");
                         const auto ns = static_cast<std::uint64_t>((Clock::now() - begin).count());
                         sample_end(sampled);
                         if (current == 1)
@@ -1026,6 +1082,11 @@ namespace
                         {"wal_syncs", ticker(rocksdb::WAL_FILE_SYNCED)},
                         {"writes_done_by_self", ticker(rocksdb::WRITE_DONE_BY_SELF)},
                         {"writes_done_by_other", ticker(rocksdb::WRITE_DONE_BY_OTHER)},
+                        // Bloom filter: lookups it ruled out, lookups it passed, and passed lookups
+                        // that found the key (false positives = positive - true positive).
+                        {"bloom_useful", ticker(rocksdb::BLOOM_FILTER_USEFUL)},
+                        {"bloom_positive", ticker(rocksdb::BLOOM_FILTER_FULL_POSITIVE)},
+                        {"bloom_true_positive", ticker(rocksdb::BLOOM_FILTER_FULL_TRUE_POSITIVE)},
                         {"compactions", totals->snapshot()}};
         };
         const auto total_ops = [&]
@@ -1124,14 +1185,14 @@ namespace
                                 {"process_write_mib_s", usage.at("process_write_mib_s")},
                                 {"syscall_write_mib_s", usage.at("syscall_write_mib_s")},
                                 {"device", usage.value("device", Json(nullptr))},
-                                {"immutable_memtables", property(db.get(), "rocksdb.num-immutable-mem-table")},
-                                {"running_flushes", property(db.get(), "rocksdb.num-running-flushes")},
-                                {"l0_files", string_property(db.get(), "rocksdb.num-files-at-level0")},
+                                {"immutable_memtables", summed("rocksdb.num-immutable-mem-table")},
+                                {"running_flushes", summed("rocksdb.num-running-flushes")},
+                                {"l0_files", summed_string("rocksdb.num-files-at-level0")},
                                 // Non-zero while RocksDB throttles writes (bytes/s); 1 while writes are stopped.
-                                {"delayed_write_rate", property(db.get(), "rocksdb.actual-delayed-write-rate")},
-                                {"write_stopped", property(db.get(), "rocksdb.is-write-stopped")},
-                                {"running_compactions", property(db.get(), "rocksdb.num-running-compactions")},
-                                {"pending_compaction_bytes", property(db.get(), "rocksdb.estimate-pending-compaction-bytes")}});
+                                {"delayed_write_rate", summed("rocksdb.actual-delayed-write-rate")},
+                                {"write_stopped", summed("rocksdb.is-write-stopped")},
+                                {"running_compactions", summed("rocksdb.num-running-compactions")},
+                                {"pending_compaction_bytes", summed("rocksdb.estimate-pending-compaction-bytes")}});
             previous_ops = ops;
             previous_stall = stall;
             if (second == config.warmup_seconds)
@@ -1160,7 +1221,8 @@ namespace
         // deferring compaction past the end of the measurement.
         const auto drain_started = Clock::now();
         const auto drain_cpu_start = process_cpu();
-        wait_for_compactions(db.get());
+        for (const auto &shard : dbs)
+            wait_for_compactions(shard.get());
         const auto drain_end = Clock::now();
         const double drain_end_unix = unix_seconds();
         const auto drain_cpu_end = process_cpu();
@@ -1252,8 +1314,14 @@ namespace
                              breakdown[kWriteBreakdown[index]] = sampled ? sum / 1000.0 / sampled : 0.0;
                          }
                          std::string cf_stalls, db_stalls;
-                         db->GetProperty(rocksdb::DB::Properties::kCFWriteStallStats, &cf_stalls);
-                         db->GetProperty(rocksdb::DB::Properties::kDBWriteStallStats, &db_stalls);
+                         for (const auto &shard : dbs)
+                         {
+                             std::string cf, dbs_text;
+                             shard->GetProperty(rocksdb::DB::Properties::kCFWriteStallStats, &cf);
+                             shard->GetProperty(rocksdb::DB::Properties::kDBWriteStallStats, &dbs_text);
+                             cf_stalls += cf;
+                             db_stalls += dbs_text;
+                         }
                          return Json{{"window", lsm_lab::ProcessAccounting::delta(window_sample_start, window_sample_end)},
                                      {"run", lsm_lab::ProcessAccounting::delta(run_sample_start, accounting.sample())},
                                      {"device", accounting.device()},
@@ -1262,21 +1330,45 @@ namespace
                                      {"cf_write_stall_stats", cf_stalls},
                                      {"db_write_stall_stats", db_stalls}};
                      }()},
-                    {"sst_bytes_after_run", property(db.get(), "rocksdb.total-sst-files-size")},
-                    {"live_sst_bytes_after_run", property(db.get(), "rocksdb.live-sst-files-size")},
+                    {"shards", config.shards},
+                    {"sst_bytes_after_run", summed("rocksdb.total-sst-files-size")},
+                    {"live_sst_bytes_after_run", summed("rocksdb.live-sst-files-size")},
                     {"levels_before", levels_before},
                     {"levels_after_run", level_shape(db.get())},
                     {"transform", backend ? backend->statistics() : Json(nullptr)}};
         if (config.verify)
         {
-            result["verification"] = verify_all(db.get(), config, versions);
+            Json verification{{"keys", 0}, {"deleted_keys", 0}, {"seconds", 0.0}};
+            Json table_properties = Json::object();
+            for (std::uint32_t shard = 0; shard < config.shards; ++shard)
+            {
+                const auto part = verify_all(dbs[shard].get(), config, versions, shard);
+                verification["keys"] = verification["keys"].get<std::uint64_t>() + part["keys"].get<std::uint64_t>();
+                verification["deleted_keys"] =
+                    verification["deleted_keys"].get<std::uint64_t>() + part["deleted_keys"].get<std::uint64_t>();
+                verification["seconds"] = verification["seconds"].get<double>() + part["seconds"].get<double>();
+                // Raw key/value bytes against stored data bytes, over all live files (compression
+                // ratio), summed over the shards.
+                std::map<std::string, std::string> properties;
+                if (dbs[shard]->GetMapProperty(rocksdb::DB::Properties::kAggregatedTableProperties, &properties))
+                    for (const auto &[name, text] : properties)
+                    {
+                        char *end = nullptr;
+                        const double number = std::strtod(text.c_str(), &end);
+                        if (end != text.c_str() && *end == '\0')
+                            table_properties[name] = table_properties.value(name, 0.0) + number;
+                    }
+            }
+            result["verification"] = verification;
             result["levels_after_verification"] = level_shape(db.get());
-            result["sst_bytes_after_compaction"] = property(db.get(), "rocksdb.total-sst-files-size");
+            result["sst_bytes_after_compaction"] = summed("rocksdb.total-sst-files-size");
+            result["table_properties"] = table_properties;
             result["transform_after_verification"] = backend ? backend->statistics() : Json(nullptr);
         }
         if (!replicas)
         {
-            check(db->Close(), "close");
+            for (const auto &shard : dbs)
+                check(shard->Close(), "close");
             return result;
         }
         // Every backup must hold exactly the primary's data: compare digests of all keys and values.
@@ -1388,6 +1480,8 @@ namespace
                 config.blob_min_bytes = static_cast<std::uint32_t>(number());
             else if (name == "--rate")
                 config.rate = std::stod(value());
+            else if (name == "--shards")
+                config.shards = static_cast<std::uint32_t>(number());
             else if (name == "--workload")
                 config.workload = value();
             else if (name == "--key-bytes-max")
@@ -1458,6 +1552,10 @@ namespace
         if (config.workload == "kv" && config.batch_size > 1 &&
             (config.read_percent + config.rmw_percent + config.delete_percent + config.scan_percent) > 0)
             throw std::invalid_argument("--batch-size > 1 supports write-only runs (except timeseries)");
+        if (config.shards == 0 ||
+            (config.shards > 1 && (config.threads % config.shards != 0 || config.workload != "kv" ||
+                                   config.replication != "none")))
+            throw std::invalid_argument("--shards needs --threads a multiple of it, the kv workload and no replication");
         if (config.rate < 0 || (config.rate > 0 && config.workload != "kv"))
             throw std::invalid_argument("--rate must be positive and needs the kv workload");
         if (config.threads == 0 || config.read_percent > 100 || config.duration_seconds == 0 || config.records == 0 || config.batch_size == 0 ||
@@ -1484,7 +1582,7 @@ int main(int argc, char **argv)
                             {"distribution", config.distribution}, {"zipf_theta", config.zipf_theta},
                             {"use_direct_io", config.use_direct_io}, {"l0_trigger", config.l0_trigger},
                             {"level_multiplier", config.level_multiplier}, {"blob_min_bytes", config.blob_min_bytes},
-                            {"workload", config.workload}, {"rate", config.rate}, {"key_bytes_max", config.key_bytes_max},
+                            {"workload", config.workload}, {"rate", config.rate}, {"shards", config.shards}, {"key_bytes_max", config.key_bytes_max},
                             {"value_bytes_max", config.value_bytes_max}, {"key_families", config.key_families},
                             {"scan_percent", config.scan_percent}, {"scan_length", config.scan_length},
                             {"retention", config.retention},

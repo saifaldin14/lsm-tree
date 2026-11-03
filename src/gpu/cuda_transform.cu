@@ -590,6 +590,10 @@ namespace lsm_lab
             rocksdb::Status BuildBloomFilter(const std::uint64_t *hashes, std::size_t count, std::uint32_t len_bytes,
                                              int num_probes, char *data) noexcept override
             {
+                // LSM_DISABLE_GPU_FILTER: RocksDB sets the bits on the CPU (to compare filter bytes).
+                static const bool disabled = std::getenv("LSM_DISABLE_GPU_FILTER") != nullptr;
+                if (disabled)
+                    return rocksdb::Status::NotSupported("GPU filter building disabled");
                 const auto started = std::chrono::steady_clock::now();
                 const auto status = cuda_build_bloom_filter(hashes, count, len_bytes, num_probes, data);
                 if (status.ok())
