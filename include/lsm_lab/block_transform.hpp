@@ -85,7 +85,8 @@ namespace lsm_lab
                       merge_input_bytes_ = 0, merge_decoded_bytes_ = 0, merge_wall_ns_ = 0, merge_read_ns_ = 0,
                       merge_device_ns_ = 0, merge_built_jobs_ = 0, merge_built_blocks_ = 0, merge_built_bytes_ = 0,
                       merge_host_compressed_blocks_ = 0, merge_cpu_decoded_bytes_ = 0,
-                      merge_remote_ns_ = 0, merge_server_ns_ = 0, merge_sent_bytes_ = 0, merge_received_bytes_ = 0;
+                      merge_remote_ns_ = 0, merge_server_ns_ = 0, merge_sent_bytes_ = 0, merge_received_bytes_ = 0,
+                      merge_upstream_remote_ns_ = 0, merge_upstream_server_ns_ = 0;
         std::string merge_last_fallback_;
     };
 

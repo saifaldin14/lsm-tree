@@ -91,6 +91,10 @@ namespace lsm_lab
         std::uint64_t server_ns = 0;
         std::uint64_t sent_bytes = 0;
         std::uint64_t received_bytes = 0;
+        // When the server is itself a relay (backend remote_merge): its call time to the next
+        // server and that server's handler time.
+        std::uint64_t upstream_remote_ns = 0;
+        std::uint64_t upstream_server_ns = 0;
     };
 
     // Total bytes of all listed blocks including their 5-byte trailers.

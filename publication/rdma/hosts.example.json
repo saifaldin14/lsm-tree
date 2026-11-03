@@ -7,6 +7,9 @@
   "client": {"host": "user@db-node", "address": "10.0.0.2", "device": "mlx5_0", "cores": "0-3", "node": 0},
   "server": {"host": "user@gpu-node", "address": "10.0.0.1", "device": "mlx5_0", "cores": "0-23", "node": 0,
              "backend": "cuda_merge"},
+  "gpu": {"host": "user@gpu-node", "address": "10.1.0.1", "cores": "0-7", "node": 0, "build": "build/cuda",
+          "db_cores": "36-39", "db_node": 2,
+          "_comment": "r7: GPU host reached over TCP from the server (relay) and the client; db_* place the loopback database"},
   "backups": [
     {"host": "user@backup-1", "address": "10.0.0.3", "cores": "0-3", "node": 0},
     {"host": "user@backup-2", "address": "10.0.0.4", "cores": "0-3", "node": 0}

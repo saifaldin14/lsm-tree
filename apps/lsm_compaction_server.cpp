@@ -5,7 +5,8 @@
 //
 // Prints "listening <endpoint>" once ready (port 0 picks a free port) and the backend's
 // statistics as JSON on SIGINT/SIGTERM. --crash-after N (fault injection) terminates the
-// process abruptly when request N+1 arrives.
+// process abruptly when request N+1 arrives. --backend remote_merge relays each request to
+// the server at LSM_REMOTE_ENDPOINT (e.g. from an RDMA network to a GPU host on another one).
 
 #include "lsm_lab/remote_merge.hpp"
 
@@ -39,8 +40,8 @@ int main(int argc, char **argv)
             else
                 throw std::invalid_argument("unknown argument: " + name);
         }
-        if (backend != "cpu_merge" && backend != "cuda_merge")
-            throw std::invalid_argument("--backend must be cpu_merge or cuda_merge");
+        if (backend != "cpu_merge" && backend != "cuda_merge" && backend != "remote_merge")
+            throw std::invalid_argument("--backend must be cpu_merge, cuda_merge or remote_merge");
         // Signals are taken by one thread (sigwait), never inside a handler.
         sigset_t signals;
         sigemptyset(&signals);

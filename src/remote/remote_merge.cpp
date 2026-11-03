@@ -242,6 +242,8 @@ namespace lsm_lab
                 if (stats != nullptr)
                 {
                     *stats = answer.stats;
+                    stats->upstream_remote_ns = answer.stats.remote_ns;
+                    stats->upstream_server_ns = answer.stats.server_ns;
                     stats->read_ns = read_ns;
                     stats->remote_ns = remote_ns;
                     stats->server_ns = answer.server_ns;

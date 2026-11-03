@@ -16,6 +16,12 @@ Experiments:
   r6  replication with 2 backups: per-replica compaction (logical), compact once on the
       primary's CPU (physical) and compact once on the compaction server (physical +
       remote_merge), for batched writes (WAL off) and single writes (WAL on)
+  r7  GPU compaction over RDMA (HOSTS.json needs a "gpu" entry): isolated compaction on the
+      database node, native against remote_merge to (a) the server's CPU over RDMA, (b) the
+      server as a relay (--backend remote_merge) over RDMA that forwards each job over TCP to
+      a cuda_merge server on the GPU host, and (c) the GPU host directly over TCP; plus, on the
+      GPU host, local cuda_merge and a loopback (127.0.0.1) cuda_merge server. Every server is
+      restarted per workload and variant so its statistics give a per-hop time breakdown.
 Results are JSON lines in OUT_DIR; every run is resumable (finished files are skipped).
 """
 
@@ -32,6 +38,9 @@ from pathlib import Path
 
 GPU_ENV = "LSM_DISABLE_GPU_INPUT=1 LSM_CUDA_SYNC=blocking LSM_GPU_OUTPUT_MIN_BLOCK_BYTES=1024 " \
           "LSM_MERGE_READ_THREADS=4 LSM_GPU_MERGE_STREAMS=2"
+GPU_SERVER_ENV = GPU_ENV + " LSM_GPU_PINNED_PREALLOC_MB=1024"
+# The three headline isolated workloads (PREREGISTRATION.md, X1)
+GPU_WORKLOADS = [(128, 4_000_000, "lz4"), (32, 10_000_000, "lz4"), (128, 4_000_000, "zstd")]
 SIZES = ["64K", "1M", "16M", "128M", "256M"]
 BYTES = {"64K": 1 << 16, "1M": 1 << 20, "16M": 1 << 24, "128M": 1 << 27, "256M": 1 << 28}
 # value bytes, records, compression, delete fraction (as publication/compaction_sweep.sh)
@@ -77,6 +86,11 @@ class Cluster:
         self.run(host, f"kill {pid} 2>/dev/null; for i in $(seq 1 50); do kill -0 {pid} 2>/dev/null || exit 0; "
                        f"sleep 0.2; done; kill -9 {pid} 2>/dev/null; true", check=False)
         return ""
+
+    def statistics(self, host: str, log: str) -> dict | None:
+        """The statistics JSON a stopped lsm_compaction_server printed last."""
+        lines = [line for line in self.run(host, f"cat {log}", check=False).splitlines() if line.startswith("{")]
+        return json.loads(lines[-1]) if lines else None
 
     def load(self, host: str) -> dict:
         out = self.run(host, "cat /proc/loadavg; who | wc -l", check=False).split()
@@ -249,10 +263,74 @@ def experiment_r6(cluster: Cluster, out: Path, repetitions: int, records: int, s
             cluster.stop(s["host"], server[0])
 
 
+def experiment_r7(cluster: Cluster, out: Path) -> None:
+    c, s, g = cluster.config["client"], cluster.config["server"], cluster.config["gpu"]
+    gpu_build = g.get("build", cluster.build)
+    scratch = f"{cluster.config['scratch']}/r7"
+    (out / "r7").mkdir(exist_ok=True)
+    base = "--l0-files 8 --block-bytes 4096 --repetitions 4 --allow-fallocate false"
+    for value, records, codec in GPU_WORKLOADS:
+        tag = f"v{value}-{codec}"
+        common = f"--dir {scratch} --records {records} --value-bytes {value} --compression {codec} {base}"
+        variants = ["remote-cpu-rdma", "remote-gpu-relay", "remote-gpu-tcp", "gpu-host"]
+        random.Random(f"r7-{tag}").shuffle(variants)
+        for name in variants:
+            target = out / "r7" / f"{tag}-{name}.jsonl"
+            if target.exists() and target.stat().st_size > 0:
+                continue
+            started = []  # (host, pid, log, role)
+            record = {"experiment": "r7", "workload": tag, "variant": name,
+                      "load_before": {"client": cluster.load(c["host"]), "server": cluster.load(s["host"]),
+                                      "gpu": cluster.load(g["host"])}}
+            try:
+                def server(machine: dict, build: str, listen: str, backend: str, role: str, env: str) -> str:
+                    log = f"/tmp/lsm-r7-{role}.log"
+                    pid, endpoint = cluster.start(machine["host"], f"{env} {pin(machine)} {build}/lsm_compaction_server "
+                                                                   f"--listen {listen} --backend {backend}", log)
+                    started.append((machine["host"], pid, log, role))
+                    return endpoint
+
+                host, modes, env, build = c["host"], "native_cpu,remote_merge", "", cluster.build
+                if name == "remote-cpu-rdma":
+                    endpoint = server(s, cluster.build, f"rdma://{s['address']}:0", "cpu_merge", "server", GPU_ENV)
+                    env = f"LSM_RDMA_PUSH=1 LSM_REMOTE_ENDPOINT={endpoint}"
+                elif name == "remote-gpu-relay":
+                    gpu = server(g, gpu_build, f"tcp://{g['address']}:0", "cuda_merge", "gpu", GPU_SERVER_ENV)
+                    relay = server(s, cluster.build, f"rdma://{s['address']}:0", "remote_merge", "relay",
+                                   f"LSM_REMOTE_ENDPOINT={gpu}")
+                    env = f"LSM_RDMA_PUSH=1 LSM_REMOTE_ENDPOINT={relay}"
+                elif name == "remote-gpu-tcp":
+                    endpoint = server(g, gpu_build, f"tcp://{g['address']}:0", "cuda_merge", "gpu", GPU_SERVER_ENV)
+                    env = f"LSM_REMOTE_ENDPOINT={endpoint}"
+                else:
+                    # On the GPU host: the database on db_cores/db_node, the loopback server on the GPU's node.
+                    endpoint = server(g, gpu_build, "tcp://127.0.0.1:0", "cuda_merge", "gpu", GPU_SERVER_ENV)
+                    host, build, modes = g["host"], gpu_build, "native_cpu,cuda_merge,remote_merge"
+                    env = f"{GPU_SERVER_ENV} LSM_REMOTE_ENDPOINT={endpoint}"
+                placement = (f"numactl --physcpubind={g['db_cores']} --membind={g['db_node']}"
+                             if name == "gpu-host" else pin(c))
+                before = {role: cluster.cpu_seconds(h, pid) for h, pid, _, role in started}
+                text = cluster.run(host, f"rm -rf {scratch} && {GPU_ENV} {env} {placement} "
+                                         f"{build}/lsm_compaction_bench --modes {modes} {common}")
+                after = {role: cluster.cpu_seconds(h, pid) for h, pid, _, role in started}
+                cluster.run(host, f"rm -rf {scratch}", check=False)
+                record["server_cpu_seconds"] = {role: (after[role] - before[role]
+                                                       if None not in (after[role], before[role]) else None)
+                                                for role in before}
+                record["rows"] = [json.loads(line) for line in text.splitlines() if line.startswith("{")]
+            finally:
+                for h, pid, log, role in reversed(started):
+                    cluster.stop(h, pid)
+                    record.setdefault("server_statistics", {})[role] = cluster.statistics(h, log)
+            target.write_text(json.dumps(record) + "\n")
+            matches = all(row.get("matches_reference") for row in record["rows"])
+            print(f"r7 {tag} {name} done, matches native: {matches}", flush=True)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--hosts", type=Path, required=True)
-    parser.add_argument("--experiment", choices=["r1", "r2", "r6"], required=True)
+    parser.add_argument("--experiment", choices=["r1", "r2", "r6", "r7"], required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--repetitions", type=int, default=None)
     parser.add_argument("--records", type=int, default=50_000_000)
@@ -265,6 +343,8 @@ def main() -> int:
         experiment_r1(cluster, arguments.out, arguments.repetitions or 3)
     elif arguments.experiment == "r2":
         experiment_r2(cluster, arguments.out)
+    elif arguments.experiment == "r7":
+        experiment_r7(cluster, arguments.out)
     else:
         experiment_r6(cluster, arguments.out, arguments.repetitions or 5, arguments.records,
                       (arguments.warmup_seconds, arguments.duration_seconds))
