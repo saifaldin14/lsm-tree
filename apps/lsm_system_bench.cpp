@@ -25,6 +25,7 @@
 #include <rocksdb/perf_level.h>
 #include <rocksdb/filter_policy.h>
 #include <rocksdb/listener.h>
+#include <rocksdb/lsm_ttl_compaction_filter.h>
 #include <rocksdb/options.h>
 #include <rocksdb/statistics.h>
 #include <rocksdb/table.h>
@@ -128,7 +129,20 @@ namespace
         // block cache, statistics and the compaction transform. Key i lives in shard i % shards,
         // and client thread t serves shard t % shards (threads must be a multiple of shards).
         std::uint32_t shards = 1;
+        // Time to live (LsmTtlCompactionFilter): each value starts with a big-endian millisecond
+        // timestamp spread over [now - 2 ttl, now) for the fixed "now" LSM_TTL_NOW_MS, so about
+        // half of all writes are expired and compactions drop them. 0 disables.
+        std::uint64_t ttl_ms = 0;
     };
+
+    std::uint64_t ttl_now_ms()
+    {
+        static const std::uint64_t now = [] {
+            const char *fixed = std::getenv("LSM_TTL_NOW_MS");
+            return fixed == nullptr ? std::uint64_t{0} : std::strtoull(fixed, nullptr, 10);
+        }();
+        return now;
+    }
 
     fs::path shard_dir(const Config &config, std::uint32_t shard)
     {
@@ -198,6 +212,18 @@ namespace
     // Bit 31 of a tracked version marks the key as deleted.
     constexpr std::uint32_t kDeleted = 1U << 31;
 
+    std::uint64_t ttl_timestamp(const Config &config, std::uint64_t index, std::uint64_t version)
+    {
+        version &= ~std::uint64_t{kDeleted};
+        return ttl_now_ms() - 1 - mix64(mix64(index * 1315423911ULL + version) ^ 0x7474ULL) % (2 * config.ttl_ms);
+    }
+
+    // Whether the current version of a key may have been dropped by the TTL filter.
+    bool ttl_expired(const Config &config, std::uint64_t index, std::uint64_t version)
+    {
+        return config.ttl_ms > 0 && !(version & kDeleted) && ttl_timestamp(config, index, version) <= ttl_now_ms() - config.ttl_ms;
+    }
+
     void make_value(const Config &config, std::uint64_t index, std::uint64_t version, std::string &value)
     {
         version &= ~std::uint64_t{kDeleted};
@@ -218,6 +244,12 @@ namespace
             {
                 value[offset] = static_cast<char>('a' + (offset + version) % 16);
             }
+        }
+        if (config.ttl_ms > 0)
+        {
+            const auto timestamp = ttl_timestamp(config, index, version);
+            for (std::size_t byte = 0; byte < 8; ++byte)
+                value[byte] = static_cast<char>((timestamp >> (8 * (7 - byte))) & 255);
         }
     }
 
@@ -297,7 +329,13 @@ namespace
 
     rocksdb::Options make_options(const Config &config, const std::shared_ptr<lsm_lab::BatchTransform> &transform)
     {
-        return lsm_lab::make_db_options(db_shape(config), transform);
+        auto options = lsm_lab::make_db_options(db_shape(config), transform);
+        if (config.ttl_ms > 0)
+        {
+            static const rocksdb::LsmTtlCompactionFilter filter(0, config.ttl_ms);
+            options.compaction_filter = &filter;
+        }
+        return options;
     }
 
     std::shared_ptr<lsm_lab::BatchTransform> make_backend(const std::string &mode)
@@ -379,7 +417,7 @@ namespace
         read.fill_cache = false;
         std::unique_ptr<rocksdb::Iterator> iterator(db->NewIterator(read));
         std::vector<bool> seen(config.records, false);
-        std::uint64_t count = 0;
+        std::uint64_t count = 0, expired_present = 0;
         std::string expected;
         for (iterator->SeekToFirst(); iterator->Valid(); iterator->Next())
         {
@@ -408,6 +446,7 @@ namespace
             seen[index] = true;
             if (versions[index] & kDeleted)
                 throw std::runtime_error("verification: deleted key " + std::to_string(index) + " is present");
+            expired_present += ttl_expired(config, index, versions[index]) ? 1 : 0;
             make_value(config, index, versions[index], expected);
             if (iterator->value() != rocksdb::Slice(expected))
                 throw std::runtime_error("verification: wrong value for key " + std::to_string(index) + " (expected version " +
@@ -415,15 +454,20 @@ namespace
             ++count;
         }
         check(iterator->status(), "verification iterator");
-        std::uint64_t live = 0, owned = 0;
+        // With a TTL, a live key whose current version expired may be present (not compacted
+        // yet) or absent; every other live key must be present.
+        std::uint64_t live = 0, owned = 0, expired = 0;
         for (std::uint64_t index = shard; index < versions.size(); index += config.shards)
         {
             live += (versions[index] & kDeleted) ? 0 : 1;
+            expired += ttl_expired(config, index, versions[index]) ? 1 : 0;
             ++owned;
         }
-        if (count != live)
-            throw std::runtime_error("verification: found " + std::to_string(count) + " of " + std::to_string(live) + " live keys");
-        return {{"keys", count}, {"deleted_keys", owned - live},
+        if (count - expired_present != live - expired)
+            throw std::runtime_error("verification: found " + std::to_string(count - expired_present) + " of " +
+                                     std::to_string(live - expired) + " live unexpired keys");
+        return {{"keys", count}, {"deleted_keys", owned - live}, {"expired_keys", expired},
+                {"expired_keys_present", expired_present},
                 {"seconds", std::chrono::duration<double>(Clock::now() - started).count()}};
     }
 
@@ -950,6 +994,8 @@ namespace
                                 throw std::runtime_error("online read found deleted key " + std::to_string(index));
                             return;
                         }
+                        if (status.IsNotFound() && ttl_expired(config, index, versions[index]))
+                            return;
                         check(status, "get");
                         make_value(config, index, versions[index], expected);
                         if (found != rocksdb::Slice(expected))
@@ -1338,14 +1384,13 @@ namespace
                     {"transform", backend ? backend->statistics() : Json(nullptr)}};
         if (config.verify)
         {
-            Json verification{{"keys", 0}, {"deleted_keys", 0}, {"seconds", 0.0}};
+            Json verification{{"keys", 0}, {"deleted_keys", 0}, {"expired_keys", 0}, {"expired_keys_present", 0}, {"seconds", 0.0}};
             Json table_properties = Json::object();
             for (std::uint32_t shard = 0; shard < config.shards; ++shard)
             {
                 const auto part = verify_all(dbs[shard].get(), config, versions, shard);
-                verification["keys"] = verification["keys"].get<std::uint64_t>() + part["keys"].get<std::uint64_t>();
-                verification["deleted_keys"] =
-                    verification["deleted_keys"].get<std::uint64_t>() + part["deleted_keys"].get<std::uint64_t>();
+                for (const char *counter : {"keys", "deleted_keys", "expired_keys", "expired_keys_present"})
+                    verification[counter] = verification[counter].get<std::uint64_t>() + part[counter].get<std::uint64_t>();
                 verification["seconds"] = verification["seconds"].get<double>() + part["seconds"].get<double>();
                 // Raw key/value bytes against stored data bytes, over all live files (compression
                 // ratio), summed over the shards.
@@ -1506,6 +1551,8 @@ namespace
                 config.allow_fallocate = value() == "true";
             else if (name == "--bottommost-compression")
                 config.bottommost_compression = value();
+            else if (name == "--ttl-ms")
+                config.ttl_ms = number();
             else if (name == "--replication")
                 config.replication = value();
             else if (name == "--replicate-to")
@@ -1556,6 +1603,8 @@ namespace
             (config.shards > 1 && (config.threads % config.shards != 0 || config.workload != "kv" ||
                                    config.replication != "none")))
             throw std::invalid_argument("--shards needs --threads a multiple of it, the kv workload and no replication");
+        if (config.ttl_ms > 0 && (config.workload != "kv" || config.replication != "none" || config.value_bytes < 8))
+            throw std::invalid_argument("--ttl-ms needs the kv workload, no replication and values of at least 8 bytes");
         if (config.rate < 0 || (config.rate > 0 && config.workload != "kv"))
             throw std::invalid_argument("--rate must be positive and needs the kv workload");
         if (config.threads == 0 || config.read_percent > 100 || config.duration_seconds == 0 || config.records == 0 || config.batch_size == 0 ||
@@ -1570,6 +1619,9 @@ int main(int argc, char **argv)
     try
     {
         const auto config = parse(argc, argv);
+        // TTL runs need one fixed "now" for value timestamps and every filter decision.
+        if (config.ttl_ms > 0 && std::getenv("LSM_TTL_NOW_MS") == nullptr)
+            setenv("LSM_TTL_NOW_MS", "1800000000000", 1);
         Json result = config.phase == "preload" ? preload(config) : run(config);
         result["config"] = {{"records", config.records}, {"value_bytes", config.value_bytes}, {"compression", config.compression},
                             {"block_bytes", config.block_bytes}, {"write_buffer_bytes", config.write_buffer_bytes},
@@ -1588,7 +1640,7 @@ int main(int argc, char **argv)
                             {"retention", config.retention},
                             {"pipelined_write", config.pipelined_write}, {"concurrent_memtable", config.concurrent_memtable},
                             {"flush_jobs", config.flush_jobs}, {"allow_fallocate", config.allow_fallocate},
-                            {"bottommost_compression", config.bottommost_compression},
+                            {"bottommost_compression", config.bottommost_compression}, {"ttl_ms", config.ttl_ms},
                             {"replication", config.replication}, {"replicate_to", config.replicate_to},
                             {"replica_backend", config.replica_backend},
                             {"warmup_seconds", config.warmup_seconds}, {"duration_seconds", config.duration_seconds},

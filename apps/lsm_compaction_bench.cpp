@@ -14,6 +14,7 @@
 #include <rocksdb/filter_policy.h>
 #include <rocksdb/listener.h>
 #include <rocksdb/options.h>
+#include <rocksdb/lsm_ttl_compaction_filter.h>
 #include <rocksdb/table.h>
 
 #include <sys/resource.h>
@@ -60,6 +61,10 @@ namespace
         std::uint32_t subcompactions = 1;
         // RocksDB's allow_fallocate (preallocation; on tmpfs it zeroes pages before they are written).
         bool allow_fallocate = true;
+        // Time-to-live filter (LsmTtlCompactionFilter, timestamp at offset 0). Each value starts
+        // with a big-endian millisecond timestamp spread over [now - 2 ttl, now) for a fixed
+        // now (LSM_TTL_NOW_MS), so about half of the newest versions have expired.
+        std::uint64_t ttl_ms = 0;
         std::uint32_t repetitions = 1;
         // Fixed-time mode: after the given repetitions, keep repeating each mode (round-robin)
         // until this many seconds have passed since the first warm repetition (0 disables).
@@ -89,6 +94,13 @@ namespace
     }
 
     // Half pseudorandom, half repeating pattern, like the dataset generator.
+    // The fixed "now" of TTL runs (LSM_TTL_NOW_MS, set by the benchmark when absent).
+    std::uint64_t ttl_now_ms()
+    {
+        const char *fixed = std::getenv("LSM_TTL_NOW_MS");
+        return fixed == nullptr ? 0 : std::strtoull(fixed, nullptr, 10);
+    }
+
     std::string make_value(const Config &config, std::uint64_t index, std::uint64_t generation)
     {
         std::string value(config.value_bytes, '\0');
@@ -106,6 +118,12 @@ namespace
             {
                 value[offset] = static_cast<char>('a' + (offset + generation) % 16);
             }
+        }
+        if (config.ttl_ms > 0)
+        {
+            const auto timestamp = ttl_now_ms() - 1 - mix64(base ^ 0x7474ULL) % (2 * config.ttl_ms);
+            for (std::size_t byte = 0; byte < 8; ++byte)
+                value[byte] = static_cast<char>((timestamp >> (8 * (7 - byte))) & 255);
         }
         return value;
     }
@@ -143,6 +161,12 @@ namespace
         options.target_file_size_base = config.target_file_bytes;
         options.max_subcompactions = config.subcompactions;
         options.allow_fallocate = config.allow_fallocate;
+        if (config.ttl_ms > 0)
+        {
+            // Lives as long as the process; RocksDB keeps a raw pointer.
+            static const rocksdb::LsmTtlCompactionFilter *filter = new rocksdb::LsmTtlCompactionFilter(0, config.ttl_ms);
+            options.compaction_filter = filter;
+        }
         options.max_background_jobs = 4;
         options.paranoid_checks = true;
         if (config.compression == "lz4")
@@ -394,6 +418,7 @@ namespace
         Json result = {{"mode", mode},
                        {"repetition", repetition},
                        {"settings", {{"subcompactions", config.subcompactions}, {"allow_fallocate", config.allow_fallocate},
+                                     {"ttl_ms", config.ttl_ms},
                                      {"compression", config.compression}, {"value_bytes", config.value_bytes},
                                      {"records", config.records}, {"block_bytes", config.block_bytes}}},
                        {"wall_seconds", wall_seconds},
@@ -487,6 +512,8 @@ namespace
                 config.target_file_bytes = std::stoull(value());
             else if (name == "--subcompactions")
                 config.subcompactions = static_cast<std::uint32_t>(std::stoul(value()));
+            else if (name == "--ttl-ms")
+                config.ttl_ms = std::stoull(value());
             else if (name == "--allow-fallocate")
                 config.allow_fallocate = value() == "true";
             else if (name == "--repetitions")
@@ -513,6 +540,11 @@ int main(int argc, char **argv)
     try
     {
         const auto config = parse(argc, argv);
+        // TTL runs need one fixed "now" for value timestamps and for every filter decision.
+        if (config.ttl_ms > 0 && std::getenv("LSM_TTL_NOW_MS") == nullptr)
+            setenv("LSM_TTL_NOW_MS", "1800000000000", 1);
+        if (config.ttl_ms > 0 && config.value_bytes < 8)
+            throw std::invalid_argument("--ttl-ms needs values of at least 8 bytes");
         fs::create_directories(config.dir);
         std::optional<std::string> reference;
         bool consistent = true;

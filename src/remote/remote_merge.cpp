@@ -19,7 +19,7 @@ namespace lsm_lab
 
     namespace
     {
-        constexpr std::uint32_t kMetaVersion = 1;
+        constexpr std::uint32_t kMetaVersion = 2; // 2: TTL filter fields
         constexpr std::size_t kAlign = 64;
 
         std::size_t align_up(std::size_t value) { return (value + kAlign - 1) / kAlign * kAlign; }
@@ -461,6 +461,10 @@ namespace lsm_lab
             w.put_string(smallest);
             w.put_string(largest);
         }
+        w.put<std::uint8_t>(o.ttl);
+        w.put<std::uint32_t>(o.ttl_offset);
+        w.put<std::uint64_t>(o.ttl_duration);
+        w.put<std::uint64_t>(o.ttl_now);
         return w.take();
     }
 
@@ -513,6 +517,10 @@ namespace lsm_lab
                 smallest = r.get_string();
                 largest = r.get_string();
             }
+            o.ttl = r.get<std::uint8_t>() != 0;
+            o.ttl_offset = r.get<std::uint32_t>();
+            o.ttl_duration = r.get<std::uint64_t>();
+            o.ttl_now = r.get<std::uint64_t>();
             return rocksdb::Status::OK();
         }
         catch (const std::exception &error)

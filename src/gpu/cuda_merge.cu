@@ -609,6 +609,39 @@ namespace lsm_lab
             }
         }
 
+        // TTL compaction filter (LsmTtlCompactionFilter): the newest version of each user key, if
+        // an expired Put, becomes a Delete with the same sequence number. Only the type byte and
+        // value length of that entry change; neighbours are read through key fields only.
+        __global__ void apply_ttl(const std::uint32_t *order, GpuEntry *entries, unsigned char *keys,
+                                  const unsigned char *values, std::uint64_t count, std::uint32_t offset,
+                                  std::uint64_t ttl, std::uint64_t now)
+        {
+            const std::uint64_t index = static_cast<std::uint64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+            if (index >= count || ttl == 0 || now < ttl)
+                return;
+            const auto slot = order[index];
+            const auto key_offset = entries[slot].key_offset;
+            const auto key_bytes = entries[slot].key_bytes;
+            if (index > 0)
+            {
+                const auto previous = order[index - 1];
+                if (entries[previous].key_bytes == key_bytes &&
+                    compare_bytes(keys + entries[previous].key_offset, key_bytes - 8, keys + key_offset, key_bytes - 8) == 0)
+                    return;
+            }
+            if (keys[key_offset + key_bytes - 8] != 1 || entries[slot].value_bytes < offset + 8)
+                return;
+            const unsigned char *stamp = values + entries[slot].value_offset + offset;
+            std::uint64_t timestamp = 0;
+            for (int byte = 0; byte < 8; ++byte)
+                timestamp = (timestamp << 8) | stamp[byte];
+            if (timestamp <= now - ttl)
+            {
+                keys[key_offset + key_bytes - 8] = 0;
+                entries[slot].value_bytes = 0;
+            }
+        }
+
         __global__ void iota(std::uint32_t *values, std::uint64_t count)
         {
             const std::uint64_t index = static_cast<std::uint64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
@@ -1890,6 +1923,13 @@ namespace lsm_lab
                         cuda_ok(cudaMemcpyAsync(d_order, source, entry_count * sizeof(std::uint32_t),
                                                 cudaMemcpyDeviceToDevice, stream_),
                                 "copy merged order");
+                }
+                if (request.output.enabled && request.output.ttl)
+                {
+                    apply_ttl<<<grid(entry_count, 256), 256, 0, stream_>>>(
+                        d_order, d_entries, d_keys, d_decoded, entry_count, request.output.ttl_offset,
+                        request.output.ttl_duration, request.output.ttl_now);
+                    cuda_ok(cudaGetLastError(), "apply_ttl");
                 }
                 rocksdb::CompactionMergeDropped dropped;
                 std::uint64_t sorted_count = entry_count;

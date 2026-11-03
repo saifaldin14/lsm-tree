@@ -184,7 +184,10 @@ static Status LsmMaybeCreateMergedInput(const Compaction *compaction, ColumnFami
         return Status::OK();
     };
     const auto &ioptions = cfd->ioptions();
-    if (ioptions.merge_operator || ioptions.compaction_filter != nullptr || ioptions.compaction_filter_factory)
+    // The TTL filter runs on the accelerator; any other compaction filter needs the CPU path.
+    const auto *ttl_filter = dynamic_cast<const LsmTtlCompactionFilter *>(ioptions.compaction_filter);
+    if (ioptions.merge_operator || (ioptions.compaction_filter != nullptr && ttl_filter == nullptr) ||
+        ioptions.compaction_filter_factory)
         return fallback(Status::NotSupported("merge operator or compaction filter configured"));
     if (cfd->user_comparator() != BytewiseComparator())
         return fallback(Status::NotSupported("non-bytewise comparator"));
@@ -226,6 +229,15 @@ static Status LsmMaybeCreateMergedInput(const Compaction *compaction, ColumnFami
         spec.filter_hashes = table_options->filter_policy != nullptr;
         spec.bottommost = compaction->bottommost_level();
         spec.earliest_snapshot_seq = build->earliest_snapshot;
+        // Built output bypasses CompactionIterator, so the accelerator applies the filter. Without
+        // built output CompactionIterator applies it to the merged stream as usual.
+        if (ttl_filter != nullptr)
+        {
+            spec.ttl = true;
+            spec.ttl_offset = ttl_filter->timestamp_offset();
+            spec.ttl_duration = ttl_filter->ttl();
+            spec.ttl_now = ttl_filter->Now();
+        }
         if (!spec.bottommost && compaction->output_level() != 0 &&
             cfd->ioptions().compaction_style == kCompactionStyleLevel)
         {

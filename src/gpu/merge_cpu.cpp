@@ -445,6 +445,30 @@ namespace lsm_lab
             }
         }
         std::sort(candidates.begin(), candidates.end(), internal_key_less);
+        // TTL filter (built output only): the newest version of each user key, if an expired Put,
+        // becomes a Delete with the same sequence number.
+        if (request.output.enabled && request.output.ttl)
+        {
+            const auto &spec = request.output;
+            for (std::size_t index = 0; index < candidates.size(); ++index)
+            {
+                auto &candidate = candidates[index];
+                const auto user_bytes = candidate.key_bytes - 8;
+                if ((index > 0 && same_user_key(candidates[index - 1], candidate)) ||
+                    static_cast<unsigned char>(candidate.key[user_bytes]) != kTypeValue ||
+                    candidate.value_bytes < spec.ttl_offset + 8)
+                    continue;
+                std::uint64_t timestamp = 0;
+                for (std::uint32_t byte = 0; byte < 8; ++byte)
+                    timestamp = (timestamp << 8) | static_cast<unsigned char>(candidate.value[spec.ttl_offset + byte]);
+                if (spec.ttl_duration > 0 && spec.ttl_now >= spec.ttl_duration &&
+                    timestamp <= spec.ttl_now - spec.ttl_duration)
+                {
+                    const_cast<char *>(candidate.key)[user_bytes] = static_cast<char>(kTypeDeletion);
+                    candidate.value_bytes = 0;
+                }
+            }
+        }
         rocksdb::CompactionMergeDropped dropped;
         if (request.drop_hidden && !candidates.empty())
         {

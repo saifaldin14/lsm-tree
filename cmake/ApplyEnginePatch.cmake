@@ -635,3 +635,9 @@ lsm_replace("table/block_based/filter_policy.cc"
   // Target allocation per added key, in thousandths of a bit.
   int millibits_per_key_;
 };]=])
+
+# The TTL compaction filter is recognised by the merged-input offload
+# (include/rocksdb/lsm_ttl_compaction_filter.h).
+lsm_replace("db/compaction/compaction_job.cc"
+  "#include \"rocksdb/flush_block_policy.h\"\n#include \"table/block_based/filter_policy_internal.h\""
+  "#include \"rocksdb/flush_block_policy.h\"\n#include \"rocksdb/lsm_ttl_compaction_filter.h\"\n#include \"table/block_based/filter_policy_internal.h\"")

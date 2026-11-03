@@ -94,6 +94,14 @@ namespace ROCKSDB_NAMESPACE
         std::uint64_t earliest_snapshot_seq = ~0ULL;
         bool check_beyond_ranges = false;
         std::vector<std::pair<std::string, std::string>> beyond_ranges;
+        // Time-to-live filter (LsmTtlCompactionFilter): the newest version of each user key, if
+        // a Put whose value holds a big-endian 8-byte timestamp at ttl_offset with
+        // timestamp + ttl <= ttl_now, becomes a Delete with the same sequence number (as
+        // CompactionIterator does for a compaction filter's kRemove decision).
+        bool ttl = false;
+        std::uint32_t ttl_offset = 0;
+        std::uint64_t ttl_duration = 0;
+        std::uint64_t ttl_now = 0;
     };
 
     // One finished data block. contents excludes the 5-byte trailer; checksum
