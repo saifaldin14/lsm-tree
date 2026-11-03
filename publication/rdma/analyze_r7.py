@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""GPU compaction over RDMA (rdma_campaign.py r7): per-hop time breakdown, database-node CPU,
-and figure fig23_rdma_gpu.
+"""GPU compaction over RDMA (rdma_campaign.py r7 and r8): per-hop time breakdown,
+database-node CPU, figure fig23_rdma_gpu, and the whole-database runs of r8.
 
   python3 publication/rdma/analyze_r7.py [DATA_DIR]
 
-DATA_DIR defaults to publication/data/rdma/r7. Each record is one workload and variant; its
+DATA_DIR defaults to publication/data/rdma/r7; r8 is read from DATA_DIR/../r8-database.jsonl. Each record is one workload and variant; its
 rows are lsm_compaction_bench results (native first, then the offloaded mode) for 1 cold and 3
 warm repetitions. Only warm repetitions are used, and any run whose output differs from native
 RocksDB is refused.
@@ -128,72 +128,68 @@ def summarize(data):
     return out
 
 
-BARS = [("native", "Native RocksDB"), ("remote-cpu-rdma", "Remote CPU server, RDMA"),
+ROWS = [("native", "Native RocksDB"), ("remote-cpu-rdma", "Remote CPU server, RDMA"),
+        ("remote-gpu-tcp", "Remote GPU, TCP (1 GbE)"),
         ("remote-gpu-relay", "Remote GPU, RDMA + relay (measured)"),
         ("estimate", "Remote GPU, RDMA only (estimate)")]
-CPU_BARS = [("native", "Native RocksDB", "#8c8c8c", ""), ("remote-cpu-rdma", "Remote CPU server, RDMA", "#0072B2", ""),
-            ("remote-gpu-relay", "Remote GPU, RDMA", "#D55E00", ""),
-            ("remote-gpu-tcp", "Remote GPU, TCP", "#56B4E9", "///")]
+LEGEND = ["db", "rdma", "relay", "gbe", "cpu_server", "gpu"]
 
 
 def figure(summary, workloads):
-    fig, axes = plt.subplots(1, 2, figsize=(DOUBLE_COLUMN, 3.1), gridspec_kw={"width_ratios": [1.7, 1]})
-    ax = axes[0]
-    labels, y = [], 0.0
-    ticks = []
+    """Per workload: (a) where the time of one compaction goes, (b) database-node CPU per GiB."""
+    rows = len(ROWS)
+    fig, axes = plt.subplots(len(workloads), 2, figsize=(DOUBLE_COLUMN, 0.95 + 1.3 * len(workloads)),
+                             sharey="row", squeeze=False, gridspec_kw={"width_ratios": [2.3, 1]})
+    time_max = max(summary[w][k]["wall"] for w, _ in workloads for k, _ in ROWS if k in summary[w])
+    cpu_max = max(summary[w][k].get("cpu_gib", 0) for w, _ in workloads for k, _ in ROWS if k in summary[w])
     for index, (workload, title) in enumerate(workloads):
         designs = summary[workload]
-        for key, label in BARS:
-            if key not in designs:
+        left_ax, right_ax = axes[index]
+        for y, (key, _) in enumerate(ROWS):
+            entry = designs.get(key)
+            if not entry:
                 continue
+            estimate = key == "estimate"
             left = 0.0
-            for name, value in designs[key]["parts"].items():
-                _, colour, hatch = SEGMENTS[name]
-                ax.barh(y, value, 0.72, left=left, color=colour, hatch=hatch, edgecolor="white", linewidth=0.4,
-                        zorder=2, alpha=0.55 if key == "estimate" else 1.0)
+            for name, value in entry["parts"].items():
+                _, colour, hatch = SEGMENTS["db" if name == "native" else name]
+                left_ax.barh(y, value, 0.74, left=left, color=colour, hatch=hatch, edgecolor="white", linewidth=0.4,
+                             zorder=2, alpha=0.5 if estimate else 1.0)
                 left += value
-            ax.annotate(f"{left:.1f} s", (left, y), xytext=(2, 0), textcoords="offset points", va="center",
-                        fontsize=5.8, color=INK)
-            ticks.append(y)
-            labels.append(label)
-            y += 1
-        ax.text(0, y - len(BARS) - 0.75, title, fontsize=7, fontweight="bold", color=INK, va="bottom",
-                transform=ax.transData)
-        y += 1.0
-    ax.set_yticks(ticks, labels, fontsize=6.3)
-    ax.invert_yaxis()
-    ax.set_xlabel("Time of one compaction (s)")
-    ax.xaxis.grid(True, color="#e6e6e6", linewidth=0.6, zorder=0)
-    ax.set_axisbelow(True)
-    ax.tick_params(axis="y", length=0)
-    panel_label(ax, "a")
-
-    ax = axes[1]
-    width = 0.2
-    for index, (workload, _) in enumerate(workloads):
-        for offset, (key, label, colour, hatch) in enumerate(CPU_BARS):
-            value = summary[workload].get(key, {}).get("cpu_gib")
-            if value is None:
+            left_ax.annotate(f"{entry['wall']:.2f} s", (left, y), xytext=(2, 0), textcoords="offset points", va="center",
+                             fontsize=5.8, color=INK)
+            if estimate:
+                # The database node does the same work as in the measured relay run.
+                right_ax.annotate("same as measured", (0, y), xytext=(2, 0), textcoords="offset points",
+                                  va="center", fontsize=5.6, color="#666666", style="italic")
                 continue
-            x = index + (offset - 1.5) * width
-            ax.bar(x, value, width * 0.92, color=colour, hatch=hatch, edgecolor="white", linewidth=0.4, zorder=2)
-            ax.annotate(f"{value:.1f}", (x, value), xytext=(0, 1.2), textcoords="offset points", ha="center",
-                        va="bottom", fontsize=5.4, color=INK)
-    ax.set_xticks(range(len(workloads)), [title.replace(" values, ", "\n") for _, title in workloads])
-    finish_axis(ax, "Database-node CPU (s per GiB of input)")
-    panel_label(ax, "b")
-
-    used = []
-    for designs in (summary[w] for w, _ in workloads):
-        for key, _ in BARS:
-            for name in designs.get(key, {}).get("parts", {}):
-                if name not in used:
-                    used.append(name)
+            colour = SEGMENTS["gpu"][1] if "gpu" in key else SEGMENTS["cpu_server"][1] if "cpu" in key else "#8c8c8c"
+            hatch = SEGMENTS["gbe"][2] if key == "remote-gpu-tcp" else ""
+            value = entry["cpu_gib"]
+            right_ax.barh(y, value, 0.74, color=colour, hatch=hatch, edgecolor="white", linewidth=0.4, zorder=2)
+            right_ax.annotate(f"{value:.2f}", (value, y), xytext=(2, 0), textcoords="offset points", va="center",
+                              fontsize=5.8, color=INK)
+        left_ax.set_yticks(range(rows), [label for _, label in ROWS], fontsize=6.4)
+        left_ax.set_ylim(rows - 0.45, -0.55)
+        left_ax.set_xlim(0, time_max * 1.13)
+        right_ax.set_xlim(0, cpu_max * 1.22)
+        left_ax.set_title(title, loc="left", fontsize=7.5, fontweight="bold", color=INK, pad=3)
+        for ax in (left_ax, right_ax):
+            ax.xaxis.grid(True, color="#e6e6e6", linewidth=0.6, zorder=0)
+            ax.set_axisbelow(True)
+            ax.tick_params(axis="y", length=0)
+            if index < len(workloads) - 1:
+                ax.tick_params(axis="x", labelbottom=False)
+    axes[-1][0].set_xlabel("Time of one compaction (s)")
+    axes[-1][1].set_xlabel("Database-node CPU\n(s per GiB of input)")
+    panel_label(axes[0][0], "a")
+    panel_label(axes[0][1], "b")
     handles = [Patch(facecolor=SEGMENTS[n][1], hatch=SEGMENTS[n][2], edgecolor="white", label=SEGMENTS[n][0])
-               for n in used]
-    handles += [Patch(facecolor=c, hatch=h, edgecolor="white", label=f"(b) {l}") for _, l, c, h in CPU_BARS]
-    fig.tight_layout(w_pad=2.0, rect=(0, 0, 1, 0.80))
-    fig.legend(handles=handles, loc="lower center", ncol=3, bbox_to_anchor=(0.5, 0.80), fontsize=6.4,
+               for n in LEGEND]
+    handles[0] = Patch(facecolor=SEGMENTS["db"][1], edgecolor="white", label="On the database node")
+    top = 1 - 0.55 / (0.95 + 1.3 * len(workloads))
+    fig.tight_layout(h_pad=0.6, w_pad=1.0, rect=(0, 0, 1, top))
+    fig.legend(handles=handles, loc="lower center", ncol=6, bbox_to_anchor=(0.5, top), fontsize=6.4,
                handlelength=1.4, columnspacing=1.0)
     save(fig, "fig23_rdma_gpu")
 
@@ -201,8 +197,7 @@ def figure(summary, workloads):
 def table(summary, workloads) -> str:
     lines = ["| Workload | Design | Compaction time (s) | Database-node CPU (s/GiB) | Hops (s) |",
              "|---|---|---:|---:|---|"]
-    names = dict(BARS) | {"remote-gpu-tcp": "Remote GPU, TCP 1 GbE (no relay)",
-                          "gpu-host-native": "Native RocksDB on the GPU host",
+    names = dict(ROWS) | {"gpu-host-native": "Native RocksDB on the GPU host",
                           "gpu-host-local": "GPU in the database process (GPU host)",
                           "gpu-host-loopback": "Remote GPU over loopback TCP (GPU host)"}
     for workload, title in workloads:
@@ -216,6 +211,34 @@ def table(summary, workloads) -> str:
     return "\n".join(lines)
 
 
+R8_NAMES = {"native": "Native RocksDB", "remote_cpu_rdma": "Remote CPU server, RDMA",
+            "remote_gpu_relay": "Remote GPU, RDMA + relay"}
+
+
+def r8_table(path: Path) -> str:
+    """Whole database (r8): medians over repetitions; every run verified all keys and values."""
+    runs = {}
+    for line in path.read_text().splitlines():
+        record = json.loads(line)
+        result = record["result"]
+        if "verification" not in result:
+            raise SystemExit(f"r8 {record['design']} repetition {record['repetition']}: not verified")
+        runs.setdefault(record["design"], []).append(record)
+    lines = ["| Design | Writes/s | Database-node CPU per write (µs) | Remote jobs | Fallbacks | Runs |",
+             "|---|---:|---:|---:|---:|---:|"]
+    for design, label in R8_NAMES.items():
+        records = runs.get(design, [])
+        if not records:
+            continue
+        results = [r["result"] for r in records]
+        ops = median([r["throughput"]["ops_per_second"] for r in results])
+        cpu = median([r["accounting"]["window"]["cores"] * 1e6 / r["throughput"]["ops_per_second"] for r in results])
+        jobs = median([(r.get("transform") or {}).get("merge_jobs", 0) for r in results])
+        fallbacks = max((r.get("transform") or {}).get("merge_fallbacks", 0) for r in results)
+        lines.append(f"| {label} | {ops / 1e3:.0f}k | {cpu:.2f} | {jobs:.0f} | {fallbacks} | {len(records)} |")
+    return "\n".join(lines)
+
+
 def main() -> int:
     root = Path(sys.argv[1]) if len(sys.argv) > 1 else HERE.parent / "data" / "rdma" / "r7"
     data = load(root)
@@ -225,6 +248,11 @@ def main() -> int:
         raise SystemExit("no complete workloads")
     figure(summary, workloads)
     text = table(summary, workloads)
+    r8 = root.parent / "r8-database.jsonl"
+    if r8.exists():
+        text += ("\n\n## Whole database (r8)\n\nBatched writes (100 per batch, WAL off), 4 client threads and "
+                 "4 background jobs on the database node; medians over repetitions; every run checked all keys "
+                 "and values.\n\n" + r8_table(r8))
     (root / "summary.md").write_text("# GPU compaction over RDMA (r7)\n\nMedians of 3 warm repetitions; "
                                      "every run matched native RocksDB.\n\n" + text + "\n")
     print(text)

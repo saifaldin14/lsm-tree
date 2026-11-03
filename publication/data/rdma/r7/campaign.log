@@ -1,0 +1,13 @@
+r7 v128-lz4 remote-gpu-tcp done, matches native: True
+r7 v128-lz4 remote-gpu-relay done, matches native: True
+r7 v128-lz4 remote-cpu-rdma done, matches native: True
+r7 v128-lz4 gpu-host done, matches native: True
+r7 v32-lz4 remote-gpu-relay done, matches native: True
+r7 v32-lz4 gpu-host done, matches native: True
+r7 v32-lz4 remote-cpu-rdma done, matches native: True
+r7 v32-lz4 remote-gpu-tcp done, matches native: True
+r7 v128-zstd remote-gpu-tcp done, matches native: True
+r7 v128-zstd gpu-host done, matches native: True
+r7 v128-zstd remote-cpu-rdma done, matches native: True
+r7 v128-zstd remote-gpu-relay done, matches native: True
+r7 exit 0

@@ -225,6 +225,23 @@ Hardware status when this was written:
   - Supported for batched writes: 3.4× less cluster CPU per write.
   - Not supported for single writes: 1.8× less, short of the stated 2×.
 
+### Outcomes with a GPU server through a relay (r7; written after the runs)
+
+Still no host has both a GPU and RDMA, so r7 (`rdma_campaign.py`) reaches the GPU host
+through a relay: database node → RDMA → relay → TCP over 1 GbE (the only link to the GPU
+host) → `cuda_merge` server. This design was not registered in advance; it is reported as
+an exploratory measurement.
+
+- **H14 (RDMA against TCP), database-node CPU, now with a GPU server:** supported. Over
+  RDMA the database node uses 1.28–1.37 CPU-s per GiB, against 4.46–4.71 when the same jobs
+  go to the GPU host over TCP (3.4–3.5× less). The TCP path runs over 1 GbE, not the
+  100 GbE network; over 100 GbE with a CPU server (R2), TCP also needed about twice RDMA's
+  database-node CPU.
+- **H14, throughput:** not testable; the two paths use different links.
+- **H13, H15, H17:** still not tested. Compaction time on a GPU+RDMA host is estimated
+  from measured hops (1.26–1.54 s per compaction, against 5.28–9.26 s for native on the
+  database node), but an estimate is not a test.
+
 ## Methodology v2 (added before the v2 campaigns)
 
 All campaigns above are the **v1 methodology** and stay as they are. A methodology audit

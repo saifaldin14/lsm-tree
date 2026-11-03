@@ -38,6 +38,9 @@ Properties:
 - **Falls back on failure:** if the server fails, disconnects or times out, that job runs
   on the CPU in the database process and is counted in `merge_fallbacks`.
   `lsm_compaction_server --crash-after N` injects failures for testing.
+- **Relays:** `lsm_compaction_server --backend remote_merge` forwards every job to the
+  server at its own `LSM_REMOTE_ENDPOINT`, sending the blocks it received. This joins two
+  networks, e.g. an RDMA network and a GPU host that only the relay can reach.
 
 ### Transports
 
@@ -76,8 +79,10 @@ over RDMA, against about 0.7 over TCP.
 | `LSM_RDMA_POLL` | `1` busy-polls completions instead of blocking. |
 | `LSM_REMOTE_TIMEOUT_MS` | Client timeout without progress (default 120000). |
 
-The transform's statistics add `merge_remote_ns`, `merge_server_ns`, `merge_sent_bytes`
-and `merge_received_bytes`.
+The transform's statistics add `merge_remote_ns` (the client's call), `merge_server_ns`
+(the server's handler), `merge_sent_bytes` and `merge_received_bytes`. Through a relay they
+also add `merge_upstream_remote_ns` (the relay's call to the next server) and
+`merge_upstream_server_ns` (that server's handler), so each hop's time can be separated.
 
 Tools:
 
@@ -114,7 +119,7 @@ compaction server, for the whole replica set.
 
 These were measured on two machines linked at 100 Gb/s (ConnectX-6 Dx, RoCE), with the
 compaction server running the CPU merge (`cpu_merge`). Details, figures and tables are in
-the [README](../README.md#5-remote-compaction-and-replication-over-rdma).
+the [README](../README.md#7-compaction-on-another-machine-over-rdma).
 
 - **Transport:** RDMA push reaches 92 Gb/s (the `ib_write_bw` ceiling) and costs the
   client about 0.012 CPU-seconds per GiB. TCP reaches 6–7 Gb/s at about 1 CPU-second
@@ -125,6 +130,35 @@ the [README](../README.md#5-remote-compaction-and-replication-over-rdma).
 - **Replication with 2 backups:** compacting once and shipping the files cuts cluster CPU
   per write by 3.4× for batched writes (same throughput) and by 1.8× for single writes
   (25% lower throughput, see Limits), for about 3× more replication traffic.
+
+## Results: GPU compaction over RDMA (through a relay)
+
+No host has both a GPU and an RDMA card, so `rdma_campaign.py r7` chains three: the
+database node (AMD EPYC 7662, 4 cores) sends each job over RDMA (ConnectX-6 Dx, 100 Gb/s)
+to a relay (`--backend remote_merge`), which forwards it over TCP on 1 Gb/s Ethernet to a
+`cuda_merge` server on the A6000 host (8 cores of the GPU's NUMA node). The same
+workloads also run directly over TCP to the GPU host, over RDMA to a CPU server, and on the
+GPU host itself (local GPU, and a loopback server). Every run matched native RocksDB.
+Medians of 3 warm runs ([data](../publication/data/rdma/r7/summary.md),
+`publication/rdma/analyze_r7.py`):
+
+| Workload | Native (database node) | Measured through the relay | Hops: database node / RDMA / relay / 1 GbE / GPU | GPU over RDMA, estimate | Database-node CPU (s/GiB): native → remote GPU |
+|---|---:|---:|---|---:|---|
+| 128 B, LZ4 | 5.28 s | 11.88 s | 0.67 / 0.24 / 0.05 / 10.57 / 0.34 s | 1.26 s | 8.17 → 1.28 |
+| 32 B, LZ4 | 9.26 s | 13.61 s | 0.81 / 0.29 / 0.05 / 12.02 / 0.43 s | 1.54 s | 13.22 → 1.37 |
+| 128 B, ZSTD | 8.35 s | 11.53 s | 0.67 / 0.23 / 0.05 / 10.01 / 0.56 s | 1.47 s | 14.32 → 1.35 |
+
+- **Measured:** the database node's CPU per GiB (6.4–10.6× less than native), close to the
+  local GPU's (1.17–1.28 on the GPU host) and 3.4–3.5× less than sending the same jobs over
+  TCP (4.46–4.71). The RDMA hop costs 0.23–0.29 s per compaction (about 1.2 GB in both
+  directions together); loopback TCP on one machine costs 1.0–1.2 s for the same data.
+- **Estimated:** the compaction time on a host with both a GPU and RDMA, i.e. the measured
+  end-to-end time minus the measured relay and 1 GbE hops. The GPU server's time is
+  measured after the request has arrived, so it does not depend on the network that
+  delivered it.
+- **Remote CPU server:** 1.7–2.2× slower than native, with the server host idle or
+  shared (its load average, recorded before each run, was 0.1–21): the reference CPU
+  merge is slower than RocksDB's own compaction.
 
 ## Limits
 
@@ -143,5 +177,7 @@ the [README](../README.md#5-remote-compaction-and-replication-over-rdma).
   results are therefore a lower bound for remote CPU compaction.
 - **Extra hops for SSTs.** With remote compaction plus physical replication, each output
   file crosses the network twice: server to primary, then primary to each backup.
+- **No host with both a GPU and RDMA.** GPU-over-RDMA times are estimates from measured
+  hops (see above); the database-node CPU is measured.
 - **GPUDirect RDMA is not used.** On the server, received data passes through host memory
   before the GPU. Data-center GPUs could receive directly with GPUDirect RDMA.

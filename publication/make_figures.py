@@ -742,13 +742,18 @@ def figure_rdma_isolated():
         return
     data = {}
     for tag, _ in WORKLOAD_ORDER:
+        # Remote-only files compare each run with itself; check them against the native digest
+        # of the same (deterministic) workload in the local file.
+        local = root / f"{tag}-local.jsonl"
+        native = ({json.loads(line)["digest_after"] for line in local.read_text().splitlines()
+                   if json.loads(line)["mode"] == "native_cpu"} if local.exists() else set())
         for variant, mode, label, _, _ in REMOTE_VARIANTS:
             path = root / f"{tag}-{variant}.jsonl"
             if not path.exists():
                 continue
             for line in path.read_text().splitlines():
                 run = json.loads(line)
-                if not run["matches_reference"]:
+                if not run["matches_reference"] or len(native) != 1 or run["digest_after"] not in native:
                     raise SystemExit(f"r2 {tag} {variant}: {run['mode']} differs from native")
                 if run["repetition"] == 0 or run["mode"] != mode:
                     continue

@@ -30,6 +30,10 @@ as ours, on the same cores.
   half the CPU.
 - **It beats earlier GPU and FPGA designs** rebuilt in the same RocksDB: up to 1.9× more
   throughput, because ours also moves compression to the GPU.
+- **Compaction can run on a GPU in another machine over RDMA.** The database machine then
+  uses 6–11× less CPU per GiB compacted (measured), and a compaction would take 1.3–1.5 s
+  instead of 5–9 s (estimated from measured parts, because no machine has both a GPU and
+  RDMA).
 
 **Why the whole database gains about 2×, not 10×:** once compaction is on the GPU, most
 of the remaining CPU goes to RocksDB accepting writes (about 2.3 µs of the 3.9 µs per
@@ -231,25 +235,45 @@ gParaKV is faster under its own driver.
 - **Future work:** separating values and offloading compaction are complementary, so
   bringing our GPU path to RocksDB's BlobDB is the next step.
 
-### 7. Remote compaction and replication over RDMA
+### 7. Compaction on another machine over RDMA
 
 Compaction can also run on another machine over a 100 Gb/s RDMA network, and a
 replicated database can compact once for all its copies
-([docs/remote-compaction.md](docs/remote-compaction.md)). No machine available to us has
-both a GPU and an RDMA card, so **the remote machine compacts on its CPU** in these
-results.
+([docs/remote-compaction.md](docs/remote-compaction.md)).
 
 ![RDMA transport](publication/figures/fig14_rdma_transport.png)
 
 **Moving the data.** Our RDMA transport reaches 92 Gb/s, the network's full speed. It uses
 0.012 CPU-seconds per GiB moved, about 80× less than TCP, which manages 6–7 Gb/s.
 
+**Compacting on a GPU in another machine.** No machine available to us has both a GPU and
+an RDMA card. So we chained three machines: the database machine sends each compaction
+over RDMA to a second machine, which passes it on over 1 Gb/s Ethernet to the GPU machine.
+Every compaction matched RocksDB exactly, and we timed each hop separately.
+
+![GPU compaction over RDMA](publication/figures/fig23_rdma_gpu.png)
+
+| Workload | RocksDB on the database machine | GPU over RDMA (estimate) | Database machine's CPU per GiB (measured) |
+|---|---|---|---|
+| 128 B values, LZ4 | 5.3 s | **1.26 s (4.2× faster)** | 8.2 → **1.3 s (6.4× less)** |
+| 32 B values, LZ4 | 9.3 s | **1.54 s (6.0× faster)** | 13.2 → **1.4 s (9.6× less)** |
+| 128 B values, ZSTD | 8.4 s | **1.47 s (5.7× faster)** | 14.3 → **1.4 s (10.6× less)** |
+
+- **The CPU saving is measured.** The database machine needs only 1.3–1.4 CPU-seconds per
+  GiB, about the same as when the GPU sits in the same machine (1.2–1.3). Sending the same
+  work over TCP costs 3.4–3.5× more (4.5–4.7).
+- **The time is an estimate.** The slow 1 Gb/s link takes 10–12 s of every compaction.
+  Removing the measured relay and 1 Gb/s hops leaves 1.3–1.5 s: the RDMA transfer takes
+  0.23–0.29 s and the GPU 0.34–0.56 s. A machine with both a GPU and RDMA would confirm it.
+- **A remote CPU is not enough.** A CPU compaction server saves the database machine the
+  same CPU, but each compaction takes 1.7–2.2× longer than in RocksDB, because its merge is
+  a simple reference version.
+
 ![Remote compaction](publication/figures/fig15_rdma_isolated.png)
 
-**Compacting on another machine.** The database machine then spends 1.7–2.0 CPU-seconds
-per GiB compacted, against 4.7–15.0 for local RocksDB (2.6–7.6× less). Over TCP it needs
-about twice that. The remote merge itself is a simple CPU version, about 2× slower than
-RocksDB's, so a remote GPU would be the faster setup.
+**More workloads with a CPU server.** Over six workloads, the database machine spends
+1.7–2.0 CPU-seconds per GiB compacted, against 4.7–15.0 for local RocksDB (2.6–7.6× less).
+Over TCP it needs about twice that.
 
 ![Replication](publication/figures/fig16_rdma_replication.png)
 
