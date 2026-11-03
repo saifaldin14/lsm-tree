@@ -553,6 +553,30 @@ def figure_prior_database(by_codec):
     save(fig, "fig11_prior_database")
 
 
+def figure_prior_gpu_designs(by_codec):
+    """Whole database, 4 cores: throughput of the GPU designs only (earlier designs rebuilt and
+    ours, same settings for all), for batched and single writes, by codec."""
+    codecs = [c for c in ("lz4", "zstd", "none") if by_codec.get(c)]
+    if not codecs:
+        return
+    designs = (SORT_MERGE, PIPELINE, FULL)
+    rows = [("batched", "Batched writes"), ("single", "Single writes")]
+    fig, axes = plt.subplots(1, len(rows), figsize=(DOUBLE_COLUMN, 2.5))
+    for ax, letter, (writes, title) in zip(axes, "ab", rows):
+        groups = []
+        for codec in codecs:
+            entries = [e for e in by_codec[codec] if e["config"].get("writes") == writes]
+            values = by_design(entries, "ops_per_second")
+            groups.append((CODEC_LABEL[codec], {d: tuple(v * 1e-3 for v in ci) for d, ci in values.items() if d in designs}))
+        grouped_bars(ax, groups, designs, None, lambda v: f"{v:.0f}", size=5.6)
+        ax.set_title(title, loc="left", fontsize=8, color=INK, pad=8)
+        finish_axis(ax, "Throughput (k writes/s)")
+        panel_label(ax, letter)
+    fig.tight_layout(w_pad=2.5, rect=(0, 0, 1, 0.84))
+    design_legend(fig, designs, y=0.84, labels=PRIOR_LABELS, ncol=3)
+    save(fig, "fig22_prior_gpu_designs")
+
+
 def figure_prior_equal_cost(entries):
     """Batched LZ4 writes: native on 8 and 32 cores against the pipeline rebuild and full offload on 8."""
     if not entries:
@@ -942,6 +966,7 @@ if __name__ == "__main__":
     figure_ssd(summaries["ssd-scale"])
     figure_prior_compaction()
     figure_prior_database({codec: summaries[f"prior-{codec}"] for codec in ("lz4", "zstd", "none")})
+    figure_prior_gpu_designs({codec: summaries[f"prior-{codec}"] for codec in ("lz4", "zstd", "none")})
     figure_prior_equal_cost(summaries["prior-equal-cost"])
     figure_prior_latency(summaries["prior-lz4"])
     figure_rdma_transport()
