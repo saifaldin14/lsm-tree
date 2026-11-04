@@ -1,0 +1,10 @@
+r8 repetition 1 remote_cpu_rdma: 362624 ops/s, verified 50000000 keys
+r8 repetition 1 remote_gpu_relay: 210492 ops/s, verified 50000000 keys
+r8 repetition 1 native: 544883 ops/s, verified 50000000 keys
+r8 repetition 2 remote_cpu_rdma: 391281 ops/s, verified 50000000 keys
+r8 repetition 2 native: 578231 ops/s, verified 50000000 keys
+r8 repetition 2 remote_gpu_relay: 240517 ops/s, verified 50000000 keys
+r8 repetition 3 remote_cpu_rdma: 269522 ops/s, verified 50000000 keys
+r8 repetition 3 remote_gpu_relay: 209090 ops/s, verified 50000000 keys
+r8 repetition 3 native: 528708 ops/s, verified 50000000 keys
+r8 exit 0

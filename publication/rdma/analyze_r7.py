@@ -224,8 +224,9 @@ def r8_table(path: Path) -> str:
         if "verification" not in result:
             raise SystemExit(f"r8 {record['design']} repetition {record['repetition']}: not verified")
         runs.setdefault(record["design"], []).append(record)
-    lines = ["| Design | Writes/s | Database-node CPU per write (µs) | Remote jobs | Fallbacks | Runs |",
-             "|---|---:|---:|---:|---:|---:|"]
+    lines = ["| Design | Writes/s | Writes stalled | Database-node cores used | Database-node CPU per write (µs) "
+             "| Remote jobs | Fallbacks | Runs |",
+             "|---|---:|---:|---:|---:|---:|---:|---:|"]
     for design, label in R8_NAMES.items():
         records = runs.get(design, [])
         if not records:
@@ -233,9 +234,12 @@ def r8_table(path: Path) -> str:
         results = [r["result"] for r in records]
         ops = median([r["throughput"]["ops_per_second"] for r in results])
         cpu = median([r["accounting"]["window"]["cores"] * 1e6 / r["throughput"]["ops_per_second"] for r in results])
+        stalled = median([r["stall_fraction"] for r in results])
+        cores = median([r["accounting"]["window"]["cores"] for r in results])
         jobs = median([(r.get("transform") or {}).get("merge_jobs", 0) for r in results])
         fallbacks = max((r.get("transform") or {}).get("merge_fallbacks", 0) for r in results)
-        lines.append(f"| {label} | {ops / 1e3:.0f}k | {cpu:.2f} | {jobs:.0f} | {fallbacks} | {len(records)} |")
+        lines.append(f"| {label} | {ops / 1e3:.0f}k | {stalled:.0%} | {cores:.2f} | {cpu:.2f} | {jobs:.0f} | {fallbacks} "
+                     f"| {len(records)} |")
     return "\n".join(lines)
 
 

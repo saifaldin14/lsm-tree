@@ -268,6 +268,11 @@ Every compaction matched RocksDB exactly, and we timed each hop separately.
 - **A remote CPU is not enough.** A CPU compaction server saves the database machine the
   same CPU, but each compaction takes 1.7–2.2× longer than in RocksDB, because its merge is
   a simple reference version.
+- **The whole database works this way.** With every compaction sent through the chain
+  to the GPU, all 50 million keys and values were correct after each run, and no
+  compaction fell back to the database machine. The 1 Gb/s link is the limit here: writers
+  had to wait 18% of the time, so the database took 210k writes/s against 545k for
+  RocksDB, while its machine used 4.0 µs of CPU per write against 6.4.
 
 ![Remote compaction](publication/figures/fig15_rdma_isolated.png)
 

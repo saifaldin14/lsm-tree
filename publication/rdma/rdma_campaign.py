@@ -22,6 +22,9 @@ Experiments:
       a cuda_merge server on the GPU host, and (c) the GPU host directly over TCP; plus, on the
       GPU host, local cuda_merge and a loopback (127.0.0.1) cuda_merge server. Every server is
       restarted per workload and variant so its statistics give a per-hop time breakdown.
+  r8  whole database over the r7 chain: lsm_system_bench on the database node (batched writes,
+      WAL off, full verification) with native compaction, remote_merge to the server's CPU over
+      RDMA, and remote_merge through the relay to the GPU host
 Results are JSON lines in OUT_DIR; every run is resumable (finished files are skipped).
 """
 
@@ -327,10 +330,71 @@ def experiment_r7(cluster: Cluster, out: Path) -> None:
             print(f"r7 {tag} {name} done, matches native: {matches}", flush=True)
 
 
+def experiment_r8(cluster: Cluster, out: Path, repetitions: int, records: int, seconds: tuple[int, int]) -> None:
+    c, s, g = cluster.config["client"], cluster.config["server"], cluster.config["gpu"]
+    gpu_build = g.get("build", cluster.build)
+    scratch = cluster.config["scratch"]
+    golden = f"{scratch}/rdma-golden-{records}"
+    if "done" not in cluster.run(c["host"], f"test -f {golden}.done && echo done || true"):
+        cluster.run(c["host"], f"rm -rf {golden} && {cluster.build}/lsm_system_bench --phase preload --dir {golden} "
+                               f"--records {records} --threads 8 > {golden}.json 2>&1 && touch {golden}.done")
+    results = out / "r8-database.jsonl"
+    done = {(r["repetition"], r["design"]) for r in map(json.loads, results.open())} if results.exists() else set()
+    for repetition in range(1, repetitions + 1):
+        order = ["native", "remote_cpu_rdma", "remote_gpu_relay"]
+        random.Random(800 + repetition).shuffle(order)
+        for design in order:
+            if (repetition, design) in done:
+                continue
+            started = []
+            record = {"experiment": "r8", "repetition": repetition, "design": design,
+                      "load_before": {"client": cluster.load(c["host"]), "server": cluster.load(s["host"]),
+                                      "gpu": cluster.load(g["host"])}}
+            try:
+                env, mode = "", "native_cpu"
+                if design == "remote_cpu_rdma":
+                    pid, endpoint = cluster.start(s["host"], f"{GPU_ENV} {pin(s)} {cluster.build}/lsm_compaction_server "
+                                                             f"--listen rdma://{s['address']}:0 --backend cpu_merge",
+                                                  "/tmp/lsm-r8-server.log")
+                    started.append((s["host"], pid, "/tmp/lsm-r8-server.log", "server"))
+                    env, mode = f"LSM_RDMA_PUSH=1 LSM_REMOTE_ENDPOINT={endpoint}", "remote_merge"
+                elif design == "remote_gpu_relay":
+                    pid, gpu = cluster.start(g["host"], f"{GPU_SERVER_ENV} {pin(g)} {gpu_build}/lsm_compaction_server "
+                                                        f"--listen tcp://{g['address']}:0 --backend cuda_merge",
+                                             "/tmp/lsm-r8-gpu.log")
+                    started.append((g["host"], pid, "/tmp/lsm-r8-gpu.log", "gpu"))
+                    pid, relay = cluster.start(s["host"], f"LSM_REMOTE_ENDPOINT={gpu} {pin(s)} {cluster.build}/"
+                                                          f"lsm_compaction_server --listen rdma://{s['address']}:0 "
+                                                          f"--backend remote_merge", "/tmp/lsm-r8-relay.log")
+                    started.append((s["host"], pid, "/tmp/lsm-r8-relay.log", "relay"))
+                    env, mode = f"LSM_RDMA_PUSH=1 LSM_REMOTE_ENDPOINT={relay}", "remote_merge"
+                primary = f"{scratch}/rdma-r8"
+                before = {role: cluster.cpu_seconds(h, pid) for h, pid, _, role in started}
+                text = cluster.run(c["host"], f"rm -rf {primary} && cp -a {golden} {primary} && {GPU_ENV} {env} {pin(c)} "
+                                              f"{cluster.build}/lsm_system_bench --phase run --mode {mode} --dir {primary} "
+                                              f"--records {records} --threads 4 --background-jobs 4 --batch-size 100 "
+                                              f"--disable-wal true --warmup-seconds {seconds[0]} "
+                                              f"--duration-seconds {seconds[1]}; rc=$?; rm -rf {primary}; exit $rc")
+                after = {role: cluster.cpu_seconds(h, pid) for h, pid, _, role in started}
+                record["server_cpu_seconds"] = {role: (after[role] - before[role]
+                                                       if None not in (after[role], before[role]) else None)
+                                                for role in before}
+                result = json.loads(text[text.index("{"):])
+                result.pop("timeline", None)
+                record["result"] = result
+            finally:
+                for h, pid, log, role in reversed(started):
+                    cluster.stop(h, pid)
+                    record.setdefault("server_statistics", {})[role] = cluster.statistics(h, log)
+            append(results, record)
+            print(f"r8 repetition {repetition} {design}: {record['result']['throughput']['ops_per_second']:.0f} ops/s, "
+                  f"verified {record['result'].get('verification', {}).get('keys')} keys", flush=True)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--hosts", type=Path, required=True)
-    parser.add_argument("--experiment", choices=["r1", "r2", "r6", "r7"], required=True)
+    parser.add_argument("--experiment", choices=["r1", "r2", "r6", "r7", "r8"], required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--repetitions", type=int, default=None)
     parser.add_argument("--records", type=int, default=50_000_000)
@@ -345,6 +409,9 @@ def main() -> int:
         experiment_r2(cluster, arguments.out)
     elif arguments.experiment == "r7":
         experiment_r7(cluster, arguments.out)
+    elif arguments.experiment == "r8":
+        experiment_r8(cluster, arguments.out, arguments.repetitions or 3, arguments.records,
+                      (arguments.warmup_seconds, arguments.duration_seconds))
     else:
         experiment_r6(cluster, arguments.out, arguments.repetitions or 5, arguments.records,
                       (arguments.warmup_seconds, arguments.duration_seconds))

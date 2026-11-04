@@ -156,6 +156,12 @@ Medians of 3 warm runs ([data](../publication/data/rdma/r7/summary.md),
   end-to-end time minus the measured relay and 1 GbE hops. The GPU server's time is
   measured after the request has arrived, so it does not depend on the network that
   delivered it.
+- **Whole database (r8):** `lsm_system_bench` on the database node (50 M keys, batches of
+  100, WAL off, 4 clients, 4 background jobs, 30 s warm-up, 120 s measured, 3 runs), every
+  compaction through the chain. All runs verified every key and value with no fallbacks.
+  The 1 GbE hop limits compaction, so writes stall 18% of the time (native 1%): 210k
+  writes/s against 545k, at 3.99 µs of database-node CPU per write against 6.40 (a CPU
+  server over RDMA: 363k writes/s, 14% stalled, 3.82 µs).
 - **Remote CPU server:** 1.7–2.2× slower than native, with the server host idle or
   shared (its load average, recorded before each run, was 0.1–21): the reference CPU
   merge is slower than RocksDB's own compaction.

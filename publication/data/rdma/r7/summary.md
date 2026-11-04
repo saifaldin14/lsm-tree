@@ -28,3 +28,13 @@ Medians of 3 warm repetitions; every run matched native RocksDB.
 | 128 B values, ZSTD | Native RocksDB on the GPU host | 11.77 | 20.22 |  |
 | 128 B values, ZSTD | GPU in the database process (GPU host) | 1.09 | 1.28 |  |
 | 128 B values, ZSTD | Remote GPU over loopback TCP (GPU host) | 2.25 | 2.86 | db 0.68, loopback 1.00, gpu 0.56 |
+
+## Whole database (r8)
+
+Batched writes (100 per batch, WAL off), 4 client threads and 4 background jobs on the database node; medians over repetitions; every run checked all keys and values.
+
+| Design | Writes/s | Writes stalled | Database-node cores used | Database-node CPU per write (µs) | Remote jobs | Fallbacks | Runs |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Native RocksDB | 545k | 1% | 3.49 | 6.40 | 0 | 0 | 3 |
+| Remote CPU server, RDMA | 363k | 14% | 1.35 | 3.82 | 105 | 0 | 3 |
+| Remote GPU, RDMA + relay | 210k | 18% | 0.85 | 3.99 | 87 | 0 | 3 |
