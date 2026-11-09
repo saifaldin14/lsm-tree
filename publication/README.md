@@ -5,6 +5,7 @@ Results of offloading RocksDB compaction to an NVIDIA GPU.
 | File | Contents |
 |---|---|
 | [RESULTS.md](RESULTS.md) | Setup, methods, results, correctness, threats to validity, next steps |
+| [RELATED-WORK.md](RELATED-WORK.md) | Earlier GPU, FPGA and remote compaction designs, measured head to head on this harness |
 | [PLAIN-SUMMARY.md](PLAIN-SUMMARY.md) | Non-technical summary |
 | [AUDIT.md](AUDIT.md) | Every measurement problem found and how it was fixed |
 | [figures/](figures/) | Figures (PDF and PNG) |
