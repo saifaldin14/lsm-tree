@@ -168,7 +168,7 @@ published production models, and the standard YCSB benchmark. Median of 3 runs.*
 NVIDIA RTX PRO 6000 Blackwell), both designs tuned on it, 8 cores, median of 3 runs. SATA
 SSD: the first server, 8 cores, median of 3 runs. Every key verified in every run.*
 
-![Throughput and CPU per write in memory, on NVMe and on a SATA SSD](publication/figures/fig33_storage.png)
+![Throughput and CPU per write in memory, on NVMe and on a SATA SSD](publication/figures/fig33_storage_v2.png)
 
 - **On a drive, the drive becomes the limit.** On NVMe both designs reach about the same
   throughput (0.82M and 0.84M writes/s), and on the SATA SSD too (0.93×).
@@ -179,7 +179,7 @@ SSD: the first server, 8 cores, median of 3 runs. Every key verified in every ru
 
 ![NVMe write latency at fixed loads](publication/figures/fig30_nvme_latency.png)
 
-A separate run on the NVMe drive reached 1.26M writes/s with ours (1.53× RocksDB), but its
+A separate run on the NVMe drive reached 1.315M writes/s with ours (1.60× RocksDB), but its
 raw data is not yet in the repository, so it is not counted here.
 
 ### 6. A GPU in another machine, over RDMA

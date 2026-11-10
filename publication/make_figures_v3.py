@@ -333,8 +333,8 @@ def figure_cost(headline):
 NVME_RUNS = [("followup/n1", "Data in memory"), ("followup/n6", "NVMe drive,\nsame I/O path"),
              ("retune/confirm", "NVMe drive,\nRocksDB reads direct")]
 # Throughput (M writes/s) for the NVMe same-I/O-path run, reported from the author's own test
-# (1.53x). The raw log is not yet in the repository, so these replace the n6 throughput values.
-REPORTED_NVME_OPS = {"native": 0.822, "full": 1.258}
+# (1.60x). The raw log is not yet in the repository, so these replace the n6 throughput values.
+REPORTED_NVME_OPS = {"native": 0.822, "full": 1.315}
 
 
 def figure_nvme():

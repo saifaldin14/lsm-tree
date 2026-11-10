@@ -158,7 +158,7 @@ def figure_storage():
         panel_label(ax, letter)
     fig.tight_layout(w_pad=2.5, rect=(0, 0, 1, 0.88))
     design_legend(fig, (NATIVE, FULL), y=0.88, labels=LABELS)
-    save(fig, "fig33_storage")
+    save(fig, "fig33_storage_v2")
 
 
 def main() -> int:
