@@ -41,6 +41,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <map>
 #include <iostream>
 #include <mutex>
@@ -105,6 +106,10 @@ namespace
         bool use_direct_io = false;
         // Compaction shape (0 keeps RocksDB defaults).
         std::uint32_t l0_trigger = 0;
+        std::uint32_t l0_slowdown = 0;
+        std::uint32_t l0_stop = 0;
+        std::string compaction_style = "level";
+        bool stats_all = false;
         double level_multiplier = 0;
         // RocksDB's integrated key/value separation (BlobDB): values of at least this many bytes
         // go to blob files, with blob garbage collection (0 disables).
@@ -312,6 +317,10 @@ namespace
         shape.subcompactions = config.subcompactions;
         shape.levels = config.levels;
         shape.l0_trigger = config.l0_trigger;
+        shape.l0_slowdown = config.l0_slowdown;
+        shape.l0_stop = config.l0_stop;
+        shape.compaction_style = config.compaction_style;
+        shape.stats_all = config.stats_all;
         shape.level_multiplier = config.level_multiplier;
         shape.use_direct_io = config.use_direct_io;
         shape.adaptive_yield = config.adaptive_yield;
@@ -821,7 +830,8 @@ namespace
                     if (sample)
                     {
                         sample_start = Clock::now();
-                        rocksdb::SetPerfLevel(rocksdb::PerfLevel::kEnableTimeExceptForMutex);
+                        rocksdb::SetPerfLevel(config.stats_all ? rocksdb::PerfLevel::kEnableTime
+                                                              : rocksdb::PerfLevel::kEnableTimeExceptForMutex);
                         rocksdb::get_perf_context()->Reset();
                     }
                     return sample;
@@ -1382,6 +1392,8 @@ namespace
                     {"levels_before", levels_before},
                     {"levels_after_run", level_shape(db.get())},
                     {"transform", backend ? backend->statistics() : Json(nullptr)}};
+        if (config.stats_all)
+            result["rocksdb_statistics"] = statistics->ToString();
         if (config.verify)
         {
             Json verification{{"keys", 0}, {"deleted_keys", 0}, {"expired_keys", 0}, {"expired_keys_present", 0}, {"seconds", 0.0}};
@@ -1467,6 +1479,13 @@ namespace
                 return argv[++index];
             };
             const auto number = [&]() { return std::stoull(value()); };
+            const auto l0_threshold = [&]() {
+                const auto threshold = number();
+                if (threshold > std::numeric_limits<std::uint32_t>::max() ||
+                    threshold > static_cast<unsigned long long>(std::numeric_limits<int>::max()))
+                    throw std::invalid_argument(name + " exceeds the supported L0 threshold range");
+                return static_cast<std::uint32_t>(threshold);
+            };
             if (name == "--phase")
                 config.phase = value();
             else if (name == "--dir")
@@ -1518,7 +1537,15 @@ namespace
             else if (name == "--zipf-theta")
                 config.zipf_theta = std::stod(value());
             else if (name == "--l0-trigger")
-                config.l0_trigger = static_cast<std::uint32_t>(number());
+                config.l0_trigger = l0_threshold();
+            else if (name == "--l0-slowdown")
+                config.l0_slowdown = l0_threshold();
+            else if (name == "--l0-stop")
+                config.l0_stop = l0_threshold();
+            else if (name == "--compaction-style")
+                config.compaction_style = value();
+            else if (name == "--stats-all")
+                config.stats_all = value() == "true";
             else if (name == "--level-multiplier")
                 config.level_multiplier = std::stod(value());
             else if (name == "--blob-min-bytes")
@@ -1633,6 +1660,8 @@ int main(int argc, char **argv)
                             {"rmw_percent", config.rmw_percent}, {"delete_percent", config.delete_percent},
                             {"distribution", config.distribution}, {"zipf_theta", config.zipf_theta},
                             {"use_direct_io", config.use_direct_io}, {"l0_trigger", config.l0_trigger},
+                            {"l0_slowdown", config.l0_slowdown}, {"l0_stop", config.l0_stop},
+                            {"compaction_style", config.compaction_style}, {"stats_all", config.stats_all},
                             {"level_multiplier", config.level_multiplier}, {"blob_min_bytes", config.blob_min_bytes},
                             {"workload", config.workload}, {"rate", config.rate}, {"shards", config.shards}, {"key_bytes_max", config.key_bytes_max},
                             {"value_bytes_max", config.value_bytes_max}, {"key_families", config.key_families},

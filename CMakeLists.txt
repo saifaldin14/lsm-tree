@@ -289,6 +289,12 @@ target_compile_options(lsm_config_tests PRIVATE -Wall -Wextra -Wpedantic -Werror
 add_test(NAME config.validation COMMAND lsm_config_tests)
 set_tests_properties(config.validation PROPERTIES TIMEOUT 30 LABELS "config;unit")
 
+add_executable(lsm_db_options_tests tests/db_options_test.cpp)
+target_link_libraries(lsm_db_options_tests PRIVATE rocksdb nlohmann_json::nlohmann_json GTest::gtest_main)
+target_compile_options(lsm_db_options_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+add_test(NAME db.options COMMAND lsm_db_options_tests)
+set_tests_properties(db.options PROPERTIES TIMEOUT 30 LABELS "db;unit")
+
 add_library(lsm_engine src/engine/dataset.cpp)
 target_link_libraries(lsm_engine PUBLIC lsm_config rocksdb PRIVATE OpenSSL::Crypto)
 target_compile_options(lsm_engine PRIVATE -Wall -Wextra -Wpedantic -Werror)

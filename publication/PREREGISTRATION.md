@@ -715,6 +715,46 @@ question at matched throughput is how few cores ours needs to reach that.
   32-core throughput (its default-trigger and trigger-8 runs, whichever is higher).
 - **Hypothesis H30:** ours on 12 cores reaches at least RocksDB's best 32-core throughput,
   at less than 0.7x its cost per hour. If it does not, the README says so.
+- **Changes before any cost data (12:18):** the level-0 trigger grid was stopped after
+  block 0 and 3 runs of block 1, to start the cost runs sooner. Ours on 12 cores uses 25
+  threads, not 24: the benchmark requires the 50 M records to divide evenly by the thread
+  count, and the first attempt with 24 failed at start-up with no data. The 12-core runs
+  go first, then the 32-core pair.
+
+### NVMe: where the CPU, not the drive, is the limit (added 2026-11-10, before these runs)
+
+On the NVMe server at 8 cores with LZ4 both designs reach the drive's limit (N6: 1.02x).
+Three cells test whether ours' throughput gain returns when the CPU is the limit or when
+ours writes fewer bytes.
+
+- **Run** (NVMe server, after N5, same I/O path for both: `use-direct-io` false; 50 M
+  records, batched writes, verification on; 60 s warm-up plus 180 s; 2 blocks, schedule
+  seed 113). Settings are the NVMe server's tuned 8-core settings (N6), with threads and
+  background jobs halved at 4 cores:
+  - **C4:** 4 cores, LZ4.
+  - **BZ:** 8 cores, LZ4 with ZSTD on the last level (`bottommost-compression zstd`).
+  - **TR:** 8 cores, LZ4, each design at its best level-0 trigger from the trigger grid
+    (RocksDB 8, ours 12; `max-bytes-for-level-base` trigger x 64 MiB).
+- **Reported:** writes/s, CPU per write, write amplification, drive MB/s and utilisation,
+  every cell, whatever the outcome.
+- **Hypothesis H31:** in at least one cell ours' throughput is at least 1.2x RocksDB's.
+
+### Contention, write amplification and baselines on zyra (added 2026-11-10, before these runs)
+
+- **Profile (P):** RocksDB and ours at 8 cores, tuned settings, one 60 s window each with
+  `perf record -g` and RocksDB statistics at full level (mutex wait, write stall, write
+  group counters). Descriptive; no hypothesis.
+- **Write amplification (W):** new benchmark settings for RocksDB's level-0 slowdown and
+  stop triggers. Both designs at triggers 16 and 24 with slowdown at 2x and stop at 3x the
+  trigger, `max-bytes-for-level-base` trigger x 64 MiB, 8 cores, 30 s plus 120 s, 2 blocks,
+  seed 114. Replaces the queued trigger 16 runs. H29's selection rule applies across all
+  triggers 4 to 24.
+- **Baselines (B):** at 8 cores, RocksDB with universal compaction (new setting) and
+  RocksDB with BlobDB (`blob-min-bytes` 64), against ours with its default and its best
+  trigger. 30 s plus 120 s, 2 blocks, seed 115. Ours with BlobDB is tried once for 20 s;
+  if it falls back or fails it is reported and not run further.
+- **Changed before data:** ours on 32 cores is dropped from the cost runs today; RocksDB
+  on 32 cores at trigger 8 stays.
 
 ## Changes after data collection
 
