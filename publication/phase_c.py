@@ -12,6 +12,7 @@ import json
 import os
 import platform
 import select
+import shutil
 import signal
 import subprocess
 import sys
@@ -100,7 +101,7 @@ def assert_idle():
             continue
 
 
-def build_grids(headline, golden):
+def build_grids(headline, golden, *, preferred_baselines=False):
     tuned = {t["design"]: t for t in headline["trials"] if t["cores"] == 8}
     common = {"records": 50000000, "read-percent": 0, "warmup-seconds": 30,
               "duration-seconds": 120, "verify": True}
@@ -121,6 +122,9 @@ def build_grids(headline, golden):
                  trial("full", {"l0-trigger": 12, "max-bytes-for-level-base": 12 * 64 * 2**20},
                        baseline="ours-trigger12")]
     smoke = trial("full", {"blob-min-bytes": 64}, baseline="ours-blobdb", golden=str(golden / "blobdb"))
+    if preferred_baselines:
+        for item in [*baselines, smoke]:
+            item["memory"] = "preferred"
     return {"w": {"common": common, "trials": writes}, "b": {"common": common, "trials": baselines},
             "blob-smoke": {"common": {**common, "warmup-seconds": 5, "duration-seconds": 20}, "trials": [smoke]},
             "profile": {"common": {**common, "duration-seconds": 60, "stats-all": True},
@@ -212,6 +216,7 @@ def run_profiles(args, grid):
             run_checked(report, stdout=output, env={**environment, "PAGER": "cat"}, timeout=120)
         write_once(directory / "complete.json", {"verified": True, "window_perf_seconds": interval,
                    "clock_offset_drift_seconds": drift, "raw_profile_retained": True})
+        shutil.rmtree(database)
 
 
 def preload_baselines(args, root):
@@ -244,20 +249,29 @@ def main():
     parser.add_argument("--wait-pid", type=int, required=True)
     parser.add_argument("--wait-directory", type=Path)
     parser.add_argument("--refresh-build", action="store_true")
+    parser.add_argument("--baseline-retry", action="store_true")
     parser.add_argument("--resume-legacy", action="store_true")
     args = parser.parse_args()
     args.scratch.mkdir(parents=True, exist_ok=True)
     with (args.work / "phase-c.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         golden = args.scratch / "baseline-goldens"
-        grids = build_grids(json.loads((ROOT / "configs/system/v3-headline.json").read_text()), golden)
-        paths = {name: args.work / "phase-c-checked-grids" / f"{name}.json" for name in grids}
+        grids = build_grids(json.loads((ROOT / "configs/system/v3-headline.json").read_text()), golden,
+                    preferred_baselines=args.baseline_retry)
+        grid_dir = "phase-c-preferred-grids" if args.baseline_retry else "phase-c-checked-grids"
+        paths = {name: args.work / grid_dir / f"{name}.json" for name in grids}
         for name, grid in grids.items():
             write_once(paths[name], grid)
         waiting = args.wait_directory or args.work / "cost32"
         print("WAIT", waiting, args.wait_pid, flush=True)
         wait_for_campaign(args.wait_pid, waiting)
         assert_idle()
+        if args.baseline_retry:
+            for design in ("native", "full"):
+                result = json.loads((args.work / "profile-checked" / design / "complete.json").read_text())
+                database = args.scratch / f"profile-{design}"
+                if result["verified"] and database.exists():
+                    shutil.rmtree(database)
         if args.refresh_build:
             cache = (args.build / "CMakeCache.txt").read_text().splitlines()
             cmake = next(line.split("=", 1)[1] for line in cache if line.startswith("CMAKE_COMMAND:INTERNAL="))
@@ -266,21 +280,24 @@ def main():
                          "lsm_db_options_tests", "--parallel", "8"])
             run_checked([str(args.build / "lsm_db_options_tests")], timeout=120)
         binary = args.build / "lsm_system_bench"
-        write_once(args.work / "phase-c-build.json", {"binary": str(binary),
+        manifest = "phase-c-preferred-build.json" if args.baseline_retry else "phase-c-build.json"
+        write_once(args.work / manifest, {"binary": str(binary),
                    "sha256": hashlib.sha256(binary.read_bytes()).hexdigest(), "environment": GPU_ENV,
                    "script_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest()})
-        print("START profile", flush=True)
-        run_profiles(args, grids["profile"])
-        run_campaign(args, "wa-w", paths["w"], 2, 114)
+        if not args.baseline_retry:
+            print("START profile", flush=True)
+            run_profiles(args, grids["profile"])
+            run_campaign(args, "wa-w", paths["w"], 2, 114)
         preload_baselines(args, golden)
+        suffix = "-preferred" if args.baseline_retry else ""
         try:
-            smoke = run_campaign(args, "base-blob-smoke", paths["blob-smoke"], 1, 115)
+            smoke = run_campaign(args, "base-blob-smoke" + suffix, paths["blob-smoke"], 1, 115)
             rows = campaign_complete(smoke)
             transform = rows[0]["result"].get("transform") or {}
             print("BlobDB smoke counters", json.dumps(transform), flush=True)
         except (RuntimeError, subprocess.CalledProcessError) as error:
             print("BlobDB offload smoke failed; retained, native baseline still runs:", error, flush=True)
-        run_campaign(args, "base-b", paths["b"], 2, 115)
+        run_campaign(args, "base-b" + suffix, paths["b"], 2, 115)
         print("DONE phase-c", flush=True)
         if args.resume_legacy:
             environment = {**os.environ, "LSM_BUILD_DIR": str(ROOT / "build/zyra-cuda"),
