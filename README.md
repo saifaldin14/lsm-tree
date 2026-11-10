@@ -27,7 +27,7 @@ the same search, on the same CPU cores. The GPU is in addition to those cores.
 | One compaction | **8–12× faster, 9–16× less CPU** (small values, compressed); 3–4× with 1 KB values or no compression |
 | GPU capacity | **One GPU = 15–18 CPU cores** of compaction work |
 | Whole database | **1.5–1.8× more writes, 1.8–2.2× less CPU per write**, and writers are never slowed down |
-| Keeping up | After 5 minutes of writing, RocksDB needs **11–44 s** to finish postponed compaction; ours **1.3–2.6 s** |
+| Keeping up | After 5 minutes of writing, RocksDB needs **11–69 s** to finish postponed compaction, ours **1.3–2.6 s**; counting it, ours handles **1.55–1.86×** RocksDB's writes |
 | Slowest writes (99.9th percentile) | **3.8× lower at 70% load, 9.6× lower at 90%** (1.75× at 50%) |
 | On an NVMe drive | **1.60× more writes**, **1.70× less CPU per write**, and the slowest 1% of writes **29× faster** at 630k writes/s |
 | A GPU in another machine, over RDMA | Each compaction **4.0–6.5× faster**; the whole database **1.75× more writes, 2.04× less CPU** |
@@ -153,11 +153,20 @@ runs.*
 
 - **Writers are never slowed down.** RocksDB had to slow writers for up to 6% of the time
   because compaction fell behind; ours never did.
-- **Ours does not fall behind.** When the 5 minutes of writing end, RocksDB still needs
-  11–44 s to finish compaction it postponed (32–69 s with ZSTD on the last level); ours
-  needs 1.3–2.6 s.
 - **The slowest writes are much faster on more cores.** On 16 cores, the slowest 0.1% of
   writes take 8.9 ms with ours against 210 ms with RocksDB.
+
+**Ours keeps up; RocksDB falls behind.** When writing is heavy, RocksDB postpones
+compaction and carries on accepting writes, so a benchmark that stops the clock when
+writing stops makes it look faster than it is. The postponed work still has to be done:
+after 5 minutes of writing, RocksDB needs another 11–44 s of compaction (32–69 s with ZSTD
+on the last level). Ours keeps up as it goes, and needs 1.3–2.6 s.
+
+![Catch-up compaction after writing stops, and the gain counting it](publication/figures/fig37_catch_up.png)
+
+Counting the time to finish that postponed work, ours handles **1.55–1.86× RocksDB's
+writes**, up from 1.51–1.79× during the run alone. Every throughput in this README is the
+lower, during-the-run figure.
 
 ### 3. Write latency: the busier the database, the bigger the gain
 
@@ -185,9 +194,23 @@ published production models, and the standard YCSB benchmark. Median of 3 runs.*
 
 - **Write-heavy work gains 1.3–1.8×.** The gain follows how much of the work is writing.
 - **A busy machine gains most: 2.1–2.5×.** When other programs take part of every core,
-  RocksDB's compaction competes with them; ours runs on the GPU.
+  RocksDB's compaction competes with them; ours runs on the GPU. It also uses **1.3–1.5×
+  less energy per write** there (whole server, including the GPU for ours only).
 - **Read-heavy work is unchanged (1.02–1.10×)**, and reads were not slower in any workload.
   With read-modify-write, read latency halves.
+
+**Cheap compaction makes better settings affordable.** Settings that compact more often
+(keeping the data in fewer levels) or compress harder (ZSTD, for smaller files) cost
+RocksDB throughput. Ours barely notices. *Half reads, half writes, 4 cores, the same
+untuned settings for both designs, median of 3 runs.*
+
+| Settings | RocksDB | Ours | Gain |
+|---|---|---|---|
+| Default (LZ4) | 187k ops/s | 273k | 1.46× |
+| Compact more often | 193k | 269k | 1.39× |
+| Compact more often, ZSTD | 112k | 244k | **2.18×** |
+
+Switching to ZSTD costs RocksDB 42% of its throughput, and ours 9%.
 
 ### 5. On real disks
 
@@ -256,8 +279,9 @@ in [publication/FULL-RESULTS.md](publication/FULL-RESULTS.md#7-what-it-costs-and
   batches.
 - **Sharing one GPU:** four databases on one GPU kept 77% of their single-database
   throughput, below our 80% target.
-- **Energy:** no saving is claimed; energy per write ranges from 0.58× to 1.19× RocksDB's,
-  depending on the workload.
+- **Energy:** a saving is clear only on a busy machine (1.3–1.5× less per write). In the
+  other whole-database runs, energy per write ranges from 0.69× to 1.19× RocksDB's, so no
+  general saving is claimed.
 - **Coverage:** two GPU models and RocksDB 11.8 only; the remote-GPU database run used one
   pair of machines and one setting.
 
@@ -314,7 +338,7 @@ ONLY="isolated headline bottomzstd openloop stream metadata timeseries mixgraph 
   LSM_BUILD_DIR=build/dev publication/v3_chain.sh artifacts/v3   # about 30 hours
 python3 publication/make_figures_v3.py                       # figures 17-21 from publication/data/v3/
 python3 publication/make_figures.py                          # figures 10-16 and 22
-python3 publication/make_readme_figures.py                   # figures 32, 33, 35, 36 (README summaries)
+python3 publication/make_readme_figures.py                   # figures 32, 33, 35-37 (README summaries)
 python3 publication/rdma/analyze_r7.py                       # figures 23 and 31 (remote GPU over RDMA)
 ```
 

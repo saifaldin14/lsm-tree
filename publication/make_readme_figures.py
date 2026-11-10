@@ -11,6 +11,8 @@ fig33_storage         Writes/s and CPU per write with data in memory and on an N
 fig36_other_work      Earlier GPU and FPGA designs rebuilt in the same RocksDB: (a) compaction CPU per
                       GiB of one compaction, (b) whole-database writes/s on 4 cores with the same
                       settings for every design.
+fig37_catch_up        Tuned whole-database runs: (a) seconds of postponed compaction left when writing
+                      stops, (b) gain over RocksDB during the run and counting that catch-up.
 fig35_cost_cheaper    The tuned cost comparisons in which ours is cheaper than RocksDB: the same write
                       rate (1.26M writes/s), and the highest rate each reaches. AWS prices from
                       prices.json; ours includes one GPU.
@@ -269,11 +271,66 @@ def figure_other_work():
     save(fig, "fig36_other_work")
 
 
+def catch_up_rows():
+    """[(label, {design: runs})] for the tuned LZ4 and ZSTD-on-last-level whole-database runs."""
+    rows = []
+    for names, codec in ((("v3-headline", "v3-headline-more"), "LZ4"), (("v3-bottomzstd", "v3-bottomzstd-more"), "ZSTD on\nlast level")):
+        runs = load_campaign(*names)
+        for cores in (4, 8, 16):
+            if runs.get((NATIVE, cores)) and runs.get((FULL, cores)):
+                rows.append((f"{cores} cores\n{codec}", {NATIVE: runs[(NATIVE, cores)], FULL: runs[(FULL, cores)]}))
+    return rows
+
+
+def figure_catch_up():
+    rows = catch_up_rows()
+    if not rows:
+        return
+    fig, axes = plt.subplots(1, 2, figsize=(DOUBLE_COLUMN, 2.7))
+    width = 0.38
+    ax = axes[0]
+    top = 0.0
+    for index, (_, runs) in enumerate(rows):
+        for offset, design in ((-width / 2, NATIVE), (width / 2, FULL)):
+            value = median([r["ingest_and_compact"]["drain_seconds"] for r in runs[design]])
+            bar(ax, [index + offset], [value], width * 0.95, design)
+            ax.annotate(f"{value:.0f} s" if value >= 10 else f"{value:.1f} s", (index + offset, value), xytext=(0, 1.5),
+                        textcoords="offset points", ha="center", va="bottom", fontsize=6.0, color=INK)
+            top = max(top, value)
+    ax.set_xticks(range(len(rows)), [label for label, _ in rows], fontsize=6.0)
+    ax.set_ylim(0, top * 1.2)
+    finish_axis(ax, "Catch-up after writing stops (s)")
+    panel_label(ax, "a")
+    ax = axes[1]
+    colours = {"During the run": "#bdbdbd", "Counting catch-up": STYLE[FULL]["color"]}
+    top = 0.0
+    for index, (_, runs) in enumerate(rows):
+        during = (median([window_ops(r) for r in runs[FULL]]) / median([window_ops(r) for r in runs[NATIVE]]))
+        counted = (median([r["ingest_and_compact"]["ops_per_second"] for r in runs[FULL]]) /
+                   median([r["ingest_and_compact"]["ops_per_second"] for r in runs[NATIVE]]))
+        for offset, (name, value) in zip((-width / 2, width / 2), (("During the run", during), ("Counting catch-up", counted))):
+            ax.bar(index + offset, value, width * 0.95, color=colours[name], edgecolor="white", linewidth=0.4, zorder=2,
+                   label=name if index == 0 else None)
+            ax.annotate(f"{value:.2f}", (index + offset, value), xytext=(0, 1.5), textcoords="offset points",
+                        ha="center", va="bottom", fontsize=5.6, color=INK)
+            top = max(top, value)
+    ax.axhline(1.0, color=STYLE[NATIVE]["color"], linewidth=1.0, linestyle="--", zorder=3)
+    ax.set_xticks(range(len(rows)), [label for label, _ in rows], fontsize=6.0)
+    ax.set_ylim(0, top * 1.15)
+    ax.legend(frameon=False, fontsize=6.2, loc="lower center", ncol=2, bbox_to_anchor=(0.5, 1.0))
+    finish_axis(ax, "Gain over RocksDB (×)")
+    panel_label(ax, "b")
+    fig.tight_layout(w_pad=2.5, rect=(0, 0, 1, 0.88))
+    design_legend(fig, (NATIVE, FULL), y=0.88, labels=LABELS)
+    save(fig, "fig37_catch_up")
+
+
 def main() -> int:
     figure_workload_gains()
     figure_storage()
     figure_cost_cheaper()
     figure_other_work()
+    figure_catch_up()
     return 0
 
 
