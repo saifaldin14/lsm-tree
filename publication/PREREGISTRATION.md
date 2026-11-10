@@ -756,6 +756,29 @@ ours writes fewer bytes.
 - **Changed before data:** ours on 32 cores is dropped from the cost runs today; RocksDB
   on 32 cores at trigger 8 stays.
 
+- **Implementation amendment (2026-11-10, before P/W/B):** the existing cost32 and
+  default-trigger confirmation finish before the new queue starts. Profiling uses
+  30 s warm-up plus a 60 s measured window and full verification. CPU samples are
+  filtered to the recorded window; raw profiles are retained. The scheduler tracepoint
+  is unavailable without changing host permissions, so off-CPU durations are not claimed.
+  Full RocksDB statistics span open through catch-up, while sampled write timers cover
+  the measured window. Instrumented runs are diagnostic, not throughput comparisons.
+  Universal and BlobDB baselines each get a separately preloaded, verified database
+  with the same keys and values but their own storage layout. Their settings are
+  exploratory baselines, not equally tuned optima. These preloads add runtime.
+- **Build-overlap disclosure:** some cost12 trials overlapped the new binary's build or
+  CPU smoke tests on another NUMA node. Core separation does not eliminate shared-memory
+  or power effects. Retain the measurements, but require clean confirmation before
+  treating H30 as final. The original binary remained unchanged throughout cost12/cost32.
+- **N6 analysis correction:** aligned device samples show almost no physical reads,
+  about 59% busy time for native and 88% for full offload. Cached reads and device busy
+  time do not establish that both designs saturate the drive. The previous mixed-I/O
+  fio ceilings are not a like-for-like ceiling for buffered N6 or the H31 cells.
+- **Registration timing:** H31 was written locally before launch, but its Git commit
+  followed launch. P/W/B have not started at this amendment. The earlier trigger-16
+  extension completed before the queue hand-off; it is retained separately from W,
+  whose slowdown and stop settings differ.
+
 ## Changes after data collection
 
 - **Shared GPU, first attempt (discarded, kept as `shared-gpu-attempt1`):** all
