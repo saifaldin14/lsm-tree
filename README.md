@@ -464,10 +464,12 @@ correct after every run.
 The earlier relay run (below) was held to 210k writes/s by its 1 Gb/s hop; over the
 direct link the remote GPU is faster than RocksDB on its own machine.
 
-The figure below is from the earlier relay testbed. Its "estimate" bar, the relay's
-measured hops removed by arithmetic, is superseded by the direct measurement above.
+The figure shows both testbeds. The top four rows of each workload are the earlier relay
+testbed, where the 1 Gb/s hop dominates; the two rows below the dashed line are the direct
+link (pyke and malphite), RocksDB and the remote GPU on the same machines. Compare rows
+within a testbed, not across the line.
 
-![GPU compaction over RDMA, relay testbed](publication/figures/fig23_rdma_gpu.png)
+![GPU compaction over RDMA, relay and direct testbeds](publication/figures/fig23_rdma_gpu.png)
 
 **Relay testbed: the database machine's CPU per GiB compacted.**
 

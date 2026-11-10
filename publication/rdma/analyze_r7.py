@@ -80,6 +80,8 @@ def segments(run, variant):
         parts.update(rdma=remote - server, relay=server - up_remote, gbe=up_remote - up_server, gpu=up_server)
     elif variant == "remote-cpu-rdma":
         parts.update(rdma=remote - server, cpu_server=server)
+    elif variant == "remote-gpu-rdma":
+        parts.update(rdma=remote - server, gpu=server)
     elif variant == "remote-gpu-tcp":
         parts.update(gbe=remote - server, gpu=server)
     else:  # loopback on the GPU host
@@ -109,10 +111,6 @@ def summarize(data):
                                 "gib": median([r["input_bytes"] / 2**30 for r in runs]),
                                 "server_cpu": variants[variant].get("server_cpu_seconds"),
                                 "server_statistics": variants[variant].get("server_statistics")}
-            if variant == "remote-gpu-relay":
-                estimate = [{"db": p["db"], "rdma": p["rdma"], "gpu": p["gpu"]} for p in per_run]
-                designs["estimate"] = {"wall": median([sum(p.values()) for p in estimate]),
-                                       "parts": {k: median([p[k] for p in estimate]) for k in estimate[0]}}
         if "gpu-host" in variants:
             record = variants["gpu-host"]
             for mode, name in (("native_cpu", "gpu-host-native"), ("cuda_merge", "gpu-host-local"),
@@ -128,12 +126,32 @@ def summarize(data):
     return out
 
 
+def summarize_direct(data, summary):
+    """Adds the direct testbed (database on pyke, GPU server on malphite, no relay) to summary."""
+    for workload, variants in data.items():
+        record = variants.get("remote-gpu-rdma")
+        if not record or workload not in summary:
+            continue
+        native, remote = warm(record, "native_cpu"), warm(record, "remote_merge")
+        per_run = [segments(r, "remote-gpu-rdma") for r in remote]
+        summary[workload]["direct-native"] = {
+            "wall": median([r["wall_seconds"] for r in native]),
+            "cpu_gib": median([r["process_cpu_seconds_per_gib"] for r in native]),
+            "parts": {"native": median([r["wall_seconds"] for r in native])}}
+        summary[workload]["remote-gpu-rdma"] = {
+            "wall": median([r["wall_seconds"] for r in remote]),
+            "cpu_gib": median([r["process_cpu_seconds_per_gib"] for r in remote]),
+            "parts": {k: median([p[k] for p in per_run]) for k in per_run[0]}}
+
+
 ROWS = [("native", "Native RocksDB"), ("remote-cpu-rdma", "Remote CPU server, RDMA"),
         ("remote-gpu-tcp", "Remote GPU, TCP (1 GbE)"),
-        ("remote-gpu-relay", "Remote GPU, RDMA + relay (measured)"),
-        ("estimate", "Remote GPU, RDMA only (estimate)")]
+        ("remote-gpu-relay", "Remote GPU, RDMA + relay"),
+        ("direct-native", "Native RocksDB, direct testbed"),
+        ("remote-gpu-rdma", "Remote GPU, direct RDMA")]
 # Figure-only names; the summary table keeps ROWS.
-FIGURE_LABELS = {"native": "RocksDB", "estimate": "Remote GPU, RDMA only\n(estimate, not measured)"}
+FIGURE_LABELS = {"native": "RocksDB", "direct-native": "RocksDB (direct link)",
+                 "remote-gpu-rdma": "Remote GPU, direct RDMA"}
 LEGEND = ["db", "rdma", "relay", "gbe", "cpu_server", "gpu"]
 
 
@@ -151,25 +169,14 @@ def figure(summary, workloads):
             entry = designs.get(key)
             if not entry:
                 continue
-            estimate = key == "estimate"
             left = 0.0
             for name, value in entry["parts"].items():
                 _, colour, hatch = SEGMENTS["db" if name == "native" else name]
-                if estimate:
-                    # Outline only: arithmetic from measured hops, not a measurement.
-                    left_ax.barh(y, value, 0.74, left=left, facecolor="white", edgecolor=colour, linewidth=0.9,
-                                 linestyle="--", zorder=2)
-                else:
-                    left_ax.barh(y, value, 0.74, left=left, color=colour, hatch=hatch, edgecolor="white",
-                                 linewidth=0.4, zorder=2)
+                left_ax.barh(y, value, 0.74, left=left, color=colour, hatch=hatch, edgecolor="white",
+                             linewidth=0.4, zorder=2)
                 left += value
             left_ax.annotate(f"{entry['wall']:.2f} s", (left, y), xytext=(2, 0), textcoords="offset points", va="center",
                              fontsize=5.8, color=INK)
-            if estimate:
-                # The database node does the same work as in the measured relay run.
-                right_ax.annotate("same as measured", (0, y), xytext=(2, 0), textcoords="offset points",
-                                  va="center", fontsize=5.6, color="#666666", style="italic")
-                continue
             colour = SEGMENTS["gpu"][1] if "gpu" in key else SEGMENTS["cpu_server"][1] if "cpu" in key else SEGMENTS["db"][1]
             hatch = SEGMENTS["gbe"][2] if key == "remote-gpu-tcp" else ""
             value = entry["cpu_gib"]
@@ -182,6 +189,8 @@ def figure(summary, workloads):
         right_ax.set_xlim(0, cpu_max * 1.22)
         left_ax.set_title(title, loc="left", fontsize=7.5, fontweight="bold", color=INK, pad=3)
         for ax in (left_ax, right_ax):
+            # Rows below the line come from the second testbed (different machines).
+            ax.axhline(3.5, color="#999999", linewidth=0.6, linestyle="--", zorder=1)
             ax.xaxis.grid(True, color="#e6e6e6", linewidth=0.6, zorder=0)
             ax.set_axisbelow(True)
             ax.tick_params(axis="y", length=0)
@@ -254,6 +263,9 @@ def main() -> int:
     root = Path(sys.argv[1]) if len(sys.argv) > 1 else HERE.parent / "data" / "rdma" / "r7"
     data = load(root)
     summary = summarize(data)
+    direct = root.parent / "r7-direct" / "out" / "r7"
+    if direct.exists():
+        summarize_direct(load(direct), summary)
     workloads = [(w, t) for w, t in WORKLOADS if w in summary and "remote-gpu-relay" in summary[w]]
     if not workloads:
         raise SystemExit("no complete workloads")
