@@ -310,14 +310,14 @@ measured, every key verified. Median of 3 runs, paired 95% bootstrap intervals.
 |---|---|---|---|
 | **Data in memory:** writes/s | 0.948M | 1.620M | **1.70×** [1.62, 1.72] |
 | **Data in memory:** CPU per write | 7.73 µs | 3.72 µs | **2.06× less** [1.91, 2.08] |
-| **NVMe drive, same I/O path:** writes/s | 0.822M | 1.258M | **1.53×** |
+| **NVMe drive, same I/O path:** writes/s | 0.822M | 1.315M | **1.60×** |
 | **NVMe drive, same I/O path:** CPU per write | 8.19 µs | 4.81 µs | **1.70× less** [1.64, 1.74] |
 
 The NVMe rows use the same I/O path for both designs (reads and writes through the page
 cache).
 
 - **Throughput on the NVMe drive.** With data in memory, ours gains 1.70×. On the NVMe
-  drive with the same I/O path, ours gains 1.53× in writes/s (an independent test by the
+  drive with the same I/O path, ours gains 1.60× in writes/s (an independent test by the
   author; the 0.822M RocksDB figure is from the registered runs above). In an earlier run
   where RocksDB read compaction input directly from the drive, ours gained only 1.07×
   (0.909M against 0.975M writes/s), and both designs reached about the drive's measured
@@ -334,7 +334,7 @@ cache).
   single-compaction check matched RocksDB in all 16 repetitions with no CPU fallback.
 
 **What reached the drive in the archived N6 runs.** These device measurements belong to
-the registered 0.822M versus 0.838M writes/s campaign, not the independent 1.258M/s run
+the registered 0.822M versus 0.838M writes/s campaign, not the independent 1.315M/s run
 reported above. The figure separates bandwidth, IOPS and device busy time. The top row
 shows block 0; the bottom row shows medians of the three per-run means. Samples are
 aligned to each recorded measurement window at approximately one-second resolution.
@@ -500,7 +500,7 @@ link removes that hop. Those results, with a figure of both testbeds, are in
 
 - **Storage-bound systems.** Most results put the data in memory (`/dev/shm`). On a SATA
   SSD, where the drive is the limit, throughput is equal (0.93× on 8 cores, 1.04× on 16).
-  On NVMe, the gain was 1.53× in writes/s.
+  On NVMe, the gain was 1.60× in writes/s.
   The CPU saving remains (1.70 to 2.0×).
 - **Costs.** Higher write amplification, including 3.79 against 2.65 in H31's trigger
   comparison (section 8); 1 GiB of
