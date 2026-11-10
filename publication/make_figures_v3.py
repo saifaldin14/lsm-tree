@@ -12,11 +12,14 @@ data/v3/summary.md. Runs that failed their correctness check are refused.
 from __future__ import annotations
 
 import json
+import math
 import statistics
 import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+from matplotlib.colors import to_rgba
+from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 from matplotlib.transforms import blended_transform_factory
 
@@ -381,99 +384,416 @@ def figure_nvme():
     save(fig, "fig25_nvme")
 
 
-def iostat_series(path, device="nvme0n1"):
-    """Per-second (r/s, rMB/s, w/s, wMB/s, %util) for one device from `iostat -dxm 1` output."""
-    rows = []
-    for line in path.read_text().splitlines():
+DISK_METRICS = ("read_iops", "read_mib_s", "write_iops", "write_mib_s", "busy_percent")
+
+
+def iostat_series(path, device="nvme0n1", *, since_boot=False):
+    """Return (read IOPS, read MiB/s, write IOPS, write MiB/s, busy %) per report.
+
+    The campaign uses -y, so every report is an interval by default. For logs
+    without -y, since_boot=True explicitly discards the initial boot average.
+    Sysstat labels binary units kB/MB: divide rkB/s and wkB/s by 1024.
+    Malformed or missing device reports raise rather than shifting later bins.
+    """
+    path = Path(path)
+    try:
+        text = path.read_text()
+    except (OSError, UnicodeError) as error:
+        raise ValueError(f"{path}: missing or unreadable iostat recording") from error
+    rows, header, columns, bandwidth = [], None, {}, []
+    found_in_report = False
+    for line_number, line in enumerate(text.splitlines(), 1):
         parts = line.split()
-        if parts and parts[0] == device:
-            rows.append((float(parts[1]), float(parts[2]), float(parts[7]), float(parts[8]), float(parts[-1])))
-    return rows[1:]  # the first sample is the since-boot average
+        if not parts:
+            continue
+        location = f"{path}:{line_number}"
+        if parts[0].rstrip(":") == "Device":
+            if header is not None and not found_in_report:
+                raise ValueError(f"{location}: device {device} absent from preceding report")
+            header = parts
+            if len(set(header)) != len(header) or not {"r/s", "w/s", "%util"}.issubset(header):
+                raise ValueError(f"{location}: invalid iostat header (need unique r/s, w/s, %util columns)")
+            columns = {name: index for index, name in enumerate(header)}
+            bandwidth = []
+            for prefix in ("r", "w"):
+                choices = [(name, scale) for name, scale in ((f"{prefix}MB/s", 1.0), (f"{prefix}kB/s", 1 / 1024))
+                           if name in columns]
+                if len(choices) != 1:
+                    raise ValueError(f"{location}: header needs exactly one of {prefix}MB/s or {prefix}kB/s")
+                bandwidth.append(choices[0])
+            found_in_report = False
+        elif parts[0] == device:
+            if header is None:
+                raise ValueError(f"{location}: missing Device header before {device}")
+            try:
+                if len(parts) != len(header):
+                    raise ValueError("column count differs from header")
+                values = [float(value) for value in parts[1:]]
+                if any(not math.isfinite(value) or value < 0 for value in values):
+                    raise ValueError("nonfinite or negative value")
+                read, write = bandwidth
+                rows.append((values[columns["r/s"] - 1], values[columns[read[0]] - 1] * read[1],
+                             values[columns["w/s"] - 1], values[columns[write[0]] - 1] * write[1],
+                             values[columns["%util"] - 1]))
+            except ValueError as error:
+                raise ValueError(f"{location}: malformed {device} row: {error}") from error
+            found_in_report = True
+    if header is None:
+        raise ValueError(f"{path}: missing Device header")
+    if not found_in_report:
+        raise ValueError(f"{path}: device {device} absent from final report")
+    if since_boot:
+        rows = rows[1:]
+    if not rows:
+        raise ValueError(f"{path}: no interval samples for {device}")
+    return rows
+
+
+def _telemetry_number(value, field):
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
+        raise ValueError(f"{field}: expected a finite nonnegative number")
+    return float(value)
+
+
+def _verification_reason(result):
+    if not isinstance(result, dict):
+        return "missing result"
+    verification = result.get("verification")
+    keys = verification.get("keys") if isinstance(verification, dict) else None
+    if type(keys) is not int or keys < 0:
+        return "missing or invalid result.verification.keys"
+    return None
+
+
+def iostat_window(rows, record):
+    """Select full 1 s bins [started_unix + i, started_unix + i + 1].
+
+    No per-report timestamps were saved. Alignment is approximate at 1 s
+    resolution, anchored to monitor launch, with no inferred I/O start.
+    """
+    trial = f"trial {record.get('index', '?')}"
+    try:
+        monitor = _telemetry_number(record["started_unix"], "record.started_unix timestamp")
+        window = record["result"]["window"]
+        start = _telemetry_number(window["start_unix"], "result.window.start_unix timestamp")
+        end = _telemetry_number(window["end_unix"], "result.window.end_unix timestamp")
+    except (KeyError, TypeError) as error:
+        raise ValueError(f"{trial}: missing record.started_unix or result.window.start_unix/end_unix") from error
+    if end <= start:
+        raise ValueError(f"{trial}: measurement window must end after it starts")
+    if not rows or start < monitor or end > monitor + len(rows):
+        raise ValueError(f"{trial}: insufficient iostat recording [{monitor}, {monitor + len(rows)}] "
+                         f"for measurement window [{start}, {end}]")
+    first, stop = math.ceil(start - monitor), math.floor(end - monitor)
+    if first >= stop:
+        raise ValueError(f"{trial}: no full measurement bins inside [{start}, {end}]")
+    return {"samples": rows[first:stop], "relative_edges_seconds": [monitor + i - start for i in range(first, stop + 1)],
+            "sample_count": stop - first, "recorded_samples": len(rows), "first_bin_index": first,
+            "stop_bin_index": stop, "monitor_start_unix": monitor, "window_start_unix": start, "window_end_unix": end}
+
+
+def load_disk_runs(root, device="nvme0n1"):
+    """Load verified N6 runs; reject incomplete recordings and report exclusions."""
+    root = Path(root)
+    path = root / "results.jsonl"
+    try:
+        text = path.read_text()
+    except OSError as error:
+        raise ValueError(f"{path}: missing or unreadable results recording") from error
+    series, excluded, seen, indices = {}, [], set(), set()
+    for line_number, line in enumerate(text.splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+        except ValueError as error:
+            raise ValueError(f"{path}:{line_number}: malformed JSON record") from error
+        if not isinstance(record, dict):
+            raise ValueError(f"{path}:{line_number}: expected a JSON record object")
+        code = record.get("exit_code")
+        reason = (f"exit_code={code!r} (not a successful run)" if type(code) is not int or code != 0
+                  else _verification_reason(record.get("result")))
+        if reason:
+            excluded.append({"index": record.get("index"), "reason": reason})
+            print(f"{path}: excluded trial {record.get('index', '?')}: {reason}", file=sys.stderr)
+            continue
+        try:
+            index, block = record["index"], record["trial"]["block"]
+            design = DESIGN[record["trial"]["design"]]
+        except (KeyError, TypeError) as error:
+            raise ValueError(f"{path}:{line_number}: missing or invalid trial index/design/block") from error
+        if any(type(value) is not int or value < 0 for value in (index, block)):
+            raise ValueError(f"{path}:{line_number}: trial index/block must be nonnegative integers")
+        if index in indices or (design, block) in seen:
+            raise ValueError(f"{path}: duplicate trial index or design/block: {index}, {design}, {block}")
+        indices.add(index)
+        seen.add((design, block))
+        selected = iostat_window(iostat_series(root / f"trial-{index:04d}" / "iostat.txt", device), record)
+        means = {metric: statistics.mean(row[i] for row in selected["samples"]) for i, metric in enumerate(DISK_METRICS)}
+        series.setdefault(design, []).append({"index": index, "block": block, **selected, "means": means})
+    for runs in series.values():
+        runs.sort(key=lambda run: (run["block"], run["index"]))
+    return series, excluded
+
+
+def disk_summary(series, excluded, device="nvme0n1"):
+    """JSON-ready medians of per-run measurement-bin means, including zero reads."""
+    designs = {}
+    for design in (NATIVE, FULL):
+        runs = series.get(design, [])
+        if not runs:
+            continue
+        details = []
+        for run in runs:
+            details.append({**{key: value for key, value in run.items() if key not in ("samples", "relative_edges_seconds")},
+                            "first_bin_start_seconds": run["relative_edges_seconds"][0],
+                            "last_bin_end_seconds": run["relative_edges_seconds"][-1]})
+        designs[design] = {"n": len(runs), "sample_counts": [r["sample_count"] for r in runs], "runs": details,
+                           "median_per_run_mean": {key: median([r["means"][key] for r in runs]) for key in DISK_METRICS}}
+    counts = "; ".join(f"{LABELS[d]} n={v['n']}, full bins/run={'/'.join(map(str, v['sample_counts']))}"
+                       for d, v in designs.items())
+    return {"device": device, "sample_interval_seconds": 1,
+            "source_fields": ["record.started_unix", "result.window.start_unix", "result.window.end_unix"],
+            "alignment": "Approximate 1 s resolution: bin i is [monitor start + i, monitor start + i + 1]; full bins only.",
+            "bandwidth_unit": "MiB/s: iostat rMB/s/wMB/s unchanged; rkB/s/wkB/s divided by 1024.",
+            "aggregation": "Median across runs of each run's mean over full measurement bins, including zeros.",
+            "metadata": f"{counts}. Excluded runs: {len(excluded)}. Thin ticks show individual run means.",
+            "limits": "Device counters include other I/O and omit cache-served reads. Busy % alone does not prove saturation.",
+            "designs": designs, "excluded": excluded}
 
 
 def figure_disk():
-    """NVMe, same I/O path (N6): (a) drive MB/s and busy % over time, (b) steady-state averages."""
-    root = HERE / "data" / "malphite-nvme" / "followup" / "n6"
-    if not (root / "results.jsonl").exists():
-        return
-    series = {}
-    for line in (root / "results.jsonl").read_text().splitlines():
-        record = json.loads(line)
-        path = root / f"trial-{record['index']:04d}" / "iostat.txt"
-        if record.get("exit_code") == 0 and path.exists():
-            rows = iostat_series(path)
-            # Steady state: the 300 s measured after a 120 s warm-up, from when the drive first gets busy.
-            start = next((i for i, r in enumerate(rows) if r[4] > 50), 0) + 120
-            series.setdefault(DESIGN[record["trial"]["design"]], []).append((rows, rows[start:start + 300]))
-    if len(series) < 2:
-        return
-    fig, axes = plt.subplots(1, 2, figsize=(DOUBLE_COLUMN, 2.5), gridspec_kw={"width_ratios": [1.5, 1]})
-    ax = axes[0]
+    """N6: first paired block 0 traces and medians of measurement-bin run means."""
+    series, excluded = load_disk_runs(HERE / "data" / "malphite-nvme" / "followup" / "n6")
+    summary = disk_summary(series, excluded)
+    pair = {}
     for design in (NATIVE, FULL):
-        rows = series[design][0][0]
-        start = next((i for i, r in enumerate(rows) if r[4] > 50), 0)
-        window = rows[start:start + 420]
-        ax.plot(range(len(window)), [r[1] + r[3] for r in window], color=STYLE[design]["color"], linewidth=0.8,
-                label=LABELS[design])
-    ax.axvspan(120, 420, color="#f0f0f0", zorder=0)
-    ax.text(270, ax.get_ylim()[1] * 0.97, "measured", ha="center", va="top", fontsize=6, color="#666666")
-    ax.set_xlabel("Seconds since the run started")
-    finish_axis(ax, "Drive read + write (MB/s)")
-    panel_label(ax, "a")
-    ax = axes[1]
-    metrics = [("Write MB/s", 3), ("Busy %", 4)]
-    width = 0.38
-    for offset, design in enumerate((NATIVE, FULL)):
-        values = [median([statistics.mean(r[i] for r in steady) for _, steady in series[design]]) for _, i in metrics]
-        xs = [k + (offset - 0.5) * width for k in range(len(metrics))]
-        rects = ax.bar(xs, values, width * 0.95, color=STYLE[design]["color"], zorder=2)
-        for rect, value in zip(rects, values):
-            ax.annotate(f"{value:.0f}", (rect.get_x() + rect.get_width() / 2, value), xytext=(0, 2),
-                        textcoords="offset points", ha="center", va="bottom", fontsize=5.8, color=INK)
-    ax.set_xticks(range(len(metrics)), [m for m, _ in metrics], fontsize=6.4)
-    ax.set_ylim(0, ax.get_ylim()[1] * 1.12)
-    finish_axis(ax, "Steady-state average")
-    panel_label(ax, "b")
-    fig.tight_layout(w_pad=2.0, rect=(0, 0, 1, 0.88))
-    design_legend(fig, (NATIVE, FULL), y=0.88, labels=LABELS)
+        candidates = [run for run in series.get(design, []) if run["block"] == 0]
+        if len(candidates) != 1:
+            raise ValueError(f"N6: need one verified block 0 trial with complete recording for {LABELS[design]}")
+        pair[design] = candidates[0]
+    summary["trace_pair"] = {"block": 0, "trials": {d: r["index"] for d, r in pair.items()}}
+    panels = [("Bandwidth", "Bandwidth (MiB/s)", [("Read", 1, "--"), ("Write", 3, "-")]),
+              ("IOPS", "Read / write IOPS", [("Read", 0, "--"), ("Write", 2, "-")]),
+              ("Device busy", "Device busy (%)", [("Busy", 4, "-")])]
+    fig, axes = plt.subplots(2, 3, figsize=(DOUBLE_COLUMN * 1.25, 5.3))
+    width = 0.36
+    for column, (title, ylabel, metrics) in enumerate(panels):
+        ax = axes[0, column]
+        for design in (NATIVE, FULL):
+            run = pair[design]
+            for label, i, linestyle in metrics:
+                ax.stairs([row[i] for row in run["samples"]], run["relative_edges_seconds"], baseline=None,
+                          color=STYLE[design]["color"], linestyle=linestyle, linewidth=0.8,
+                          label=f"{LABELS[design]} {label.lower()}")
+        ax.set_xlim(0, max(run["window_end_unix"] - run["window_start_unix"] for run in pair.values()))
+        ax.set_ylim(0, max(100 if column == 2 else 1, ax.get_ylim()[1] * 1.05))
+        ax.set_xlabel("Seconds from measurement start", fontsize=7)
+        ax.set_title(f"{title}, block 0", fontsize=8, pad=9)
+        finish_axis(ax, ylabel)
+        panel_label(ax, "abc"[column])
+        ax = axes[1, column]
+        high = 0.0
+        for group, (label, i, _) in enumerate(metrics):
+            for offset, design in enumerate((NATIVE, FULL)):
+                x = offset if len(metrics) == 1 else group + (offset - 0.5) * width
+                values = [run["means"][DISK_METRICS[i]] for run in series[design]]
+                value = summary["designs"][design]["median_per_run_mean"][DISK_METRICS[i]]
+                color = STYLE[design]["color"]
+                ax.bar(x, value, width * 0.95, facecolor=to_rgba(color, 0.3 if label == "Read" else 1),
+                       edgecolor=color, hatch="///" if label == "Read" else "", linewidth=0.5, zorder=2)
+                spacing = min(0.06, 0.22 / max(1, len(values) - 1))
+                xs = [x + (j - (len(values) - 1) / 2) * spacing for j in range(len(values))]
+                ax.scatter(xs, values, marker="|", s=28, color=INK, linewidths=0.65, zorder=4, clip_on=False)
+                if 0 < value < 0.001:
+                    value_label = f"{value:.2e}"
+                else:
+                    value_label = f"{value:.3g}" if value < 1 else f"{value:.1f}"
+                ax.annotate(value_label, (x, max(values)), xytext=(0, 3),
+                            textcoords="offset points", ha="center", va="bottom", fontsize=6.3, color=INK)
+                high = max(high, *values)
+        labels = [LABELS[NATIVE], LABELS[FULL]] if len(metrics) == 1 else [label for label, _, _ in metrics]
+        ax.set_xticks(range(len(labels)), labels)
+        ax.set_ylim(0, max(100 if column == 2 else 1, high * 1.22))
+        ax.set_title("Median of per-run means", fontsize=8, pad=9)
+        finish_axis(ax, ylabel)
+        panel_label(ax, "def"[column])
+    handles = [Patch(facecolor=STYLE[d]["color"], label=LABELS[d]) for d in (NATIVE, FULL)]
+    handles += [Line2D([], [], color=INK, linestyle="--", label="Read (dashed; hatched bars)"),
+                Line2D([], [], color=INK, label="Write (solid)")]
+    fig.legend(handles=handles, loc="upper center", ncol=4, bbox_to_anchor=(0.5, 1.0), fontsize=7)
+    fig.text(0.5, 0.01, summary["metadata"] + "\nAssumed 1 s bins from monitor start; approximate 1 s alignment. "
+             "Only full bins inside each recorded measurement window.\n" + summary["limits"],
+             ha="center", va="bottom", fontsize=6.6, color="#555555")
+    fig.tight_layout(w_pad=2.0, h_pad=2.5, rect=(0, 0.14, 1, 0.93))
     save(fig, "fig27_nvme_disk")
+    return summary
+
+
+CPU_ROLES = [("foreground", "Accepting writes", 1.0, ""), ("flush", "Flushing", 0.72, "///"),
+             ("compaction", "Compaction", 0.48, "..."), ("other", "Other (attributed)", 0.3, "xx"),
+             ("unattributed", "Unattributed", 0.15, "\\\\")]
+CPU_ROUNDING_TOLERANCE = 1e-6  # Absolute cores, not a percentage of the budget.
+
+
+def cpu_run_components(result, cores):
+    """Reconcile partial thread roles to process CPU for one measurement window."""
+    budget = _telemetry_number(cores, "core budget")
+    if budget == 0:
+        raise ValueError("core budget must be positive")
+    try:
+        used = _telemetry_number(result["process_cpu"]["cores_used"], "result.process_cpu.cores_used")
+        raw_roles = result["accounting"]["window"]["cores_by_role"]
+    except (KeyError, TypeError) as error:
+        raise ValueError("missing result.process_cpu.cores_used or accounting.window.cores_by_role") from error
+    if not isinstance(raw_roles, dict):
+        raise ValueError("accounting.window.cores_by_role must be an object")
+    roles = {key: _telemetry_number(value, f"accounting.window.cores_by_role.{key}") for key, value in raw_roles.items()}
+    attributed = math.fsum(roles.values())
+    if attributed - used > CPU_ROUNDING_TOLERANCE:
+        raise ValueError(f"accounting.window roles total {attributed:.9g} exceeds process_cpu.cores_used {used:.9g}")
+    if used - budget > CPU_ROUNDING_TOLERANCE:
+        raise ValueError(f"process_cpu.cores_used {used:.9g} exceeds core budget {budget:g}")
+    main = ("foreground", "flush", "compaction")
+    components = {key: roles.get(key, 0.0) for key in main}
+    components["other"] = math.fsum(value for key, value in roles.items() if key not in main)
+    correction = max(attributed - used, 0.0)
+    if correction:
+        largest = max(components, key=lambda key: components[key])
+        components[largest] = max(0.0, components[largest] - correction)
+    components["unattributed"] = max(used - attributed, 0.0)
+    return {"process_cores_used": used, "components": components, "unused_core_budget": max(budget - used, 0.0),
+            "rounding_adjustment_cores": correction}
+
+
+def cpu_use_summary(headline):
+    """JSON-ready arithmetic means; headline is the result mapping from load_campaign."""
+    groups, excluded = [], []
+    cores = sorted({c for d, c in headline if d in (NATIVE, FULL) and c in (4, 8, 16)})
+    for c in cores:
+        for design in (NATIVE, FULL):
+            runs = []
+            for index, result in enumerate(headline.get((design, c), [])):
+                reason = _verification_reason(result)
+                if reason:
+                    excluded.append({"design": design, "cores": c, "run_index": index, "reason": reason})
+                    print(f"CPU {LABELS[design]} {c} cores: excluded run {index}: {reason}", file=sys.stderr)
+                    continue
+                try:
+                    runs.append(cpu_run_components(result, c))
+                except ValueError as error:
+                    raise ValueError(f"CPU {LABELS[design]} {c} cores, run {index}: {error}") from error
+            if not runs:
+                raise ValueError(f"CPU: no verified runs for {LABELS[design]} at {c} cores")
+            groups.append({"design": design, "cores": c, "n": len(runs),
+                           "process_cores_used": statistics.mean(r["process_cores_used"] for r in runs),
+                           "components": {key: statistics.mean(r["components"][key] for r in runs) for key, *_ in CPU_ROLES},
+                           "unused_core_budget": statistics.mean(r["unused_core_budget"] for r in runs),
+                           "rounding_adjustment_cores": statistics.mean(r["rounding_adjustment_cores"] for r in runs),
+                           "runs": runs})
+    counts = "; ".join(f"{c} cores n=" + "/".join(str(g["n"]) for g in groups if g["cores"] == c) for c in cores)
+    return {"groups": groups, "excluded": excluded,
+            "source_fields": ["result.process_cpu.cores_used", "result.accounting.window.cores_by_role"],
+            "aggregation": "Arithmetic means over runs of process CPU, each attributed role, and per-run residuals.",
+            "rounding_tolerance_cores": CPU_ROUNDING_TOLERANCE,
+            "metadata": f"Means over runs (RocksDB/Ours): {counts}. Excluded results: {len(excluded)}.",
+            "limits": "Thread roles are partial: exited threads can disappear. Other includes all remaining attributed roles. "
+                      "Unattributed is max(process CPU minus all roles, 0) per run. Unused core budget is not machine idle."}
 
 
 def figure_cpu_use(headline):
-    """Cores busy by role against cores given, tuned whole-database runs (section 3)."""
-    roles = [("foreground", "Accepting writes", 1.0), ("flush", "Flushing", 0.7), ("compaction", "Compaction", 0.45)]
-    cores = sorted({c for (_, c) in headline})
-    if not cores:
+    """Paired process-CPU stacks and unused process core budgets at 4, 8 and 16 cores."""
+    summary = cpu_use_summary(headline)
+    groups = summary["groups"]
+    if not groups:
         return
-    fig, ax = plt.subplots(figsize=(DOUBLE_COLUMN * 0.62, 2.6))
+    cores = sorted({group["cores"] for group in groups})
+    fig, ax = plt.subplots(figsize=(DOUBLE_COLUMN * 1.1, 4.1))
     width = 0.36
-    for offset, design in enumerate((NATIVE, FULL)):
-        for index, c in enumerate(cores):
-            runs = headline.get((design, c))
-            if not runs:
-                continue
-            x = index + (offset - 0.5) * width
-            bottom = 0.0
-            for key, _, alpha in roles:
-                value = median([r["accounting"]["window"]["cores_by_role"].get(key, 0) for r in runs])
-                ax.bar(x, value, width * 0.95, bottom=bottom, color=STYLE[design]["color"], alpha=alpha, zorder=2,
-                       edgecolor="white", linewidth=0.4)
-                bottom += value
-            ax.bar(x, c - bottom, width * 0.95, bottom=bottom, facecolor="white", edgecolor=STYLE[design]["color"],
-                   linewidth=0.6, linestyle="--", zorder=2)
-            ax.annotate(f"{bottom / c:.0%}", (x, bottom), xytext=(0, 2), textcoords="offset points", ha="center",
-                        va="bottom", fontsize=5.6, color=INK)
+    for group in groups:
+        design, c = group["design"], group["cores"]
+        x = cores.index(c) + ((0 if design == NATIVE else 1) - 0.5) * width
+        color, bottom = STYLE[design]["color"], 0.0
+        for key, _, alpha, hatch in CPU_ROLES:
+            value = group["components"][key]
+            ax.bar(x, value, width * 0.95, bottom=bottom, facecolor=to_rgba(color, alpha),
+                   edgecolor=color, hatch=hatch, linewidth=0.4, zorder=2)
+            bottom += value
+        ax.bar(x, group["unused_core_budget"], width * 0.95, bottom=group["process_cores_used"], facecolor="white",
+               edgecolor=color, linewidth=0.7, linestyle="--", zorder=2)
+        ax.annotate(f"{group['process_cores_used']:.2f}", (x, group["process_cores_used"]), xytext=(0, 3),
+                    textcoords="offset points", ha="center", va="bottom", fontsize=7, color=INK, bbox=LABEL_BOX)
     ax.set_xticks(range(len(cores)), [f"{c} cores" for c in cores])
-    finish_axis(ax, "Cores (busy, then idle)")
-    handles = [Patch(facecolor="#777777", alpha=alpha, label=label) for _, label, alpha in roles]
-    handles.append(Patch(facecolor="white", edgecolor="#777777", linestyle="--", label="Idle"))
-    ax.legend(handles=handles, frameon=False, fontsize=6, loc="upper left")
-    fig.tight_layout(rect=(0, 0, 1, 0.86))
-    design_legend(fig, (NATIVE, FULL), y=0.86, labels=LABELS)
+    ax.set_ylim(0, max(cores) * 1.12)
+    finish_axis(ax, "Process CPU use (cores) / unused core budget")
+    handles = [Patch(facecolor=to_rgba("#777777", alpha), edgecolor="#777777", hatch=hatch, label=label)
+               for _, label, alpha, hatch in CPU_ROLES]
+    handles.append(Patch(facecolor="white", edgecolor="#777777", linestyle="--", label="Unused core budget"))
+    fig.legend(handles=handles, frameon=False, fontsize=7, loc="lower center", ncol=3, bbox_to_anchor=(0.5, 0.78))
+    fig.text(0.5, 0.01, summary["metadata"] + "\nRole accounting is partial; Other includes all remaining attributed roles. "
+             "Unattributed is the per-run process residual.\nLabels give process cores used. "
+             "The upper outline is unused process core budget, not machine idle.",
+             ha="center", va="bottom", fontsize=6.5, color="#555555")
+    fig.tight_layout(rect=(0, 0.14, 1, 0.77))
+    design_legend(fig, (NATIVE, FULL), y=0.93, labels=LABELS)
     save(fig, "fig28_cpu_use")
+    return summary
 
 
-def figure_tail(openloop):
+def figure_nvme_regimes():
+    """H31: measured NVMe throughput, process CPU and write amplification for all cells."""
+    path = HERE / "data" / "malphite-nvme" / "h31" / "results.jsonl"
+    if not path.exists():
+        return
+    runs = {}
+    for line in path.read_text().splitlines():
+        if not line.strip():
+            continue
+        record = json.loads(line)
+        result = record.get("result", {})
+        if record.get("exit_code") != 0 or _verification_reason(result):
+            raise ValueError(f"H31: failed or unverified trial {record.get('index')}")
+        trial = record["trial"]
+        runs.setdefault((trial["cell"], DESIGN[trial["design"]]), []).append(result)
+    cells = [("C4", "4 cores\nLZ4"), ("BZ", "8 cores\nZSTD\nbottom level"),
+             ("TR", "8 cores\nL0: 8 / 12")]
+    metrics = [("Throughput (M writes/s)", lambda r: window_ops(r) / 1e6, "{:.3f}"),
+               ("Process CPU per write (µs)", lambda r: r["process_cpu"]["cpu_microseconds_per_op"], "{:.2f}"),
+               ("Write amplification (bytes / user byte)", lambda r: r["write_amplification"], "{:.2f}")]
+    fig, axes = plt.subplots(1, 3, figsize=(DOUBLE_COLUMN * 1.25, 3.3))
+    width = 0.36
+    for ax, letter, (ylabel, metric, fmt) in zip(axes, "abc", metrics):
+        for index, (cell, _) in enumerate(cells):
+            for offset, design in enumerate((NATIVE, FULL)):
+                values = [metric(r) for r in runs.get((cell, design), [])]
+                if not values:
+                    raise ValueError(f"H31: missing {cell} {design}")
+                x = index + (offset - 0.5) * width
+                bar(ax, [x], [median(values)], width * 0.95, design)
+                ax.scatter([x] * len(values), values, marker="_", s=30, color=INK, linewidths=0.8, zorder=4)
+                ax.annotate(fmt.format(median(values)), (x, max(values)), xytext=(0, 4), textcoords="offset points",
+                            ha="center", va="bottom", fontsize=6.2, color=INK)
+        ax.set_xticks(range(len(cells)), [label for _, label in cells], fontsize=6)
+        ax.set_ylim(0, ax.get_ylim()[1] * 1.15)
+        finish_axis(ax, ylabel)
+        panel_label(ax, letter)
+    fig.tight_layout(w_pad=2.0, rect=(0, 0.08, 1, 0.86))
+    design_legend(fig, (NATIVE, FULL), y=0.86, labels=LABELS)
+    counts = "; ".join(f"{cell}: " + "/".join(str(len(runs[(cell, d)])) for d in (NATIVE, FULL)) for cell, _ in cells)
+    fig.text(0.5, 0.005, f"Runs (RocksDB/Ours): {counts}. Bars: medians; ticks: individual runs. Buffered I/O, WAL off.",
+             ha="center", va="bottom", fontsize=6.4, color="#555555")
+    save(fig, "fig29_nvme_regimes")
+
+
+def figure_nvme_fixed_rates():
+    path = HERE / "data" / "malphite-nvme" / "followup" / "n5" / "results.jsonl"
+    if path.exists():
+        runs = {}
+        load_into(runs, "N5", path)
+        figure_tail(runs, output="fig30_nvme_latency")
+
+
+def figure_tail(openloop, output="fig20_v3_tail"):
     """Write latency percentiles at fixed offered rates (open loop, 8 cores)."""
     rates = sorted({rate for (_, rate) in openloop})
     if not rates:
@@ -507,7 +827,7 @@ def figure_tail(openloop):
         panel_label(ax, letter)
     axes[0].legend(frameon=False, fontsize=6.5)
     fig.tight_layout(w_pad=2.5)
-    save(fig, "fig20_v3_tail")
+    save(fig, output)
 
 
 def latency_ms(results, kind, key):
@@ -746,6 +1066,8 @@ if __name__ == "__main__":
     figure_nvme()
     figure_disk()
     figure_cpu_use(headline)
+    figure_nvme_regimes()
+    figure_nvme_fixed_rates()
     figure_tail(openloop)
     figure_workloads()
     print((V3 / "summary.md").read_text())

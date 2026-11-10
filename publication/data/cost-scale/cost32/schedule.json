@@ -1,0 +1,62 @@
+[
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 32,
+  "writes": "batched",
+  "l0_trigger": 8,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 32,
+   "threads": 64,
+   "subcompactions": 32,
+   "pipelined-write": true,
+   "adaptive-yield": false,
+   "allow-fallocate": false,
+   "l0-trigger": 8,
+   "max-bytes-for-level-base": 536870912
+  },
+  "block": 0
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 32,
+  "writes": "batched",
+  "l0_trigger": 8,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 32,
+   "threads": 64,
+   "subcompactions": 32,
+   "pipelined-write": true,
+   "adaptive-yield": false,
+   "allow-fallocate": false,
+   "l0-trigger": 8,
+   "max-bytes-for-level-base": 536870912
+  },
+  "block": 1
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 32,
+  "writes": "batched",
+  "l0_trigger": 8,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 32,
+   "threads": 64,
+   "subcompactions": 32,
+   "pipelined-write": true,
+   "adaptive-yield": false,
+   "allow-fallocate": false,
+   "l0-trigger": 8,
+   "max-bytes-for-level-base": 536870912
+  },
+  "block": 2
+ }
+]

@@ -1,0 +1,53 @@
+[
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 12,
+  "writes": "batched",
+  "flags": {
+   "threads": 25,
+   "subcompactions": 4,
+   "pipelined-write": true,
+   "adaptive-yield": false,
+   "background-jobs": 12,
+   "batch-size": 100,
+   "disable-wal": true,
+   "allow-fallocate": false
+  },
+  "block": 0
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 12,
+  "writes": "batched",
+  "flags": {
+   "threads": 25,
+   "subcompactions": 4,
+   "pipelined-write": true,
+   "adaptive-yield": false,
+   "background-jobs": 12,
+   "batch-size": 100,
+   "disable-wal": true,
+   "allow-fallocate": false
+  },
+  "block": 1
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 12,
+  "writes": "batched",
+  "flags": {
+   "threads": 25,
+   "subcompactions": 4,
+   "pipelined-write": true,
+   "adaptive-yield": false,
+   "background-jobs": 12,
+   "batch-size": 100,
+   "disable-wal": true,
+   "allow-fallocate": false
+  },
+  "block": 2
+ }
+]

@@ -1,0 +1,13 @@
+{
+  "binary": "/tmp/sa29ali/build-v2/lsm_system_bench",
+  "sha256": "16a6b85ea11af0ba440a3366a8632c4271bcdd9d8122449b54d845fcc014805f",
+  "environment": {
+    "LSM_DISABLE_GPU_INPUT": "1",
+    "LSM_CUDA_SYNC": "blocking",
+    "LSM_GPU_OUTPUT_MIN_BLOCK_BYTES": "1024",
+    "LSM_MERGE_READ_THREADS": "4",
+    "LSM_GPU_MERGE_STREAMS": "2",
+    "LSM_GPU_PINNED_PREALLOC_MB": "1024"
+  },
+  "script_sha256": "71cabd366efb39bceed8c8a45852a42229a96ca223ff1898f4b15d73f2780591"
+}
