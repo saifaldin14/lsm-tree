@@ -1,0 +1,178 @@
+[
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 8,
+  "writes": "batched",
+  "flags": {
+   "threads": 16,
+   "subcompactions": 4,
+   "pipelined-write": false,
+   "adaptive-yield": false,
+   "background-jobs": 8,
+   "batch-size": 100,
+   "disable-wal": true,
+   "allow-fallocate": false,
+   "l0-trigger": 24,
+   "l0-slowdown": 48,
+   "l0-stop": 72,
+   "max-bytes-for-level-base": 1610612736
+  },
+  "l0_trigger": 24,
+  "block": 0
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 8,
+  "writes": "batched",
+  "flags": {
+   "threads": 16,
+   "subcompactions": 8,
+   "pipelined-write": false,
+   "adaptive-yield": false,
+   "background-jobs": 8,
+   "batch-size": 100,
+   "disable-wal": true,
+   "allow-fallocate": false,
+   "l0-trigger": 16,
+   "l0-slowdown": 32,
+   "l0-stop": 48,
+   "max-bytes-for-level-base": 1073741824
+  },
+  "l0_trigger": 16,
+  "block": 0
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 8,
+  "writes": "batched",
+  "flags": {
+   "threads": 16,
+   "subcompactions": 8,
+   "pipelined-write": false,
+   "adaptive-yield": false,
+   "background-jobs": 8,
+   "batch-size": 100,
+   "disable-wal": true,
+   "allow-fallocate": false,
+   "l0-trigger": 24,
+   "l0-slowdown": 48,
+   "l0-stop": 72,
+   "max-bytes-for-level-base": 1610612736
+  },
+  "l0_trigger": 24,
+  "block": 0
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 8,
+  "writes": "batched",
+  "flags": {
+   "threads": 16,
+   "subcompactions": 4,
+   "pipelined-write": false,
+   "adaptive-yield": false,
+   "background-jobs": 8,
+   "batch-size": 100,
+   "disable-wal": true,
+   "allow-fallocate": false,
+   "l0-trigger": 16,
+   "l0-slowdown": 32,
+   "l0-stop": 48,
+   "max-bytes-for-level-base": 1073741824
+  },
+  "l0_trigger": 16,
+  "block": 0
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 8,
+  "writes": "batched",
+  "flags": {
+   "threads": 16,
+   "subcompactions": 4,
+   "pipelined-write": false,
+   "adaptive-yield": false,
+   "background-jobs": 8,
+   "batch-size": 100,
+   "disable-wal": true,
+   "allow-fallocate": false,
+   "l0-trigger": 16,
+   "l0-slowdown": 32,
+   "l0-stop": 48,
+   "max-bytes-for-level-base": 1073741824
+  },
+  "l0_trigger": 16,
+  "block": 1
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 8,
+  "writes": "batched",
+  "flags": {
+   "threads": 16,
+   "subcompactions": 8,
+   "pipelined-write": false,
+   "adaptive-yield": false,
+   "background-jobs": 8,
+   "batch-size": 100,
+   "disable-wal": true,
+   "allow-fallocate": false,
+   "l0-trigger": 16,
+   "l0-slowdown": 32,
+   "l0-stop": 48,
+   "max-bytes-for-level-base": 1073741824
+  },
+  "l0_trigger": 16,
+  "block": 1
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 8,
+  "writes": "batched",
+  "flags": {
+   "threads": 16,
+   "subcompactions": 4,
+   "pipelined-write": false,
+   "adaptive-yield": false,
+   "background-jobs": 8,
+   "batch-size": 100,
+   "disable-wal": true,
+   "allow-fallocate": false,
+   "l0-trigger": 24,
+   "l0-slowdown": 48,
+   "l0-stop": 72,
+   "max-bytes-for-level-base": 1610612736
+  },
+  "l0_trigger": 24,
+  "block": 1
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 8,
+  "writes": "batched",
+  "flags": {
+   "threads": 16,
+   "subcompactions": 8,
+   "pipelined-write": false,
+   "adaptive-yield": false,
+   "background-jobs": 8,
+   "batch-size": 100,
+   "disable-wal": true,
+   "allow-fallocate": false,
+   "l0-trigger": 24,
+   "l0-slowdown": 48,
+   "l0-stop": 72,
+   "max-bytes-for-level-base": 1610612736
+  },
+  "l0_trigger": 24,
+  "block": 1
+ }
+]
