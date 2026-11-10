@@ -389,9 +389,9 @@ cache).
   where RocksDB read compaction input directly from the drive, ours gained only 1.07×
   (0.909M against 0.975M writes/s), and both designs reached about the drive's measured
   limit (`fio`, same read/write mix: 922 MB/s at RocksDB's mix, 741 MB/s at ours).
-- **The CPU saving survives at the drive's limit:** 1.70× less CPU per write with the
+- **CPU saving on NVMe:** 1.70× less CPU per write with the
   same I/O path, and 1.55× (6.96 against 4.48 µs) when RocksDB read directly from the
-  drive, which costs it less CPU.
+  drive in the earlier configuration.
 - **Costs on the drive.** Ours writes more bytes per byte of user data: write
   amplification 5.5 against 4.0 with the same I/O path (3.8 against 3.2 with direct reads).
   Compaction scheduling is a candidate explanation, not an isolated cause; the trigger
@@ -606,7 +606,8 @@ RDMA and TCP finish within 3% of each other, because the 1 Gb/s hop dominates bo
   SSD, where the drive is the limit, throughput is equal (0.93× on 8 cores, 1.04× on 16).
   On NVMe, the gain was 1.53× in writes/s.
   The CPU saving remains (1.70 to 2.0×).
-- **Costs.** 20% to 37% more bytes written per user byte on disk (section 8); 1 GiB of
+- **Costs.** Higher write amplification, including 3.79 against 2.65 in H31's trigger
+  comparison (section 8); 1 GiB of
   pinned host memory per GPU engine plus GPU memory; and four databases sharing one GPU
   kept 77.1% of their throughput at 4 cores each (62% at 8 cores each, under MPS), below our
   registered 80% target.
@@ -627,9 +628,10 @@ RDMA and TCP finish within 3% of each other, because the 1 Gb/s hop dominates bo
   RocksDB's default path, and combining value separation with our offload is untested.
 - **Read-heavy work.** The gain tracks how much compaction a workload creates. Meta's
   read-heavy model (85% reads) gains 1.05×, against 1.70× for its write-heavy variant.
-- **One machine.** Apart from the NVMe and RDMA runs, all results come from a single
-  server and a single RTX A6000, on Linux. Other GPUs, other CPU counts and other RocksDB
-  versions are untested.
+- **Hardware coverage.** The primary experiments use an RTX A6000; NVMe and direct-RDMA
+  follow-ups also use an RTX PRO 6000 Blackwell. The servers differ in CPU and storage,
+  so this is not a controlled GPU-only comparison. Other GPU classes and RocksDB versions
+  remain untested.
 - **Registered thresholds we missed.** Three preregistered predictions did not hold, and
   the numbers above are the measured outcome rather than the registered one. 99.9th
   percentile write latency at 430k writes/s was 1.75× lower against a registered 2.5×.
@@ -639,12 +641,13 @@ RDMA and TCP finish within 3% of each other, because the 1 Gb/s hop dominates bo
 
 ### How we measured
 
-- **Same tuning for both:** RocksDB and ours each get the best settings from the same
+- **Same tuning for the v3 comparisons:** RocksDB and ours each get the best settings from the same
   search over threads, background jobs and RocksDB options
-  ([configs/system/tuned.json](configs/system/tuned.json)).
-- **Registered in advance:** every hypothesis and threshold was written down and committed
-  before the runs, including the three that failed and the ones this hardware cannot test
-  ([publication/PREREGISTRATION.md](publication/PREREGISTRATION.md)).
+  ([configs/system/tuned.json](configs/system/tuned.json)). Untuned and inherited settings
+  in other campaigns are identified in their setup paragraphs.
+- **Protocols and amendments:** the main campaigns were registered before measurement.
+  Later changes and their timing are recorded in [publication/PREREGISTRATION.md](publication/PREREGISTRATION.md),
+  including H31's local registration before launch and public commit after launch.
 - **Fixed duration:** runs last a fixed time, and the order of runs is randomised.
 - **Every problem recorded:** problems we found in our own measurements, and their fixes,
   are in [publication/AUDIT.md](publication/AUDIT.md).
