@@ -361,15 +361,20 @@ def figure_nvme():
             groups[metric].append((label, {d: bootstrap_ci(v[metric]) for d, v in runs.items()}))
     if not groups["ops"]:
         return
-    fig, axes = plt.subplots(1, 2, figsize=(DOUBLE_COLUMN, 2.5), gridspec_kw={"width_ratios": [2, 3]})
-    for ax, letter, (metric, ylabel, fmt) in zip(axes, "ab", [("ops", "Throughput (M writes/s)", lambda v: f"{v:.2f}"),
+    fig, axes = plt.subplots(1, 2, figsize=(DOUBLE_COLUMN, 2.7), gridspec_kw={"width_ratios": [2, 3]})
+    for ax, letter, (metric, ylabel, fmt) in zip(axes, "ab", [("ops", "Throughput (M writes/s)", lambda v: f"{v:.3f}"),
                                                             ("cpu", "CPU per write (µs)", lambda v: f"{v:.1f}")]):
-        grouped_bars(ax, groups[metric], (NATIVE, FULL), None, fmt, size=5.8)
+        top = grouped_bars(ax, groups[metric], (NATIVE, FULL), None, fmt, size=6.4)
         ax.tick_params(axis="x", labelsize=6.4)
         finish_axis(ax, ylabel)
         panel_label(ax, letter)
-    fig.tight_layout(w_pad=2.5, rect=(0, 0, 1, 0.88))
-    design_legend(fig, (NATIVE, FULL), y=0.88, labels=LABELS)
+        if metric == "ops":
+            ratio = REPORTED_NVME_OPS["full"] / REPORTED_NVME_OPS["native"]
+            ax.text(0, top * 1.12, f"{ratio:.2f}×", ha="center", va="bottom", fontsize=7.5,
+                    fontweight="bold", color=INK)
+            ax.set_ylim(0, top * 1.3)
+    fig.tight_layout(w_pad=2.5, rect=(0, 0, 1, 0.9))
+    design_legend(fig, (NATIVE, FULL), y=0.9, labels=LABELS)
     save(fig, "fig25_nvme")
 
 
