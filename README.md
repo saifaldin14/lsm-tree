@@ -15,6 +15,9 @@ moves compaction in RocksDB 11.8 onto an NVIDIA GPU.
 - **1.5 to 1.8× more writes with about 2× less CPU per write** for the whole database,
   and no write stalls, against RocksDB tuned by the same search.
 - **One GPU does the compaction work of 15 to 18 CPU cores.**
+- **Half the cost per write at high throughput:** 16 cores with a GPU write 1.41× more
+  than RocksDB on 32 cores. With two databases sharing one GPU, 8 cores match RocksDB's
+  cost per write.
 - **2.0 to 6.5× less compaction CPU than earlier GPU and FPGA designs**, rebuilt inside
   production RocksDB with compression on.
 - **Compaction on a GPU in another machine over RDMA is 4 to 6.4× faster** than RocksDB
@@ -34,10 +37,10 @@ as ours, on the same cores.
 | Write latency at a fixed load | 99.9th percentile **1.75×, 3.8× and 9.6× lower** at 50%, 70% and 90% of RocksDB's maximum rate | [4](#4-write-latency-at-a-fixed-load) |
 | Reads | Read-heavy work within 5% of RocksDB; read latency halves where compaction is busy | [5](#5-reads) |
 | A machine shared with other work | The gain grows from 1.80× to **2.48×** as other work takes more of the CPU | [6](#6-a-machine-shared-with-other-work) |
-| Cost | 16 cores with a GPU write **1.41× more than 32 cores without, at half the cost per write**. Below about 12 cores, more cores are cheaper | [7](#7-what-it-costs-and-what-it-saves) |
+| Cost | 16 cores with a GPU write **1.41× more than 32 cores without, at half the cost per write**. With two databases sharing one GPU, **8 cores match RocksDB's cost per write**; at 4 cores RocksDB is cheaper | [7](#7-what-it-costs-and-what-it-saves) |
 | Real-world workloads | **1.4 to 1.8× faster** when write-heavy; 1.05 to 1.10× when read-heavy | [8](#8-real-world-workloads-and-a-real-disk) |
 | Real disks | NVMe machine: **1.70× more writes, 2.06× less CPU** with data in memory; on its NVMe drive both designs hit the drive's limit, so 1.02× more writes and 1.70× less CPU. SATA SSD: equal throughput, half the CPU | [8](#8-real-world-workloads-and-a-real-disk) |
-| Earlier GPU and FPGA designs | In RocksDB with compression: **2.0 to 6.5× less CPU**, up to 1.9× more writes | [9](#9-compared-with-earlier-gpu-and-fpga-designs) |
+| Earlier GPU and FPGA designs | In RocksDB with compression: **2.0 to 6.5× less CPU**, up to 2.0× more writes | [9](#9-compared-with-earlier-gpu-and-fpga-designs) |
 | GPU in another machine (RDMA) | One compaction **4 to 6.4× faster** than RocksDB on the database machine, which uses **5.5 to 11× less CPU**. Whole database: **1.75×** writes, **2.04×** less CPU per write | [10](#10-compaction-on-another-machine-over-rdma) |
 
 What this does not show is in [section 11](#11-what-this-does-not-show).
@@ -234,7 +237,8 @@ runs.
 ### 7. What it costs, and what it saves
 
 **Sixteen cores with a GPU write 1.41× more than thirty-two cores without one, at half the
-cost per write. Below about 12 cores, buying more cores is cheaper.**
+cost per write. With two databases sharing one GPU, 8 cores cost the same per write as
+RocksDB; at 4 cores, RocksDB is cheaper.**
 
 *Setup:* the whole-database runs of [section 3](#3-the-whole-database) (tuned settings,
 batched LZ4 writes, five minutes measured, median of 5 runs), priced at AWS EC2 on-demand
