@@ -195,6 +195,25 @@ runs.
 
 ## 7. What it costs, and what it saves
 
+**Tuned, every core count.** Both designs tuned for each core count by the same search;
+median of 5 runs; RocksDB on 32 cores from 3 five-minute runs. Priced as below, with ours
+including one L4 GPU. The README shows only the two comparisons where ours is cheaper.
+
+![Tuned throughput and cost per write against cores](figures/fig24_cost.png)
+
+| Design | Cores | Writes/s | $/hour | $ per billion writes |
+|---|---|---|---|---|
+| RocksDB | 4 | 480k | 0.357 | 0.207 |
+| RocksDB | 8 | 837k | 0.714 | 0.237 |
+| RocksDB | 16 | 1,262k | 1.428 | 0.314 |
+| RocksDB | 32 | 1,598k | 2.856 | 0.496 |
+| Ours + L4 | 4 | 748k | 0.983 | 0.365 |
+| Ours + L4 | 8 | 1,260k | 1.340 | 0.296 |
+| Ours + L4 | 16 | 2,260k | 2.054 | 0.253 |
+
+**Untuned.** The comparison below was run earlier with the same hand-chosen settings for
+both designs.
+
 **Eight cores with the GPU write as much as thirty-two cores without it, for less than
 half the cost: $11,741 against $25,019 per node per year. If 667k writes/s is enough,
 RocksDB on a few cores is cheaper.**

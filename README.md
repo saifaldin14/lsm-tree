@@ -31,7 +31,7 @@ the same search, on the same CPU cores. The GPU is in addition to those cores.
 | On an NVMe drive | **1.60× more writes**, **1.70× less CPU per write**, and the slowest 1% of writes **29× faster** at 630k writes/s |
 | A GPU in another machine, over RDMA | Each compaction **4.0–6.5× faster**; the whole database **1.75× more writes, 2.04× less CPU** |
 | Against earlier GPU and FPGA designs | **2.0–6.5× less compaction CPU**; their database gains are 1.14–1.41× over RocksDB, ours 1.75× |
-| Cost (AWS prices) | Past RocksDB's best (1.60M writes/s on 32 cores), ours reaches **2.26M writes/s on 16 cores at half the cost per write**; below about 1.3M writes/s RocksDB is cheaper |
+| Cost (AWS prices) | At high write rates, **half RocksDB's cost per write**: 2.26M writes/s on 16 cores + GPU, against RocksDB's best of 1.60M on 32 cores |
 
 ## How good is this?
 
@@ -200,32 +200,29 @@ second server; median of 3 runs; every compaction matched RocksDB exactly.*
 
 Details: [docs/remote-compaction.md](docs/remote-compaction.md).
 
-### 7. Cost
+### 7. Cost: where ours is cheaper
 
-*Priced at AWS on-demand rates: a CPU core at $0.089/h and, for ours, one NVIDIA L4 GPU at
-$0.63/h. Both designs tuned for each core count. Left: writes per second; right: dollars per
-billion writes.*
+*Both designs tuned for each core count; median of 5 runs (RocksDB on 32 cores: 3). Priced at AWS on-demand rates: a
+CPU core at $0.089/h and, for ours, one NVIDIA L4 GPU at $0.63/h.*
 
-![Throughput and cost per write against cores](publication/figures/fig24_cost.png)
+![Cases where ours is cheaper than RocksDB](publication/figures/fig35_cost_cheaper.png)
 
-- **For a high write rate, ours costs half as much.** RocksDB tops out at 1.60M writes/s
-  on 32 cores, at $0.49 per billion writes. Ours on 16 cores reaches 2.26M writes/s at
-  $0.25.
-- **For a low write rate, RocksDB is cheaper.** On 4–8 cores it costs $0.21–0.24 per
-  billion writes against $0.30–0.37 for ours, because the GPU costs more than the cores it
-  saves. The two cost about the same at about 1.3M writes/s.
-- **Sharing a GPU helps small databases:** with one GPU shared by 2–4 databases, ours costs
-  $0.24–0.27 per billion writes on 4–8 cores.
+- **At the highest write rates, ours costs half as much per write.** RocksDB peaks at
+  1.60M writes/s on 32 cores ($25.0k a year). Ours reaches 2.26M writes/s on 16 cores and a
+  GPU ($18.0k a year): 1.41× more writes at $0.25 against $0.50 per billion.
+- **At the same write rate, ours is slightly cheaper.** For 1.26M writes/s RocksDB needs
+  16 cores; ours needs 8 cores and a GPU, 6% cheaper.
 
-An untuned comparison, the GPU priced as other cards, and the yearly cost per machine are
+Below about 1.3M writes/s RocksDB is cheaper, because the GPU costs more than the cores it
+saves ([Where it does not help](#where-it-does-not-help)). Every price and configuration is
 in [publication/FULL-RESULTS.md](publication/FULL-RESULTS.md#7-what-it-costs-and-what-it-saves).
 
 ## Where it does not help
 
 - **Read-heavy work:** 1.02–1.10× at 85–95% reads, because there is little compaction.
 - **No compression:** ours and the best earlier design are equal.
-- **Low write rates:** below about 1.3M writes/s, RocksDB on more cores costs the same or
-  less than ours with a GPU.
+- **Low write rates:** below about 1.3M writes/s, RocksDB costs less per write than ours
+  with a GPU, because the GPU costs more than the cores it saves.
 - **Extra writing:** ours writes about 1.4× more bytes to storage per byte of user data (5.5
   against 4.0 on NVMe), probably because its faster compactions start sooner on smaller
   batches.
