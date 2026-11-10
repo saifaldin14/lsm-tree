@@ -294,7 +294,7 @@ def main() -> int:
     figure(summary, workloads)
     direct_workloads = [(w, t) for w, t in workloads if "remote-gpu-rdma" in summary[w]]
     if direct_workloads:
-        figure(summary, direct_workloads, DIRECT_ROWS, DIRECT_LEGEND, "fig24_rdma_direct", None)
+        figure(summary, direct_workloads, DIRECT_ROWS, DIRECT_LEGEND, "fig31_rdma_direct", None)
     text = table(summary, workloads)
     r8 = root.parent / "r8-database.jsonl"
     if r8.exists():
