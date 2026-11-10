@@ -211,6 +211,12 @@ runs all processes through one server so their kernels can overlap.
   {1, 4}, and native at N=1 for 4 and 8 cores. Then the 32-core run, then the full grid
   above. The quick pass is reported as one block; the full grid replaces it when done.
   The tuned earlier-design campaign is paused (it resumes by trial) and runs last.
+- **Outcome of the quick pass (2026-11-10, `data/shared-mps/mps-quick`, 1 block, all
+  verified, 24 MPS clients logged): H7b not supported.** At 8 cores with N=4 each database
+  kept 62% (threshold 81%), with 13 to 139 CPU fallbacks per database; at 4 cores with N=4,
+  71% (threshold 92%). At 8 cores with N=2 each kept 94% (threshold 96%): $0.242 per
+  billion against $0.237 for the 5-minute RocksDB run, and $0.248 for RocksDB measured in
+  the same campaign.
 LUDA's code is public (github.com/xpsair/luda, commit 89792ac). It is LevelDB 1.22 with
 GPU flushes and compactions, and no block compression.
 

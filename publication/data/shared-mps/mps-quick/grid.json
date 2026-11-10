@@ -1,0 +1,131 @@
+{
+ "_comment": "Quick first pass of grid-mps.json, 1 block; PREREGISTRATION.md.",
+ "common": {
+  "records": 50000000,
+  "read-percent": 0,
+  "warmup-seconds": 30,
+  "duration-seconds": 120,
+  "verify": true
+ },
+ "trials": [
+  {
+   "design": "native",
+   "mode": "native_cpu",
+   "cores": 4,
+   "writes": "batched",
+   "flags": {
+    "threads": 4,
+    "subcompactions": 4,
+    "pipelined-write": false,
+    "adaptive-yield": true,
+    "background-jobs": 4,
+    "batch-size": 100,
+    "disable-wal": true,
+    "allow-fallocate": false
+   },
+   "instances": 1
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 4,
+   "writes": "batched",
+   "flags": {
+    "threads": 8,
+    "subcompactions": 4,
+    "pipelined-write": false,
+    "adaptive-yield": false,
+    "background-jobs": 4,
+    "batch-size": 100,
+    "disable-wal": true,
+    "allow-fallocate": false
+   },
+   "instances": 1
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 4,
+   "writes": "batched",
+   "flags": {
+    "threads": 8,
+    "subcompactions": 4,
+    "pipelined-write": false,
+    "adaptive-yield": false,
+    "background-jobs": 4,
+    "batch-size": 100,
+    "disable-wal": true,
+    "allow-fallocate": false
+   },
+   "instances": 4
+  },
+  {
+   "design": "native",
+   "mode": "native_cpu",
+   "cores": 8,
+   "writes": "batched",
+   "flags": {
+    "threads": 16,
+    "subcompactions": 8,
+    "pipelined-write": false,
+    "adaptive-yield": false,
+    "background-jobs": 8,
+    "batch-size": 100,
+    "disable-wal": true,
+    "allow-fallocate": false
+   },
+   "instances": 1
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 8,
+   "writes": "batched",
+   "flags": {
+    "threads": 16,
+    "subcompactions": 4,
+    "pipelined-write": false,
+    "adaptive-yield": false,
+    "background-jobs": 8,
+    "batch-size": 100,
+    "disable-wal": true,
+    "allow-fallocate": false
+   },
+   "instances": 1
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 8,
+   "writes": "batched",
+   "flags": {
+    "threads": 16,
+    "subcompactions": 4,
+    "pipelined-write": false,
+    "adaptive-yield": false,
+    "background-jobs": 8,
+    "batch-size": 100,
+    "disable-wal": true,
+    "allow-fallocate": false
+   },
+   "instances": 2
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 8,
+   "writes": "batched",
+   "flags": {
+    "threads": 16,
+    "subcompactions": 4,
+    "pipelined-write": false,
+    "adaptive-yield": false,
+    "background-jobs": 8,
+    "batch-size": 100,
+    "disable-wal": true,
+    "allow-fallocate": false
+   },
+   "instances": 4
+  }
+ ]
+}
