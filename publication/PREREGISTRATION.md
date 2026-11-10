@@ -691,6 +691,30 @@ new data, and level 1 is rewritten more often per user byte.
 - **Selection rule, fixed now:** each design's setting is the trigger with the lowest
   write amplification whose throughput is within 5% of that design's best trigger.
   Both designs get the same choice of settings; the README reports both selections.
+- **Extension (added 12:10, after block 0 and before block 1 finished):** block 0 showed
+  ours' write amplification still falling at trigger 12 (6.35, 5.24, 4.22). Added trigger
+  16 for both designs (`max-bytes-for-level-base` 1 GiB), same protocol, 2 blocks, seed 111,
+  run after the main grid. Trigger 20 is not run: the benchmark leaves RocksDB's slowdown
+  trigger at its default of 20 files. The selection rule above applies to all four triggers.
+
+### Cost at matched throughput, tuned (added 2026-11-10, before these runs)
+
+Tuned RocksDB tops out near 1.60M writes/s on 32 cores (`shared-mps/native32`). The cost
+question at matched throughput is how few cores ours needs to reach that.
+
+- **Run** (zyra, in memory, LZ4, batched writes, X3 protocol: 120 s warm-up plus 300 s,
+  verification on, 3 blocks, schedule seed 112), after the level-0 trigger grid:
+  - Ours on 12 cores: `v3-headline.json` 16-core settings with threads and background
+    jobs scaled to 12 cores (24 and 12).
+  - Ours on 32 cores: the same settings scaled to 32 cores (64 and 32).
+  - RocksDB on 32 cores with `l0-trigger` 8 and `max-bytes-for-level-base` 512 MiB,
+    otherwise its tuned 32-core settings: the trigger RocksDB preferred in the level-0
+    grid, so it is not held to a setting it does better without.
+- **Reported:** writes/s, CPU per write, stalls, cost per hour and per billion writes at
+  `prices.json`, and the cost of ours at the core count that matches RocksDB's best
+  32-core throughput (its default-trigger and trigger-8 runs, whichever is higher).
+- **Hypothesis H30:** ours on 12 cores reaches at least RocksDB's best 32-core throughput,
+  at less than 0.7x its cost per hour. If it does not, the README says so.
 
 ## Changes after data collection
 
