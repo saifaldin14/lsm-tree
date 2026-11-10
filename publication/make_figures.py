@@ -360,6 +360,62 @@ def figure_equal_cost(main, equal):
     save(fig, "fig4_equal_cost")
 
 
+def figure_cost_untuned(main, equal):
+    """Untuned cost: (a) writes/s, (b) $ per billion writes against cores, (c) yearly cost per node at
+    matched throughput (RocksDB on 32 cores against ours on 8 cores + one GPU), priced from prices.json."""
+    prices = json.loads((HERE / "prices.json").read_text())
+    core_hour, gpu_hour = prices["physical_core_hour"], prices["gpu_hour"]
+    points = {}
+    for entry in [e for e in main if e["config"].get("writes") == "batched"] + equal:
+        if entry["design"] in ("native", "full"):
+            points.setdefault(entry["design"], {})[entry["config"]["cores"]] = entry["ops_per_second"][0]
+    if "native" not in points or 32 not in points["native"] or 8 not in points.get("full", {}):
+        return
+    hourly = lambda design, cores: cores * core_hour + (gpu_hour if design == "full" else 0)
+    per_billion = lambda design, cores, ops: hourly(design, cores) / (ops * 3600 / 1e9)
+    fig, axes = plt.subplots(1, 3, figsize=(DOUBLE_COLUMN, 2.5), gridspec_kw={"width_ratios": [1, 1, 0.85]})
+    panels = [("Throughput (k writes/s)", lambda d, c, o: o / 1e3, "{:.0f}"),
+              ("$ per billion writes", per_billion, "{:.2f}")]
+    for ax, letter, (ylabel, value, fmt) in zip(axes, "ab", panels):
+        for design, marker in (("native", "o"), ("full", "s")):
+            series = sorted(points[design].items())
+            xs = [c for c, _ in series]
+            ys = [value(design, c, o) for c, o in series]
+            ax.plot(xs, ys, marker=marker, markersize=4, linewidth=1.4, color=STYLE[KEY[design]]["color"],
+                    label=DISPLAY.get(KEY[design], design), zorder=3)
+            # Throughput: ours above; cost: ours below RocksDB's line where it is cheaper.
+            above = (design == "full") == (letter == "a") if letter == "a" else design == "full"
+            for x, y in zip(xs, ys):
+                ax.annotate(fmt.format(y), (x, y), xytext=(0, 6 if above else -7), textcoords="offset points",
+                            ha="center", va="bottom" if above else "top", fontsize=6, bbox=LABEL_BOX, zorder=4)
+        ax.set_xscale("log", base=2)
+        ax.set_xticks([4, 8, 16, 32], ["4", "8", "16", "32"])
+        ax.set_xlim(3.2, 40)
+        ax.set_xlabel("Physical cores")
+        ax.set_ylim(0, ax.get_ylim()[1] * 1.15)
+        finish_axis(ax, ylabel)
+        panel_label(ax, letter)
+    ax = axes[2]
+    yearly = [("RocksDB\n32 cores", hourly("native", 32) * 8760, STYLE[NATIVE]["color"]),
+              ("Ours\n8 cores + GPU", hourly("full", 8) * 8760, STYLE[FULL]["color"])]
+    for x, (label, dollars, colour) in enumerate(yearly):
+        ax.bar(x, dollars / 1e3, 0.6, color=colour, zorder=2)
+        ax.annotate(f"${dollars / 1e3:.1f}k", (x, dollars / 1e3), xytext=(0, 3), textcoords="offset points",
+                    ha="center", va="bottom", fontsize=6.4, color=INK)
+    saving = 1 - yearly[1][1] / yearly[0][1]
+    ax.annotate(f"{saving:.0%} less", (1, yearly[1][1] / 1e3), xytext=(0, 14), textcoords="offset points",
+                ha="center", va="bottom", fontsize=7, fontweight="bold", color=STYLE[FULL]["color"])
+    ax.set_xticks([0, 1], [label for label, _, _ in yearly], fontsize=6.4)
+    ax.set_ylim(0, yearly[0][1] / 1e3 * 1.2)
+    finish_axis(ax, "Cost per node per year ($k)")
+    panel_label(ax, "c")
+    ax.set_title(f"Same throughput ({points['native'][32] / 1e3:.0f}k vs {points['full'][8] / 1e3:.0f}k)",
+                 fontsize=6.6, color=INK, pad=4)
+    fig.tight_layout(w_pad=1.6, rect=(0, 0, 1, 0.88))
+    design_legend(fig, (NATIVE, FULL), y=0.88)
+    save(fig, "fig26_cost_untuned")
+
+
 def figure_ycsb(entries):
     if not entries:
         return
