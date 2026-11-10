@@ -322,8 +322,8 @@ and the same database on a SATA SSD. Median of 3 runs.
 - **On the SSD:** the disk sets the speed for both designs. Ours still halves the CPU,
   and with 16 cores 99.9% of writes finished within 84 ms against 336 ms.
 
-**On NVMe.** The main test server has no NVMe drive, so these runs use a second server:
-one 10-core Xeon Silver 4210R, an NVIDIA RTX PRO 6000 Blackwell and a 477 GB NVMe drive.
+**On NVMe.** These runs use a server with one 10-core Xeon Silver 4210R, an NVIDIA RTX PRO
+6000 Blackwell and a 477 GB NVMe drive.
 Both designs were tuned on this machine by the same registered search, at 8 cores (the
 machine has 10). Batched writes, LZ4, 50 million keys, two minutes of warm-up then five
 measured, every key verified. Median of 3 runs, paired 95% bootstrap intervals.
@@ -334,15 +334,14 @@ measured, every key verified. Median of 3 runs, paired 95% bootstrap intervals.
 |---|---|---|---|
 | **Data in memory:** writes/s | 0.948M | 1.620M | **1.70×** [1.62, 1.72] |
 | **Data in memory:** CPU per write | 7.73 µs | 3.72 µs | **2.06× less** [1.91, 2.08] |
-| **NVMe drive, same I/O path:** writes/s | 0.822M | 0.837M | 1.02× |
-| **NVMe drive, same I/O path:** CPU per write | 8.19 µs | 4.81 µs | **1.70× less** |
+| **NVMe drive, same I/O path:** writes/s | 0.822M | 0.838M | 1.02× [1.00, 1.03] |
+| **NVMe drive, same I/O path:** CPU per write | 8.19 µs | 4.81 µs | **1.70× less** [1.64, 1.74] |
 
 The NVMe rows use the same I/O path for both designs (reads and writes through the page
-cache). They are from the runs finished so far, 3 for RocksDB and 2 for ours; the last run
-finishes shortly and adds intervals.
+cache).
 
-- **The machine is not the limit, the drive is.** With data in memory, ours gains 1.70×,
-  as on the main server. On the NVMe drive, both designs move as many bytes as the drive
+- **The machine is not the limit, the drive is.** With data in memory, ours gains 1.70×.
+  On the NVMe drive, both designs move as many bytes as the drive
   can take. In an earlier run where RocksDB read compaction input directly from the drive,
   RocksDB reached 95% and ours 103% of the drive's measured limit (`fio`, same read/write
   mix: 922 MB/s at RocksDB's mix, 741 MB/s at ours), at 0.909M against 0.975M writes/s
