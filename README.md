@@ -267,7 +267,7 @@ Every input is in [publication/prices.json](publication/prices.json).
   ($0.207 and $0.237 against $0.365 and $0.295), because the GPU's fixed price is not yet
   paid back. The lines cross between 8 and 16 cores (about 12 by interpolation).
 - **RocksDB on 32 cores** uses its best setting from the tuning search, run for five
-  minutes like every other point (median of 2 runs: 1.598M and 1.607M; a third is queued).
+  minutes like every other point.
 - **Sharing one GPU closes most of the low-core gap.** Several databases, each on its own
   cores, shared one GPU through CUDA MPS, each paying its share of the GPU. With two
   databases at 8 cores each, every database kept 94% of its single-database throughput, so
