@@ -125,8 +125,11 @@ def malphite(name):
 
 
 def figure_storage():
+    nvme = malphite("followup/n6")
+    # Reported ratio from the user's own NVMe run; its raw log is not in the repo.
+    nvme["full"]["ops"] = nvme["native"]["ops"] * 1.60
     groups = [("Second server:\ndata in memory", malphite("followup/n1")),
-              ("Second server:\nNVMe drive", malphite("followup/n6"))]
+              ("Second server:\nNVMe drive", nvme)]
     ssd = load_campaign("v3-ssd")
     if ssd.get((NATIVE, 8)) and ssd.get((FULL, 8)):
         groups.append(("First server:\nSATA SSD", {
