@@ -236,23 +236,23 @@ def shared_per_database(path):
 def shared_cost(points, core_hour, gpu_hour):
     """{cores: (dollars per billion, databases)}: ours with one GPU shared by the cheapest N in {1, 2, 4}.
 
-    Per-database throughput is the tuned single-database median times the share kept with N
-    databases: from the MPS run where measured, else from the earlier shared-GPU run, capped by
-    the highest total GPU throughput measured."""
+    Per-database throughput: from the MPS run, the tuned single-database median times the share
+    kept with N databases; where the MPS run has no such cell, the earlier shared-GPU run's
+    measured per-database throughput at the same cores and N (untuned, no MPS)."""
     mps = shared_per_database(HERE / "data" / "shared-mps" / "mps-quick" / "results.jsonl")
     earlier = shared_per_database(HERE / "data" / "shared-gpu" / "results.jsonl")
-    ceiling = max([v * n for (_, n), v in {**earlier, **mps}.items()], default=float("inf"))
     out = {}
     for cores, solo in points.items():
         options = []
         for n in (1, 2, 4):
-            if (cores, n) in mps and (cores, 1) in mps:
-                kept = mps[(cores, n)] / mps[(cores, 1)]
-            elif (4, n) in earlier and (4, 1) in earlier:
-                kept = earlier[(4, n)] / earlier[(4, 1)]
+            if n == 1:
+                per = solo
+            elif (cores, n) in mps and (cores, 1) in mps:
+                per = solo * mps[(cores, n)] / mps[(cores, 1)]
+            elif (cores, n) in earlier:
+                per = earlier[(cores, n)]
             else:
                 continue
-            per = min(solo * kept, ceiling / n) if n > 1 else solo
             options.append(((cores * core_hour + gpu_hour / n) / (per * 3600 / 1e9), n))
         if options:
             out[cores] = min(options)

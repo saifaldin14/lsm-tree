@@ -271,9 +271,11 @@ Every input is in [publication/prices.json](publication/prices.json).
   (2.5-minute runs, RocksDB measured alongside at $0.248) ours is 3% cheaper. More sharing
   does not help: with four databases the GPU served 3.13M writes/s in total at 8 cores, but
   each database kept only 62% (71% at 4 cores), and some compactions fell back to the CPU.
-  At 4 cores, two databases per GPU bring ours from $0.365 to $0.263 against RocksDB's
-  $0.207; that point is an estimate, from the 95% kept in an earlier shared-GPU run, until
-  its MPS run finishes. Every shared run verified all keys.
+  At 4 cores the cheapest measured setup is four databases per GPU, $0.270 per billion
+  against $0.365 alone, still above RocksDB's $0.207. Two databases per GPU at 4 cores were
+  measured only in an earlier, untuned shared-GPU run without MPS: each kept 95% of its
+  throughput, at $0.297 per billion against $0.287 for untuned RocksDB in the same run.
+  Every shared run verified all keys.
 
 **How much the GPU choice matters.** The measured card is an RTX A6000, which AWS does not
 rent, so the table prices the cheapest current-generation NVIDIA GPU instance. Larger and
