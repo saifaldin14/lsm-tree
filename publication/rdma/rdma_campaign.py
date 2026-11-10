@@ -20,7 +20,9 @@ Experiments:
       database node, native against remote_merge to (a) the server's CPU over RDMA, (b) the
       server as a relay (--backend remote_merge) over RDMA that forwards each job over TCP to
       a cuda_merge server on the GPU host, and (c) the GPU host directly over TCP; plus, on the
-      GPU host, local cuda_merge and a loopback (127.0.0.1) cuda_merge server. Every server is
+      GPU host, local cuda_merge and a loopback (127.0.0.1) cuda_merge server. If the "gpu" entry
+      has an "rdma_address", (d) remote-gpu-rdma sends each job over RDMA straight to a
+      cuda_merge server on the GPU host (no relay). Every server is
       restarted per workload and variant so its statistics give a per-hop time breakdown.
   r8  whole database over the r7 chain: lsm_system_bench on the database node (batched writes,
       WAL off, full verification) with native compaction, remote_merge to the server's CPU over
@@ -266,7 +268,7 @@ def experiment_r6(cluster: Cluster, out: Path, repetitions: int, records: int, s
             cluster.stop(s["host"], server[0])
 
 
-def experiment_r7(cluster: Cluster, out: Path) -> None:
+def experiment_r7(cluster: Cluster, out: Path, only: list[str] | None = None) -> None:
     c, s, g = cluster.config["client"], cluster.config["server"], cluster.config["gpu"]
     gpu_build = g.get("build", cluster.build)
     scratch = f"{cluster.config['scratch']}/r7"
@@ -277,6 +279,10 @@ def experiment_r7(cluster: Cluster, out: Path) -> None:
         common = f"--dir {scratch} --records {records} --value-bytes {value} --compression {codec} {base}"
         variants = ["remote-cpu-rdma", "remote-gpu-relay", "remote-gpu-tcp", "gpu-host"]
         random.Random(f"r7-{tag}").shuffle(variants)
+        if "rdma_address" in g:
+            variants.insert(random.Random(f"r7-direct-{tag}").randrange(len(variants) + 1), "remote-gpu-rdma")
+        if only:
+            variants = [v for v in variants if v in only]
         for name in variants:
             target = out / "r7" / f"{tag}-{name}.jsonl"
             if target.exists() and target.stat().st_size > 0:
@@ -305,6 +311,10 @@ def experiment_r7(cluster: Cluster, out: Path) -> None:
                 elif name == "remote-gpu-tcp":
                     endpoint = server(g, gpu_build, f"tcp://{g['address']}:0", "cuda_merge", "gpu", GPU_SERVER_ENV)
                     env = f"LSM_REMOTE_ENDPOINT={endpoint}"
+                elif name == "remote-gpu-rdma":
+                    endpoint = server(g, gpu_build, f"rdma://{g['rdma_address']}:0", "cuda_merge", "gpu",
+                                      GPU_SERVER_ENV)
+                    env = f"LSM_RDMA_PUSH=1 LSM_REMOTE_ENDPOINT={endpoint}"
                 else:
                     # On the GPU host: the database on db_cores/db_node, the loopback server on the GPU's node.
                     endpoint = server(g, gpu_build, "tcp://127.0.0.1:0", "cuda_merge", "gpu", GPU_SERVER_ENV)
@@ -400,6 +410,7 @@ def main() -> int:
     parser.add_argument("--records", type=int, default=50_000_000)
     parser.add_argument("--warmup-seconds", type=int, default=30)
     parser.add_argument("--duration-seconds", type=int, default=120)
+    parser.add_argument("--variants", help="r7 only: comma-separated subset of variants to run")
     arguments = parser.parse_args()
     cluster = Cluster(json.loads(arguments.hosts.read_text()))
     arguments.out.mkdir(parents=True, exist_ok=True)
@@ -408,7 +419,7 @@ def main() -> int:
     elif arguments.experiment == "r2":
         experiment_r2(cluster, arguments.out)
     elif arguments.experiment == "r7":
-        experiment_r7(cluster, arguments.out)
+        experiment_r7(cluster, arguments.out, arguments.variants.split(",") if arguments.variants else None)
     elif arguments.experiment == "r8":
         experiment_r8(cluster, arguments.out, arguments.repetitions or 3, arguments.records,
                       (arguments.warmup_seconds, arguments.duration_seconds))

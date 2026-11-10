@@ -1,0 +1,17 @@
+== waiting for malphite re-tune Tue Nov 10 08:06:28 AM EST 2026
+== re-tune gone Tue Nov 10 08:06:28 AM EST 2026
+== ib_write_bw pyke -> malphite Tue Nov 10 08:06:58 AM EST 2026
+---------------------------------------------------------------------------------------
+ #bytes     #iterations    BW peak[Gb/sec]    BW average[Gb/sec]   MsgRate[Mpps]
+ 16777216    100              92.23              92.23  		   0.000687
+---------------------------------------------------------------------------------------
+ib exit=0
+== r7 direct Tue Nov 10 08:07:04 AM EST 2026
+r7 v128-lz4 remote-gpu-rdma done, matches native: True
+r7 v128-lz4 remote-cpu-rdma done, matches native: True
+r7 v32-lz4 remote-gpu-rdma done, matches native: True
+r7 v32-lz4 remote-cpu-rdma done, matches native: True
+r7 v128-zstd remote-cpu-rdma done, matches native: True
+r7 v128-zstd remote-gpu-rdma done, matches native: True
+== r7 exit=0 Tue Nov 10 08:37:46 AM EST 2026
+== DONE Tue Nov 10 08:37:46 AM EST 2026
