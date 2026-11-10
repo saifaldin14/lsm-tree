@@ -1,0 +1,18 @@
+NVIDIA RTX A6000 : 1800.000 Mhz   (Ordinal 0)
+84 SMs enabled. Compute Capability sm_86
+FreeMem:  48277MB   TotalMem:  48576MB   64-bit pointers.
+Mem Clock: 8001.000 Mhz x 384 bits   (768.1 GB/s)
+ECC Disabled
+
+
+Keys:       16 bytes each
+Values:     1024 bytes each (512 bytes after compression)
+Entries:    10000000
+RawSize:    9918.2 MB (estimated)
+FileSize:   5035.4 MB (estimated)
+WARNING: Snappy compression is not enabled
+------------------------------------------------
+max-key:19983 max-gdi:20083 blk:3946 M:2048 MaxOutFile:15728640
+max-key:19983 max-gdi:20083 blk:3946 M:2048 MaxOutFile:15728640
+fillrandom   :       8.647 micros/op;  114.7 MB/s
+readrandom   :      12.809 micros/op; (1000000 of 10000000 found)

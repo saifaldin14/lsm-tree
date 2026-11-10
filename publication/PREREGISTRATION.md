@@ -150,6 +150,28 @@ Runs:
 Analysis, statistics and exclusions are as above. Native and full offload are
 re-run inside these campaigns so that every ratio is paired within a block.
 
+### Earlier designs with tuned settings (added 2026-11-10, before these runs)
+
+The whole-database comparison above ran every design with 1 subcompaction and 2 or 4
+background jobs. AUDIT item 16 shows that this caps native RocksDB. It is re-run with tuned
+settings, for the strongest earlier design only: the pipeline rebuild, which was best in
+every compressed workload.
+
+- **Arms, 4 cores, batched writes:**
+  - Native and full offload use their registered 4-core settings from `v3-headline.json`.
+  - The pipeline rebuild is run twice, with native's settings and with full offload's.
+    The better of the two (higher median throughput) is reported, giving the earlier
+    design the benefit of the doubt.
+- **Run:** 50 M records, 120 s warm-up plus 300 s, verification on, memory preferred on
+  node 0, 3 blocks, schedule seed 7.
+  - LZ4 uses golden `golden-50m`.
+  - ZSTD uses a golden built with `--compression zstd`.
+- **Reported:** throughput, ingest-plus-compaction throughput and CPU per write, each with
+  95% bootstrap CIs, for full offload against the better pipeline arm and against native.
+- **Hypothesis H8b:** with tuned settings, full offload's throughput and its CPU per write
+  are both better than the better pipeline arm's, with the 95% CI excluding 1, for LZ4
+  and for ZSTD. Whatever the outcome, these runs replace the untuned numbers in the README.
+
 ### LUDA head-to-head (added 2026-11-10, before these runs)
 
 LUDA's code is public (github.com/xpsair/luda, commit 89792ac). It is LevelDB 1.22 with
@@ -189,6 +211,12 @@ GPU flushes and compactions, and no block compression.
   against RocksDB), so the comparisons that mean something are LUDA against LevelDB and
   ours against RocksDB, each on the same harness.
 - **Repetitions.** 3, in shuffled order.
+- **Outcome (written after the runs; data in `data/luda`).** All 12 runs passed the
+  correctness check: LevelDB and LUDA each found 1,000,000 of 1,000,000 keys, and native
+  and full offload each found 632,048. Medians: LevelDB 44.6k writes/s and 278 CPU-s,
+  LUDA 116k and 183, native RocksDB 186k and 231, full offload 182k and 239. LUDA against
+  LevelDB: 2.6x the writes, 1.5x less CPU. Full offload against native: 0.98x and 1.03x
+  more CPU, consistent with H8 (no advantage without compression).
 
 ## Remote compaction and replication over RDMA (added before these runs)
 
@@ -552,6 +580,49 @@ them.
   total) and 50% reads (native, about 880 MB/s in total).
   - Rule: if ours' combined read plus write bandwidth is at least 80% of the mixed
     ceiling, the drive is called saturated for ours.
+- **Change before N3 ran (2026-11-10, 09:45):** N3 is dropped and not run, to make time
+  for N5. N2 runs to completion as registered.
+- **N5, fixed rates on NVMe.** Open loop at 400k, 630k and 800k writes/s, about 45%, 70%
+  and 90% of native's measured NVMe maximum (0.89–0.92 M). Both designs use the frozen
+  settings in `tuned-malphite.json`, with direct I/O. 60 s warm-up plus 180 s, as X5;
+  2 blocks, schedule seed 6.
+  - Reported per rate: achieved rate, p99 and p99.9 write latency, CPU per write, cores
+    busy, stall fraction, and the drive's write latency, queue depth and bytes from
+    `iostat`.
+  - No directional hypothesis. If ours' extra write amplification loads the drive more
+    at the same rate (higher latency or queue depth), that is reported as a cost.
+  - A rate a design cannot sustain (achieved below 98% of offered) is reported as such,
+    not dropped.
+- **Change before N5 ran (2026-11-10, 10:10): equal I/O paths.** With direct I/O on,
+  native RocksDB reads compaction input from the drive (`use_direct_reads`), while our
+  GPU path reads its input through the page cache. The confirmation shows this: native
+  compaction read 3.1–3.3 bytes per user byte through RocksDB's reader against 0.05 for
+  ours, and the drive served about 445 against 245 MB/s of reads. That favours ours on
+  disk. So:
+  - **N6, equal-I/O confirmation:** the confirmation grid with `use-direct-io` false for
+    both designs, so both read and write through the page cache and both still write to
+    the NVMe drive. 3 blocks, schedule seed 8, every other setting frozen. This is the
+    like-for-like NVMe result; the direct-I/O confirmation stays reported, with the
+    asymmetry stated.
+  - **N5 also runs with `use-direct-io` false** for both designs, after N6.
+  - A direct-read path for our GPU input, which would allow a like-for-like run with
+    direct I/O, is future work.
+
+### Whole database over a direct RDMA link (registered 2026-11-10, before these runs)
+
+r8 ran only through the relay and its 1 Gb/s hop (210k against 545k writes/s). It is
+repeated with the database on pyke and the GPU server on malphite over 100 Gb/s RoCE.
+
+- **Designs:** native, and `remote_gpu_rdma` (`cuda_merge` server reached directly).
+- **Settings:** as r8 (50 M records, 4 writer threads, 4 background jobs, batches of 100,
+  WAL off, 30 s warm-up plus 120 s, full verification, 3 repetitions in shuffled order).
+  One change: max_subcompactions = 4 for both designs, because r8 used RocksDB's default
+  of 1 (AUDIT item 16).
+- **Starts** after the malphite NVMe follow-up ends, so the two do not share the GPU host.
+- **Reported:** throughput, write stalls, and database-node CPU per write, with every run's
+  verification and fallback count.
+- **Hypothesis H13b:** remote GPU throughput is at least native's (median ratio ≥ 1.0),
+  with less database-node CPU per write. If it is not, that is reported as a loss.
 
 ## Changes after data collection
 

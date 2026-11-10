@@ -340,7 +340,8 @@ def experiment_r7(cluster: Cluster, out: Path, only: list[str] | None = None) ->
             print(f"r7 {tag} {name} done, matches native: {matches}", flush=True)
 
 
-def experiment_r8(cluster: Cluster, out: Path, repetitions: int, records: int, seconds: tuple[int, int]) -> None:
+def experiment_r8(cluster: Cluster, out: Path, repetitions: int, records: int, seconds: tuple[int, int],
+                  only: list[str] | None = None, subcompactions: int | None = None) -> None:
     c, s, g = cluster.config["client"], cluster.config["server"], cluster.config["gpu"]
     gpu_build = g.get("build", cluster.build)
     scratch = cluster.config["scratch"]
@@ -353,11 +354,15 @@ def experiment_r8(cluster: Cluster, out: Path, repetitions: int, records: int, s
     for repetition in range(1, repetitions + 1):
         order = ["native", "remote_cpu_rdma", "remote_gpu_relay"]
         random.Random(800 + repetition).shuffle(order)
+        if "rdma_address" in g:
+            order.insert(random.Random(f"r8-direct-{repetition}").randrange(len(order) + 1), "remote_gpu_rdma")
+        if only:
+            order = [d for d in order if d in only]
         for design in order:
             if (repetition, design) in done:
                 continue
             started = []
-            record = {"experiment": "r8", "repetition": repetition, "design": design,
+            record = {"experiment": "r8", "repetition": repetition, "design": design, "subcompactions": subcompactions,
                       "load_before": {"client": cluster.load(c["host"]), "server": cluster.load(s["host"]),
                                       "gpu": cluster.load(g["host"])}}
             try:
@@ -378,12 +383,19 @@ def experiment_r8(cluster: Cluster, out: Path, repetitions: int, records: int, s
                                                           f"--backend remote_merge", "/tmp/lsm-r8-relay.log")
                     started.append((s["host"], pid, "/tmp/lsm-r8-relay.log", "relay"))
                     env, mode = f"LSM_RDMA_PUSH=1 LSM_REMOTE_ENDPOINT={relay}", "remote_merge"
+                elif design == "remote_gpu_rdma":
+                    pid, endpoint = cluster.start(g["host"], f"{GPU_SERVER_ENV} {pin(g)} {gpu_build}/lsm_compaction_server "
+                                                             f"--listen rdma://{g['rdma_address']}:0 --backend cuda_merge",
+                                                  "/tmp/lsm-r8-gpu.log")
+                    started.append((g["host"], pid, "/tmp/lsm-r8-gpu.log", "gpu"))
+                    env, mode = f"LSM_RDMA_PUSH=1 LSM_REMOTE_ENDPOINT={endpoint}", "remote_merge"
                 primary = f"{scratch}/rdma-r8"
+                tuning = f"--subcompactions {subcompactions} " if subcompactions else ""
                 before = {role: cluster.cpu_seconds(h, pid) for h, pid, _, role in started}
                 text = cluster.run(c["host"], f"rm -rf {primary} && cp -a {golden} {primary} && {GPU_ENV} {env} {pin(c)} "
                                               f"{cluster.build}/lsm_system_bench --phase run --mode {mode} --dir {primary} "
                                               f"--records {records} --threads 4 --background-jobs 4 --batch-size 100 "
-                                              f"--disable-wal true --warmup-seconds {seconds[0]} "
+                                              f"{tuning}--disable-wal true --warmup-seconds {seconds[0]} "
                                               f"--duration-seconds {seconds[1]}; rc=$?; rm -rf {primary}; exit $rc")
                 after = {role: cluster.cpu_seconds(h, pid) for h, pid, _, role in started}
                 record["server_cpu_seconds"] = {role: (after[role] - before[role]
@@ -410,7 +422,8 @@ def main() -> int:
     parser.add_argument("--records", type=int, default=50_000_000)
     parser.add_argument("--warmup-seconds", type=int, default=30)
     parser.add_argument("--duration-seconds", type=int, default=120)
-    parser.add_argument("--variants", help="r7 only: comma-separated subset of variants to run")
+    parser.add_argument("--variants", help="r7 and r8: comma-separated subset of variants or designs to run")
+    parser.add_argument("--subcompactions", type=int, help="r8: max_subcompactions for every design")
     arguments = parser.parse_args()
     cluster = Cluster(json.loads(arguments.hosts.read_text()))
     arguments.out.mkdir(parents=True, exist_ok=True)
@@ -422,7 +435,8 @@ def main() -> int:
         experiment_r7(cluster, arguments.out, arguments.variants.split(",") if arguments.variants else None)
     elif arguments.experiment == "r8":
         experiment_r8(cluster, arguments.out, arguments.repetitions or 3, arguments.records,
-                      (arguments.warmup_seconds, arguments.duration_seconds))
+                      (arguments.warmup_seconds, arguments.duration_seconds),
+                      arguments.variants.split(",") if arguments.variants else None, arguments.subcompactions)
     else:
         experiment_r6(cluster, arguments.out, arguments.repetitions or 5, arguments.records,
                       (arguments.warmup_seconds, arguments.duration_seconds))

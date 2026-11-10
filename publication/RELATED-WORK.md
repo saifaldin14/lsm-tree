@@ -97,7 +97,7 @@ a deployment that disables it would see no benefit from our work over LUDA's des
 ## 2. Key-value separation
 
 gParaKV (SC'25) publishes its code (<https://github.com/KV890/gParaKV>), as does LUDA
-(<https://github.com/xpsair/luda>, section 1). We ran gParaKV unmodified under its own YCSB driver, with
+(<https://github.com/xpsair/luda>; run below). We ran gParaKV unmodified under its own YCSB driver, with
 one client, 4 cores and the same GPU, and connected RocksDB with and without our offload to
 the same driver. Median of 3 repetitions.
 
@@ -119,6 +119,27 @@ directional hypothesis for this reason.
 
 Value separation and compaction offload are complementary rather than competing. Combining
 them is future work.
+
+### LUDA from its own code
+
+LUDA's code needed two fixes to build and run here: a moderngpu tile size that fits this
+GPU's shared memory, and a missing `return` that crashes the first compaction with a
+current compiler ([luda/setup.sh](luda/setup.sh)). Its 32-byte key buffer rules out YCSB, so
+each system runs its own `db_bench`: 10 M random 1 KB writes from one thread, no
+compression, 4 cores, the same GPU, median of 3 runs ([data/luda](data/luda)).
+
+| System | Writes/s | CPU seconds |
+| --- | ---: | ---: |
+| LevelDB 1.22 | 44.6k | 278 |
+| LUDA | 116k | 183 |
+| RocksDB | 186k | 231 |
+| RocksDB + ours | 182k | 239 |
+
+LUDA delivers 2.6x the writes of the LevelDB it is built on with 1.5x less CPU. Ours gains
+nothing over RocksDB here (0.98x, 1.03x more CPU): without compression our design has no
+advantage over the pipeline designs (H8), and one writer does not keep compaction busy.
+RocksDB against LevelDB is not a fair comparison of compaction, so the two families are
+compared only within themselves.
 
 ## 3. Remote and disaggregated compaction
 
