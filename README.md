@@ -472,28 +472,17 @@ RDMA and TCP finish within 3% of each other, because the 1 Gb/s hop dominates bo
   RocksDB, while its machine used 4.0 µs of CPU per write against 6.4. This has not been
   repeated over the direct link.
 
-![Remote compaction](publication/figures/fig15_rdma_isolated.png)
+**Remote CPU servers and replication** (earlier testbed, details and figures in
+[docs/remote-compaction.md](docs/remote-compaction.md)):
 
-**More workloads with a CPU server.** Over six workloads, the database machine spends
-1.7–2.0 CPU-seconds per GiB compacted, against 4.7–15.0 for local RocksDB (2.6–7.6× less).
-Over TCP it needs about twice that.
-
-![Replication](publication/figures/fig16_rdma_replication.png)
-
-**Replication with 2 backups** (median of 5 runs):
-
-| Writes | Design | Writes/s | Total CPU of all machines per write |
-|---|---|---|---|
-| Batches of 100 | Each copy compacts its own data | 351k | 28.5 µs |
-| Batches of 100 | **Compact once, send the files** | **365k** | **8.4 µs (3.4× less)** |
-| One at a time | Each copy compacts its own data | 67k | 86.1 µs |
-| One at a time | **Compact once, send the files** | 50k | **48.8 µs (1.8× less)** |
-
-- **Compacting once saves the cluster's CPU:** 3.4× for batched writes and 1.8× for
-  single writes.
-- **The cost:** about 3× more network traffic, and single writes are 25% slower. Each
-  replicated file write goes to both backups at once and waits for both replies; why
-  that costs more with single writes than per-copy compaction does has not been isolated.
+- **A remote CPU compaction server** cuts the database machine's compaction CPU 2.6 to
+  7.6× over six workloads, but each compaction takes about twice as long as in RocksDB,
+  because the server's merge is a simple reference version.
+- **Compacting once for 2 backups** and shipping the files cuts the whole cluster's CPU
+  per write 3.4× for batched writes (8.4 against 28.5 µs, at the same throughput), for
+  about 3× more network traffic. With single writes it cuts CPU 1.8× but is 25% slower,
+  because every log write is shipped to the backups inside RocksDB's write path, one
+  write group at a time.
 
 ### 11. What this does not show
 

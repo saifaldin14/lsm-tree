@@ -118,8 +118,8 @@ compaction server, for the whole replica set.
 ## Results so far (CPU compaction server)
 
 These were measured on two machines linked at 100 Gb/s (ConnectX-6 Dx, RoCE), with the
-compaction server running the CPU merge (`cpu_merge`). Details, figures and tables are in
-the [README](../README.md#7-compaction-on-another-machine-over-rdma).
+compaction server running the CPU merge (`cpu_merge`). The README summarises them in
+[section 10](../README.md#10-compaction-on-another-machine-over-rdma).
 
 - **Transport:** RDMA push reaches 92 Gb/s (the `ib_write_bw` ceiling) and costs the
   client about 0.012 CPU-seconds per GiB. TCP reaches 6–7 Gb/s at about 1 CPU-second
@@ -131,9 +131,51 @@ the [README](../README.md#7-compaction-on-another-machine-over-rdma).
   per write by 3.4× for batched writes (same throughput) and by 1.8× for single writes
   (25% lower throughput, see Limits), for about 3× more replication traffic.
 
+### Remote compaction to a CPU server
+
+![Remote compaction to a CPU server](../publication/figures/fig15_rdma_isolated.png)
+
+One compaction per workload, run five ways: RocksDB on the database machine (dark grey);
+the server's reference merge run locally (light blue), to show how fast that merge is on
+its own; and the same job sent to the CPU server by RDMA push (orange), RDMA pull (pink)
+and TCP (dark blue). Median of 3 runs.
+
+- **(a) Time:** sent to the server, a compaction takes about twice as long as in RocksDB,
+  because the reference merge itself is slow (the light-blue bars). The network adds 2 to 12%.
+- **(b) Database machine's CPU per GiB:** 1.7 to 2.0 s over RDMA against 4.7 to 15.0 s for
+  RocksDB compacting locally (2.6 to 7.6× less); over TCP 3.2 to 3.6 s.
+
+### Replication with 2 backups
+
+![Replication with 2 backups](../publication/figures/fig16_rdma_replication.png)
+
+Three ways to keep 2 backups in step: every copy compacts its own data (grey); the
+primary compacts once and ships the files (blue); a compaction server compacts once and
+the files are shipped (orange). Top row batched writes with the WAL off, bottom row single
+writes with the WAL on. Columns: (a, d) throughput; (b, e) CPU of all machines per write,
+split into primary (solid), backups (lighter) and compaction server (lightest); (c, f)
+replication traffic per write. Median of 5 runs.
+
+| Writes | Design | Writes/s | CPU of all machines per write | Network per write |
+|---|---|---:|---:|---:|
+| Batches of 100 | Each copy compacts | 351k | 28.5 µs | 459 B |
+| Batches of 100 | Compact once on the primary | **365k** | **8.4 µs** | 1,193 B |
+| Batches of 100 | Compact once on a CPU server | 206k | 12.5 µs | 1,287 B |
+| One at a time | Each copy compacts | **67k** | 86.1 µs | 1,250 B |
+| One at a time | Compact once on the primary | 50k | **48.8 µs** | 3,296 B |
+| One at a time | Compact once on a CPU server | 49k | 57.1 µs | 3,422 B |
+
+- **Compacting once on the primary** saves the most CPU: 3.4× with batched writes at the
+  same throughput, 1.8× with single writes.
+- **Compacting once on the CPU server** is slower with batched writes (206k against
+  351k), because the server's reference merge cannot keep up.
+- **Single writes are slower when compacting once** because every WAL append is shipped
+  inside RocksDB's write path (see Limits).
+
 ## Results: GPU compaction over RDMA (through a relay)
 
-No host has both a GPU and an RDMA card, so `rdma_campaign.py r7` chains three: the
+This was the first GPU testbed, before a machine with both a GPU and an RDMA link was
+found; the direct-link results are in the README, section 10. Here `rdma_campaign.py r7` chains three machines: the
 database node (AMD EPYC 7662, 4 cores) sends each job over RDMA (ConnectX-6 Dx, 100 Gb/s)
 to a relay (`--backend remote_merge`), which forwards it over TCP on 1 Gb/s Ethernet to a
 `cuda_merge` server on the A6000 host (8 cores of the GPU's NUMA node). The same
@@ -171,8 +213,8 @@ Medians of 3 warm runs ([data](../publication/data/rdma/r7/summary.md),
 - **No failover protocol.** If a backup fails during a run, the primary's write fails and
   RocksDB stops accepting writes. Recovery is out of scope; the read-only open checks
   only that a backup's copy is complete.
-- **Sequential replication.** Operations go to backups one after another, so latency grows
-  with the number of backups.
+- **Parallel replication, one round trip per operation.** Each operation goes to all
+  backups at once and waits for every reply, so latency is set by the slowest backup.
 - **WAL shipping is serialised.** Physical replication ships each WAL append inside
   RocksDB's write path, where only one write group holds the WAL at a time. With single
   writes, the network round trips therefore serialise, and throughput is 25% below
@@ -183,7 +225,8 @@ Medians of 3 warm runs ([data](../publication/data/rdma/r7/summary.md),
   results are therefore a lower bound for remote CPU compaction.
 - **Extra hops for SSTs.** With remote compaction plus physical replication, each output
   file crosses the network twice: server to primary, then primary to each backup.
-- **No host with both a GPU and RDMA.** GPU-over-RDMA times are estimates from measured
-  hops (see above); the database-node CPU is measured.
+- **GPU over RDMA was first estimated, then measured.** On the relay testbed, GPU-over-RDMA
+  times were estimates from measured hops. On a second testbed with a direct 100 Gb/s link
+  they are measured (README, section 10).
 - **GPUDirect RDMA is not used.** On the server, received data passes through host memory
   before the GPU. Data-center GPUs could receive directly with GPUDirect RDMA.
