@@ -179,8 +179,10 @@ throughput falls from 545 kops/s native to 210 kops/s with remote GPU compaction
 Putting the GPU on the RoCE fabric is a topology change, not a design change. Measured later
 on a second testbed where the database machine and the GPU machine share a 100 Gb/s RoCE
 link (data in [data/rdma/r7-direct](data/rdma/r7-direct)), one remote GPU compaction takes
-0.92 to 1.12 s against 3.66 to 6.77 s for RocksDB on the database machine (4.0 to 6.4×),
-with 5.5 to 11× less database-node CPU. The whole database has not been run over that link.
+0.91 to 1.10 s against 3.66 to 6.77 s for RocksDB on the database machine (4.0 to 6.5×,
+medians of 3 warm runs), with 5.6 to 11× less database-node CPU. Run over that link, the
+whole database takes 1.75× more writes with 2.04× less database-node CPU per write
+([data/rdma/r8-direct](data/rdma/r8-direct)).
 
 ## 4. Workload models
 

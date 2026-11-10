@@ -208,6 +208,12 @@ Medians of 3 warm runs ([data](../publication/data/rdma/r7/summary.md),
   shared (its load average, recorded before each run, was 0.1–21): the reference CPU
   merge is slower than RocksDB's own compaction.
 
+Both testbeds side by side (rows above the dashed line: this relay testbed; below it: the
+direct link of README section 10, on different machines, so compare rows within a
+testbed):
+
+![GPU compaction over RDMA, relay and direct testbeds](../publication/figures/fig23_rdma_gpu.png)
+
 ## Limits
 
 - **No failover protocol.** If a backup fails during a run, the primary's write fails and

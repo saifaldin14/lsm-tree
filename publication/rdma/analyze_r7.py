@@ -142,6 +142,14 @@ def summarize_direct(data, summary):
             "wall": median([r["wall_seconds"] for r in remote]),
             "cpu_gib": median([r["process_cpu_seconds_per_gib"] for r in remote]),
             "parts": {k: median([p[k] for p in per_run]) for k in per_run[0]}}
+        cpu_record = variants.get("remote-cpu-rdma")
+        if cpu_record:
+            runs = warm(cpu_record, "remote_merge")
+            per_run = [segments(r, "remote-cpu-rdma") for r in runs]
+            summary[workload]["direct-cpu-rdma"] = {
+                "wall": median([r["wall_seconds"] for r in runs]),
+                "cpu_gib": median([r["process_cpu_seconds_per_gib"] for r in runs]),
+                "parts": {k: median([p[k] for p in per_run]) for k in per_run[0]}}
 
 
 ROWS = [("native", "Native RocksDB"), ("remote-cpu-rdma", "Remote CPU server, RDMA"),
@@ -153,12 +161,19 @@ ROWS = [("native", "Native RocksDB"), ("remote-cpu-rdma", "Remote CPU server, RD
 FIGURE_LABELS = {"native": "RocksDB", "direct-native": "RocksDB (direct link)",
                  "remote-gpu-rdma": "Remote GPU, direct RDMA"}
 LEGEND = ["db", "rdma", "relay", "gbe", "cpu_server", "gpu"]
+# The direct testbed alone (README section 10).
+DIRECT_ROWS = [("direct-native", "RocksDB on the database machine"),
+               ("direct-cpu-rdma", "Remote CPU server over RDMA"),
+               ("remote-gpu-rdma", "Remote GPU over RDMA (ours)")]
+DIRECT_LEGEND = ["db", "rdma", "cpu_server", "gpu"]
 
 
-def figure(summary, workloads):
+def figure(summary, workloads, rows_spec=ROWS, legend=LEGEND, out_name="fig23_rdma_gpu", divider=3.5):
     """Per workload: (a) where the time of one compaction goes, (b) database-node CPU per GiB."""
+    ROWS = rows_spec  # noqa: N806
     rows = len(ROWS)
-    fig, axes = plt.subplots(len(workloads), 2, figsize=(DOUBLE_COLUMN, 0.95 + 1.3 * len(workloads)),
+    height = 0.35 + 0.22 * rows
+    fig, axes = plt.subplots(len(workloads), 2, figsize=(DOUBLE_COLUMN, 0.95 + height * len(workloads)),
                              sharey="row", squeeze=False, gridspec_kw={"width_ratios": [2.3, 1]})
     time_max = max(summary[w][k]["wall"] for w, _ in workloads for k, _ in ROWS if k in summary[w])
     cpu_max = max(summary[w][k].get("cpu_gib", 0) for w, _ in workloads for k, _ in ROWS if k in summary[w])
@@ -178,19 +193,23 @@ def figure(summary, workloads):
             left_ax.annotate(f"{entry['wall']:.2f} s", (left, y), xytext=(2, 0), textcoords="offset points", va="center",
                              fontsize=5.8, color=INK)
             colour = SEGMENTS["gpu"][1] if "gpu" in key else SEGMENTS["cpu_server"][1] if "cpu" in key else SEGMENTS["db"][1]
+            if key in ("native", "direct-native"):
+                colour = SEGMENTS["db"][1]
             hatch = SEGMENTS["gbe"][2] if key == "remote-gpu-tcp" else ""
             value = entry["cpu_gib"]
             right_ax.barh(y, value, 0.74, color=colour, hatch=hatch, edgecolor="white", linewidth=0.4, zorder=2)
             right_ax.annotate(f"{value:.2f}", (value, y), xytext=(2, 0), textcoords="offset points", va="center",
                               fontsize=5.8, color=INK)
-        left_ax.set_yticks(range(rows), [FIGURE_LABELS.get(key, label) for key, label in ROWS], fontsize=6.4)
+        labels = [FIGURE_LABELS.get(key, label) if rows_spec is ROWS_ALL else label for key, label in ROWS]
+        left_ax.set_yticks(range(rows), labels, fontsize=6.4)
         left_ax.set_ylim(rows - 0.45, -0.55)
         left_ax.set_xlim(0, time_max * 1.13)
         right_ax.set_xlim(0, cpu_max * 1.22)
         left_ax.set_title(title, loc="left", fontsize=7.5, fontweight="bold", color=INK, pad=3)
         for ax in (left_ax, right_ax):
-            # Rows below the line come from the second testbed (different machines).
-            ax.axhline(3.5, color="#999999", linewidth=0.6, linestyle="--", zorder=1)
+            if divider is not None:
+                # Rows below the line come from the second testbed (different machines).
+                ax.axhline(divider, color="#999999", linewidth=0.6, linestyle="--", zorder=1)
             ax.xaxis.grid(True, color="#e6e6e6", linewidth=0.6, zorder=0)
             ax.set_axisbelow(True)
             ax.tick_params(axis="y", length=0)
@@ -201,13 +220,16 @@ def figure(summary, workloads):
     panel_label(axes[0][0], "a")
     panel_label(axes[0][1], "b")
     handles = [Patch(facecolor=SEGMENTS[n][1], hatch=SEGMENTS[n][2], edgecolor="white", label=SEGMENTS[n][0])
-               for n in LEGEND]
-    handles[0] = Patch(facecolor=SEGMENTS["db"][1], edgecolor="white", label="On the database node")
-    top = 1 - 0.55 / (0.95 + 1.3 * len(workloads))
+               for n in legend]
+    handles[0] = Patch(facecolor=SEGMENTS["db"][1], edgecolor="white", label="On the database machine")
+    top = 1 - 0.55 / (0.95 + height * len(workloads))
     fig.tight_layout(h_pad=0.6, w_pad=1.0, rect=(0, 0, 1, top))
-    fig.legend(handles=handles, loc="lower center", ncol=6, bbox_to_anchor=(0.5, top), fontsize=6.4,
+    fig.legend(handles=handles, loc="lower center", ncol=len(handles), bbox_to_anchor=(0.5, top), fontsize=6.4,
                handlelength=1.4, columnspacing=1.0)
-    save(fig, "fig23_rdma_gpu")
+    save(fig, out_name)
+
+
+ROWS_ALL = ROWS
 
 
 def table(summary, workloads) -> str:
@@ -270,6 +292,9 @@ def main() -> int:
     if not workloads:
         raise SystemExit("no complete workloads")
     figure(summary, workloads)
+    direct_workloads = [(w, t) for w, t in workloads if "remote-gpu-rdma" in summary[w]]
+    if direct_workloads:
+        figure(summary, direct_workloads, DIRECT_ROWS, DIRECT_LEGEND, "fig24_rdma_direct", None)
     text = table(summary, workloads)
     r8 = root.parent / "r8-database.jsonl"
     if r8.exists():
