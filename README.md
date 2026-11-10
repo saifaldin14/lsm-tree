@@ -34,10 +34,6 @@ the same search, on the same CPU cores. The GPU is in addition to those cores.
 | Against earlier GPU and FPGA designs | **2.0–6.5× less compaction CPU**; their database gains are 1.14–1.41× over RocksDB, ours 1.75× |
 | Cost (AWS prices) | At high write rates, **half RocksDB's cost per write**: 2.26M writes/s on 16 cores + GPU, against RocksDB's best of 1.60M on 32 cores |
 
-Every result at a glance, as ours relative to RocksDB (1× means equal):
-
-![Every result at a glance](publication/figures/fig38_overview.png)
-
 ## How good is this?
 
 **The compaction result is strong.** A 10× drop in compaction cost, and one GPU replacing
