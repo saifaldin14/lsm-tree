@@ -33,7 +33,7 @@ as ours, on the same cores.
 | Write latency at a fixed load | 99.9th percentile **1.75×, 3.8× and 9.6× lower** at 50%, 70% and 90% of RocksDB's maximum rate | [4](#4-write-latency-at-a-fixed-load) |
 | Reads | Read-heavy work within 5% of RocksDB; read latency halves where compaction is busy | [5](#5-reads) |
 | A machine shared with other work | The gain grows from 1.80× to **2.48×** as other work takes more of the CPU | [6](#6-a-machine-shared-with-other-work) |
-| Cost | 8 cores with the GPU match 32 without it: **$0.372 against $0.801 per billion writes**. Below about 8 cores, buying cores is cheaper | [7](#7-what-it-costs-and-what-it-saves) |
+| Cost | 16 cores with a GPU write **1.41× more than 32 cores without, at half the cost per write**. Below about 12 cores, more cores are cheaper | [7](#7-what-it-costs-and-what-it-saves) |
 | Real-world workloads | **1.4 to 1.8× faster** when write-heavy; 1.05 to 1.10× when read-heavy | [8](#8-real-world-workloads-and-a-real-disk) |
 | Real disks | NVMe machine: **1.70× more writes, 2.06× less CPU** with data in memory; on its NVMe drive both designs hit the drive's limit, so 1.07× more writes and 1.46× less CPU. SATA SSD: equal throughput, half the CPU | [8](#8-real-world-workloads-and-a-real-disk) |
 | Earlier GPU and FPGA designs | In RocksDB with compression: **2.0 to 6.5× less CPU**, up to 1.9× more writes | [9](#9-compared-with-earlier-gpu-and-fpga-designs) |
@@ -232,68 +232,55 @@ runs.
 
 ### 7. What it costs, and what it saves
 
-**Eight cores with the GPU match thirty-two without it, at less than half the cost per
-write. Below about 8 cores, buying cores is cheaper.**
+**Sixteen cores with a GPU write 1.41× more than thirty-two cores without one, at half the
+cost per write. Below about 12 cores, buying more cores is cheaper.**
 
-**In cores** (median of 5 runs):
-
-![Equal cost](publication/figures/fig4_equal_cost.png)
-
-| Design | Cores | Writes/s | CPU per write | 99th-percentile write |
-|---|---|---|---|---|
-| RocksDB | 8 | 667k | 9.20 µs | 7.08 ms |
-| RocksDB | 16 | 929k | 8.48 µs | 19.92 ms |
-| RocksDB | 32 | 990k | 9.69 µs | 37.75 ms |
-| **Ours** | **8** | **1,000k** | **5.91 µs** | **2.23 ms** |
-
-RocksDB gains almost nothing between 16 and 32 cores, 929k to 990k writes/s, because it runs
-one L0-to-L1 compaction at a time split across at most `max_subcompactions` threads. Cores
-past that point buy very little. That ceiling is what the offload removes.
-
-**In money.** AWS EC2 on-demand, Linux, us-east-1, retrieved 2026-11-09 from
+*Setup:* the whole-database runs of [section 3](#3-the-whole-database) (tuned settings,
+batched LZ4 writes, five minutes measured, median of 5 runs), priced at AWS EC2 on-demand
+rates: Linux, us-east-1, retrieved 2026-11-09 from
 [ec2instances.info](https://instances.vantage.sh/aws/ec2/c7i.xlarge), which republishes the
 AWS Price List API. A physical core is $0.08925/h (c7i.xlarge at $0.1785/h for 4 vCPUs = 2
-physical cores). A GPU is priced as its instance less its two cores. Every input is in
-[publication/prices.json](publication/prices.json).
+physical cores). A GPU is priced as its instance less its two cores; the L4 is $0.6263/h.
+Every input is in [publication/prices.json](publication/prices.json).
+
+![Throughput and cost per write against cores](publication/figures/fig24_cost.png)
 
 | Design | Cores | Writes/s | $/hour | $ per billion writes |
 |---|---|---|---|---|
-| RocksDB | 4 | 341k | 0.357 | 0.291 |
-| RocksDB | 8 | 667k | 0.714 | 0.297 |
-| **Ours** | **8** | **1,000k** | **1.340** | **0.372** |
-| RocksDB | 16 | 929k | 1.428 | 0.427 |
-| Ours | 4 | 607k | 0.983 | 0.450 |
-| RocksDB | 32 | 990k | 2.856 | 0.801 |
+| RocksDB | 4 | 480k | 0.357 | 0.207 |
+| RocksDB | 8 | 837k | 0.714 | 0.237 |
+| **Ours + L4** | **16** | **2,260k** | **2.054** | **0.252** |
+| Ours + L4 | 8 | 1,260k | 1.340 | 0.295 |
+| RocksDB | 16 | 1,262k | 1.428 | 0.314 |
+| Ours + L4 | 4 | 748k | 0.983 | 0.365 |
+| RocksDB | 32 | 1,607k | 2.856 | 0.494 |
 
-**At matched throughput, eight cores and one GPU cost less than half of thirty-two cores.**
-
-| | RocksDB, 32 cores | Ours, 8 cores + L4 |
-|---|---|---|
-| Throughput | 990k writes/s | 1,000k writes/s |
-| Cost | $2.856/h | $1.340/h |
-| Per billion writes | $0.801 | **$0.372 (2.15× cheaper)** |
-| 99th-percentile write | 37.75 ms | 2.23 ms (16.9× lower) |
-
-At list price and full utilisation for a year, that is **$25,019 against $11,741 per node: a
-saving of $13,278, or 53%.**
+- **For high throughput, the GPU halves the cost per write.** Ours on 16 cores writes
+  2.26M/s for $0.252 per billion. RocksDB's best on 32 cores is 1.61M/s for $0.494 per
+  billion: 1.41× fewer writes at 1.96× the cost per write.
+- **For low throughput, cores are cheaper.** At 4 and 8 cores RocksDB costs less per write
+  ($0.207 and $0.237 against $0.365 and $0.295), because the GPU's fixed price is not yet
+  paid back. The lines cross between 8 and 16 cores (about 12 by interpolation).
+- **RocksDB's 32-core point is the weakest number here:** it is the best of five
+  60-second tuning trials (1.52 to 1.61M), not a five-minute run. Taking the best trial
+  favours RocksDB.
 
 **How much the GPU choice matters.** The measured card is an RTX A6000, which AWS does not
-rent, so the table above prices the cheapest current-generation NVIDIA GPU instance. Larger
-and more expensive cards still pay:
+rent, so the table prices the cheapest current-generation NVIDIA GPU instance. Larger and
+more expensive cards, with ours on 16 cores against RocksDB on 32:
 
-| GPU priced | $/hour total | $ per billion | vs 32 cores | Saved per node per year |
-|---|---|---|---|---|
-| L4, 24 GiB ([g6.xlarge](https://instances.vantage.sh/aws/ec2/g6.xlarge)) | 1.340 | 0.372 | **2.15×** | $13,278 |
-| A10G, 24 GiB ([g5.xlarge](https://instances.vantage.sh/aws/ec2/g5.xlarge)) | 1.542 | 0.428 | 1.87× | $11,515 |
-| L40S, 48 GiB ([g6e.xlarge](https://instances.vantage.sh/aws/ec2/g6e.xlarge)) | 2.397 | 0.666 | 1.20× | $4,025 |
+| GPU priced | $/hour total | $ per billion | Cheaper per write than RocksDB on 32 cores |
+|---|---|---|---|
+| L4, 24 GiB ([g6.xlarge](https://instances.vantage.sh/aws/ec2/g6.xlarge)) | 2.054 | 0.252 | **1.96×** |
+| A10G, 24 GiB ([g5.xlarge](https://instances.vantage.sh/aws/ec2/g5.xlarge)) | 2.256 | 0.277 | 1.78× |
+| L40S, 48 GiB ([g6e.xlarge](https://instances.vantage.sh/aws/ec2/g6e.xlarge)) | 3.111 | 0.382 | 1.29× |
 
-**The GPU would have to cost $2.17/hour before the advantage disappears**, which is more than
-any of these cards. The result does not depend on picking the cheapest one.
+**The GPU would have to cost $2.59/hour before the advantage disappears**, more than any of
+these cards.
 
-**When it does not pay.** Below about 8 cores, buying cores is cheaper per write: RocksDB on
-4 cores is the cheapest configuration measured, at $0.291 per billion. The GPU pays only once
-the throughput target is one RocksDB cannot reach by adding cores. On a SATA SSD, where the
-disk saturates for both designs, it does not pay at all
+**When it does not pay.** If 0.8M writes/s or less is enough, RocksDB on a few cores is the
+cheapest choice measured ($0.207 per billion on 4 cores). On a SATA SSD, where the disk
+saturates for both designs, the GPU does not pay at all
 ([section 8](#8-real-world-workloads-and-a-real-disk)).
 
 ### 8. Real-world workloads and a real disk

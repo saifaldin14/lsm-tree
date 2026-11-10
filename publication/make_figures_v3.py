@@ -198,6 +198,67 @@ def figure_database(headline, bottom):
     save(fig, "fig19_v3_database")
 
 
+def tuning_best(design, cores):
+    """Highest-throughput eligible trial of the v2 tuning search (60 s runs) for one design and core count."""
+    path = HERE / "data" / "v2-tuning" / "tune-search" / "results.jsonl"
+    best = None
+    for line in path.read_text().splitlines():
+        record = json.loads(line)
+        trial = record["trial"]
+        if trial["design"] != design or trial["cores"] != cores or record.get("exit_code") != 0:
+            continue
+        if "keys" not in (record["result"].get("verification") or {}):
+            continue
+        ops = window_ops(record["result"])
+        best = ops if best is None else max(best, ops)
+    return best
+
+
+def figure_cost(headline):
+    """Cost: (a) writes/s and (b) $ per billion writes against cores, tuned runs, prices.json."""
+    prices = json.loads((HERE / "prices.json").read_text())
+    core_hour, gpu_hour = prices["physical_core_hour"], prices["gpu_hour"]
+    points = {design: {c: median([window_ops(r) for r in headline[(design, c)]])
+                       for c in (4, 8, 16) if headline.get((design, c))} for design in (NATIVE, FULL)}
+    native_32 = tuning_best("native", 32)
+    if not points[NATIVE] or not points[FULL]:
+        return
+    dollars = lambda design, cores, ops: (cores * core_hour + (gpu_hour if design == FULL else 0)) / (ops * 3600 / 1e9)
+    fig, axes = plt.subplots(1, 2, figsize=(DOUBLE_COLUMN, 2.6))
+    for ax, letter, (ylabel, value) in zip(axes, "ab", [("Throughput (M writes/s)", lambda d, c, o: o / 1e6),
+                                                          ("$ per billion writes", dollars)]):
+        for design in (NATIVE, FULL):
+            other = FULL if design == NATIVE else NATIVE
+            cores = sorted(points[design])
+            ys = [value(design, c, points[design][c]) for c in cores]
+            style = STYLE[design]
+            ax.plot(cores, ys, marker="o", markersize=4, color=style["color"], linewidth=1.4, label=LABELS[design])
+            for c, y in zip(cores, ys):
+                # Label the higher line above and the lower one below, so the two never overlap.
+                above = c not in points[other] or y >= value(other, c, points[other][c])
+                ax.annotate(f"{y:.2f}", (c, y), xytext=(0, 5 if above else -6), textcoords="offset points",
+                            ha="center", va="bottom" if above else "top", fontsize=5.8, color=INK,
+                            bbox=LABEL_BOX, zorder=4)
+            if design == NATIVE and native_32:
+                y32 = value(NATIVE, 32, native_32)
+                ax.plot([cores[-1], 32], [ys[-1], y32], color=style["color"], linewidth=1.0, linestyle=":")
+                ax.plot([32], [y32], marker="o", markersize=4, markerfacecolor="white",
+                        markeredgecolor=style["color"], linestyle="none")
+                ax.annotate(f"{y32:.2f}", (32, y32), xytext=(0, -6), textcoords="offset points", ha="center",
+                            va="top", fontsize=5.8, color=INK, bbox=LABEL_BOX, zorder=4)
+        ax.set_xscale("log", base=2)
+        ax.set_xticks([4, 8, 16, 32], ["4", "8", "16", "32"])
+        ax.set_xlabel("Cores")
+        ax.set_ylim(0, ax.get_ylim()[1] * 1.15)
+        finish_axis(ax, ylabel)
+        panel_label(ax, letter)
+    fig.text(0.5, 0.005, "Ours includes one GPU at the L4 price. Hollow point: RocksDB on 32 cores, best 60 s tuning "
+             "trial (other points: 5-min runs, median of 5).", ha="center", va="bottom", fontsize=5.8, color="#555555")
+    fig.tight_layout(w_pad=2.5, rect=(0, 0.05, 1, 0.88))
+    design_legend(fig, (NATIVE, FULL), y=0.88, labels=LABELS)
+    save(fig, "fig24_cost")
+
+
 def figure_tail(openloop):
     """Write latency percentiles at fixed offered rates (open loop, 8 cores)."""
     rates = sorted({rate for (_, rate) in openloop})
@@ -467,6 +528,7 @@ if __name__ == "__main__":
     figure_compaction(isolated)
     figure_cores(isolated)
     figure_database(headline, bottom)
+    figure_cost(headline)
     figure_tail(openloop)
     figure_workloads()
     print((V3 / "summary.md").read_text())

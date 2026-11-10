@@ -83,7 +83,10 @@ native, 56.7 s for sort/merge, 22.8 s for the pipeline rebuild, and 2.7 s for ou
 stalls fall from 6% of the run to 0%, and p99 write latency from 6.29 ms to 1.25 ms.
 
 At equal hardware cost on 8 cores, our design reaches 1,006 kops/s against native RocksDB's
-1,057 kops/s on 32 cores, while the pipeline rebuild reaches 804 kops/s. H11 holds.
+1,057 kops/s on 32 cores, while the pipeline rebuild reaches 804 kops/s. H11 holds as
+registered, but this native run used 1 subcompaction (AUDIT item 16); tuned RocksDB reaches
+about 1.6 M writes/s on 32 cores, so the "8 cores match 32" reading no longer stands. The
+tuned cost comparison is in the README, section 7.
 
 ### Where the advantage comes from, and where it stops
 
