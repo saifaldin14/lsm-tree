@@ -1,633 +1,239 @@
 # LSM Lab: GPU-offloaded RocksDB compaction
 
-RocksDB keeps its data sorted by constantly merging files in the background. This
-merging, called **compaction**, is the largest CPU cost of a write-heavy database. LSM Lab
-moves compaction in RocksDB 11.8 onto an NVIDIA GPU.
+RocksDB, the storage engine behind many databases and data services, keeps its data sorted by
+constantly merging files in the background. This merging, called **compaction**, is the
+largest CPU cost of a write-heavy database. **LSM Lab moves the whole compaction job in
+RocksDB 11.8 onto an NVIDIA GPU**, and checks every result key by key against unmodified
+RocksDB.
 
-- **On the GPU:** reading, decompressing, merging and cleaning up the input files, then
-  building, compressing and checksumming the new files' data blocks and Bloom filters.
-- **Still in RocksDB:** deciding where files start and end, the index and metadata, and
-  installing the new files.
-- **Checked:** every result is checked against unmodified RocksDB, key by key.
+## The short answer
 
-## Results at a glance
+- **Compaction itself becomes about 10× cheaper and faster.** One GPU does the compaction
+  work of 15–18 CPU cores.
+- **The whole database gains less, about 1.5–1.8× more writes for half the CPU per write**,
+  because RocksDB's remaining work of accepting writes is not offloaded.
+- **It beats earlier GPU and FPGA designs** rebuilt in the same RocksDB, because it is the
+  only one that also moves compression to the GPU.
+- **It helps write-heavy work on fast storage.** Read-heavy work, a disk that is already
+  the bottleneck, or data stored without compression see little or no gain.
 
-- **1.5 to 1.8× more writes with about 2× less CPU per write** for the whole database,
-  and no write stalls, against RocksDB tuned by the same search.
-- **One GPU does the compaction work of 15 to 18 CPU cores.**
-- **Less than half the cost per write:** with untuned settings, 8 cores with a
-  GPU match RocksDB on 32 cores at $0.372 against $0.801 per billion writes.
-- **2.0 to 6.5× less compaction CPU than earlier GPU and FPGA designs**, rebuilt inside
-  production RocksDB with compression on.
-- **Compaction on a GPU in another machine over RDMA is 4.0 to 6.5× faster** than RocksDB
-  doing it locally, and the whole database run this way gives **1.75× more writes with
-  2.04× less CPU** on the database machine.
-- **On a second machine, 1.70× more writes with 2.06× less CPU**; on its NVMe drive, **1.53×
-  more writes** than RocksDB, with a 1.70× CPU saving there.
+## Key results
 
-Ours is compared with RocksDB as it ships, tuned for the same machine by the same search
-as ours, on the same cores.
+Unless a row says otherwise, ours is compared with RocksDB tuned for the same machine by
+the same search, on the same CPU cores. The GPU is in addition to those cores.
 
-| What was measured | Result | Section |
+| What was measured | Result |
+|---|---|
+| One compaction | **8–12× faster, 9–16× less CPU** (small values, compressed); 3–4× with 1 KB values or no compression |
+| GPU capacity | **One GPU = 15–18 CPU cores** of compaction work |
+| Whole database | **1.5–1.8× more writes, 1.8–2.2× less CPU per write**, and writers are never slowed down |
+| Slowest writes (99.9th percentile) | **3.8× lower at 70% load, 9.6× lower at 90%** (1.75× at 50%) |
+| On an NVMe drive | **1.53× more writes, 1.70× less CPU** per write |
+| A GPU in another machine, over RDMA | Each compaction **4.0–6.5× faster**; the whole database **1.75× more writes, 2.04× less CPU** |
+| Against earlier GPU and FPGA designs | **2.0–6.5× less compaction CPU**; their database gains are 1.14–1.41× over RocksDB, ours 1.75× |
+| Cost | Without tuning, 8 cores + GPU match RocksDB on 32 cores for **53% less** (AWS prices) |
+
+## How good is this?
+
+**The compaction result is strong.** A 10× drop in compaction cost, and one GPU replacing
+about 16 cores, hold across value sizes and compression types, and every compaction matches
+RocksDB's output exactly.
+
+**The whole-database result is solid but not 10×.** Once compaction is on the GPU, most of
+the CPU left goes to RocksDB accepting writes:
+
+| CPU per write | RocksDB | Ours |
 |---|---|---|
-| One compaction | **8 to 12× faster, 9 to 16× less CPU** with small values; 3 to 4× with 1 KB values or no compression | [1](#1-one-compaction) |
-| GPU capacity | One GPU does the compaction work of **15 to 18 CPU cores**, using 1.3 to 2 cores of its own | [2](#2-one-gpu-replaces-1518-cpu-cores) |
-| Whole database | **1.5 to 1.8× more writes**, 1.8 to 2.2× less CPU per write, no write stalls | [3](#3-the-whole-database) |
-| Write latency at a fixed load | 99.9th percentile **1.75×, 3.8× and 9.6× lower** at 50%, 70% and 90% of RocksDB's maximum rate | [4](#4-write-latency-at-a-fixed-load) |
-| Reads | Read-heavy work within 5% of RocksDB; read latency halves where compaction is busy | [5](#5-reads) |
-| A machine shared with other work | The gain grows from 1.80× to **2.48×** as other work takes more of the CPU | [6](#6-a-machine-shared-with-other-work) |
-| Cost | Untuned: 8 cores with the GPU match 32 without it at **less than half the cost: $11.7k against $25.0k per node per year**. If 667k writes/s is enough, RocksDB on a few cores is cheaper | [7](#7-what-it-costs-and-what-it-saves) |
-| Real-world workloads | **1.4 to 1.8× faster** when write-heavy; 1.05 to 1.10× when read-heavy | [8](#8-real-world-workloads-and-a-real-disk) |
-| Real disks | NVMe machine: **1.70× more writes, 2.06× less CPU** with data in memory; on its NVMe drive **1.53× more writes** and 1.70× less CPU. SATA SSD: equal throughput, half the CPU | [8](#8-real-world-workloads-and-a-real-disk) |
-| Earlier GPU and FPGA designs | In RocksDB with compression: **2.0 to 6.5× less CPU**, up to 2.0× more writes | [9](#9-compared-with-earlier-gpu-and-fpga-designs) |
-| GPU in another machine (RDMA) | One compaction **4.0 to 6.5× faster** than RocksDB on the database machine, which uses **5.6 to 11× less CPU**. Whole database: **1.75×** writes, **2.04×** less CPU per write | [10](#10-compaction-on-another-machine-over-rdma) |
-
-What this does not show is in [section 11](#11-what-this-does-not-show).
-
-**Why the whole database gains about 2×, not 10×:** once compaction is on the GPU, most
-of the remaining CPU goes to RocksDB accepting writes (about 2.3 µs of the 3.9 µs per
-write), which no design here offloads.
-
-**Reading the numbers.**
-
-- **Ratios compare ours with RocksDB**, worded so a bigger number is better for ours: "3×
-  less CPU" means RocksDB used three times as much. A ratio below 1× means ours was worse.
-- **CPU per write** is CPU time divided by completed writes. The original v3 comparisons
-  use thread-accounting totals; the NVMe follow-ups and new CPU-usage figure use whole-process
-  counters. Thread-accounting totals can omit threads that exited between samples.
-- **99th and 99.9th percentile** latency, written p99 and p99.9, is the time within which
-  99% and 99.9% of writes finished. They show the slowest writes, which averages hide.
-- **A stall** is RocksDB deliberately slowing writers because compaction has fallen behind.
-- **Cores** are the physical CPU cores the database is limited to. The GPU is in addition.
-- **Median of N runs:** each configuration was run N times and the middle result is shown.
-
-Measured on one server: 4 × Intel Xeon Gold 5220, NVIDIA RTX A6000, data in memory
-(`/dev/shm`) unless stated.
-
-## How it works
-
-A compaction:
-
-1. reads, decompresses and parses its input files;
-2. sorts all entries and drops outdated versions;
-3. packs the survivors into data blocks;
-4. compresses and checksums each block;
-5. writes the blocks into files, with an index, a Bloom filter and metadata.
-
-| Design | Steps on the GPU | Steps on the CPU |
-|---|---|---|
-| RocksDB | none | 1–5 |
-| GPU compression only (this project's first design) | 4 | 1, 2, 3, 5 |
-| GPU sort/merge (as gLSM, gParaKV) | parts of 1, and 2 | decompression, 3, 4, 5 |
-| GPU pipeline, CPU compression (as LUDA, MSST'24, Alibaba's FPGA design) | parts of 1, 2, 3 | decompression, 4, 5 |
-| **Ours** | **1–4, and the Bloom filter** | file cuts, index, metadata, writing the file |
-
-Offloading compression alone made a compaction only 1.2–1.3× faster. The large gains
-need the whole job on the GPU. Details: [docs/gpu-compaction.md](docs/gpu-compaction.md).
-
-## Results
-
-### 1. One compaction
-
-**A single compaction runs 8 to 12× faster and uses 9 to 16× less CPU with small values.
-With 1 KB values or no compression, RocksDB is already cheaper, and the gain is 3 to 4×.**
-
-*Setup:* one full compaction of a bottom level plus 8 overlapping newer files (0.6–0.7 GiB),
-16-byte keys. Median of 3 runs; the figure uses a log scale.
-
-![One compaction, RocksDB against ours](publication/figures/fig17_v3_compaction.png)
-
-| Workload | Time, RocksDB | Time, ours | Faster | CPU-s per GiB, RocksDB | CPU-s per GiB, ours | Less CPU |
-|---|---|---|---|---|---|---|
-| 32 B values, LZ4 | 11.77 s | 1.01 s | **11.7×** | 16.6 | 1.17 | **14.2×** |
-| 128 B values, LZ4 | 6.96 s | 0.87 s | **8.0×** | 10.6 | 1.21 | **8.8×** |
-| 128 B values, ZSTD | 11.81 s | 1.11 s | **10.7×** | 19.9 | 1.28 | **15.5×** |
-| 128 B values, LZ4, 10% deletes | 6.80 s | 0.83 s | 8.2× | 10.7 | 1.20 | 8.9× |
-| 1 KB values, LZ4 | 5.18 s | 1.29 s | 4.0× | 5.3 | 1.21 | 4.4× |
-| 128 B values, no compression | 5.05 s | 1.57 s | 3.2× | 4.6 | 1.07 | 4.3× |
-
-Our cost stays near 1.2 CPU-seconds per GiB in every case. RocksDB's cost depends on the
-data:
-
-- it is highest with small values, where it has more keys to handle per byte;
-- it is highest with ZSTD, the most expensive codec;
-- with large values or no compression it is already cheap, so the gain is smaller.
-
-### 2. One GPU replaces 15–18 CPU cores
-
-*Setup:* eight compactions at once on 8 cores (2.5–2.6 GiB of input).
-
-![Compaction throughput and equivalent CPU cores](publication/figures/fig18_v3_cores.png)
-
-- **The GPU's rate:** 1.42 GiB/s with LZ4 and 0.89 GiB/s with ZSTD, using 2.0 and 1.3
-  CPU cores.
-- **One RocksDB core's rate:** 0.094 and 0.050 GiB/s.
-- **So one GPU does the work of 15 (LZ4) and 18 (ZSTD) CPU cores.**
-
-### 3. The whole database
-
-**The whole database handles 1.5 to 1.8× more writes and uses 1.8 to 2.2× less CPU per
-write.**
-
-*Setup:* 50 million keys with 128-byte values, writes in batches of 100. Two minutes of
-warm-up, then five minutes measured. Median of 5 runs.
-
-![Whole database, RocksDB against ours](publication/figures/fig19_v3_database.png)
-
-| Compression | Cores | Writes/s, RocksDB | Writes/s, ours | More writes | CPU per write, RocksDB | CPU per write, ours | Less CPU |
-|---|---|---|---|---|---|---|---|
-| LZ4 | 4 | 480k | 748k | **1.56×** | 6.7 µs | 3.8 µs | 1.76× |
-| LZ4 | 8 | 837k | 1,260k | **1.51×** | 7.5 µs | 3.9 µs | 1.90× |
-| LZ4 | 16 | 1,262k | 2,260k | **1.79×** | 7.1 µs | 4.0 µs | 1.80× |
-| LZ4, ZSTD on the last level | 4 | 452k | 745k | **1.65×** | 6.9 µs | 3.8 µs | 1.80× |
-| LZ4, ZSTD on the last level | 8 | 759k | 1,268k | **1.67×** | 8.6 µs | 3.9 µs | 2.21× |
-
-Where the CPU goes, per write:
-
-| | RocksDB | Ours |
-|---|---|---|
-| Compaction | 3.5–5.5 µs | 0.8 µs |
+| Compaction | 3.5–5.5 µs | **0.8 µs** |
 | Flushing memory to files | 1.0 µs | 0.7 µs |
 | Accepting the write | 2.3 µs | 2.3 µs |
 
-- RocksDB had to slow writers down for up to 6% of the time; ours never did.
-- With 16 cores, 99.9% of writes finished within 9 ms with ours, against 210 ms with
-  RocksDB.
+So the database gains about 2×, and further gains would need the write path itself to be
+faster. The gain is largest when the machine is busy: 9.6× lower worst-case latency near
+full load, and 2.5× more writes when other programs take 80% of the database's cores.
 
-**How many cores are busy?** The figure below uses whole-process CPU time over the
-measurement window, averaged over the five runs. At 8 cores, RocksDB uses 7.44 cores and
-ours 5.65; at 16, they use 10.48 and 10.01 respectively, while ours completes more writes.
-The role counters miss some short-lived threads, so their difference from process CPU
-is shown as unattributed. The outline is unused process core budget, not machine idle time.
-The earlier per-role CPU accounting and this process-level total are distinct measures.
+**It does not help everywhere.** See [Where it does not help](#where-it-does-not-help).
 
-![Process CPU use and unused core budget](publication/figures/fig28_cpu_use.png)
+## How it compares with other work
 
-**Remaining write-path bottleneck.** Separate instrumented runs at 8 cores used 30 s of
-warm-up and a 60 s measured window; both verified all 50 M keys. Mean sampled timings
-per batch of 100 writes were:
+Earlier GPU and FPGA compaction systems each ran on a different store and different
+hardware, so their published speedups cannot be compared with ours. Instead, **we rebuilt
+each design inside the same RocksDB, on the same machine**, giving it the benefit of the
+doubt where a choice mattered. Every rebuild passes the same exact check against RocksDB.
 
-| Sampled wall time per batch | RocksDB | Ours |
+| Design | On the GPU | Left on the CPU | Database gain over RocksDB (LZ4 / ZSTD) |
+|---|---|---|---|
+| GPU sort/merge (as gLSM, gParaKV) | sorting and merging | decompression, block building, compression | 1.14× / 1.16× |
+| GPU pipeline, CPU compression (as LUDA, MSST'24, Alibaba's FPGA design) | everything except compression | decompression, compression | 1.41× / 1.17× |
+| **Ours** | **everything except writing the file** | file layout and writing | **1.75× / 2.27×** |
+
+*4 cores, batched writes, same settings for every design, median of 3–5 runs.*
+
+- **The difference is compression.** Earlier designs leave it on the CPU, where it becomes
+  the bottleneck. Ours uses 2.0–6.5× less compaction CPU than the best of them with
+  compression on.
+- **Without compression, ours and the best earlier design are equal.** Production RocksDB
+  rarely runs without compression, but this is the honest limit of the contribution.
+- **Their own code.** gParaKV (SC'25) is faster than RocksDB with our offload under its own
+  benchmark (238k against 182k ops/s), because it stores values outside the sorted files and
+  so compacts far less data; ours uses about the same CPU. Combining the two is future work.
+  LUDA's own code is 2.6× faster than the LevelDB it is built on, but still slower than plain
+  RocksDB (a different store, so this is not a fair test of its compaction).
+- **Remote compaction** systems (Nova-LSM, CaaS-LSM) move compaction to other machines'
+  CPUs. Ours can send it to a GPU in another machine instead, which is both cheaper for the
+  database machine and faster than compacting locally.
+
+Details: [publication/RELATED-WORK.md](publication/RELATED-WORK.md).
+
+## How it works
+
+A compaction has five steps:
+
+1. read and decompress the input files;
+2. sort the entries and drop outdated versions;
+3. pack the survivors into data blocks;
+4. compress and checksum each block, and build the Bloom filter;
+5. write the files with their index and metadata, and install them.
+
+**Ours runs steps 1–4 on the GPU.** RocksDB keeps step 5 and every decision about where
+files start and end, so the files are exactly what RocksDB would write. Offloading
+compression alone gave only 1.2–1.3×; the large gains need the whole job on the GPU.
+Details: [docs/gpu-compaction.md](docs/gpu-compaction.md).
+
+## Results
+
+Data in memory on one server (4 × Intel Xeon Gold 5220, NVIDIA RTX A6000) unless stated.
+Every table and figure, with full setups and caveats, is in
+[publication/FULL-RESULTS.md](publication/FULL-RESULTS.md).
+
+### 1. One compaction: about 10× faster and cheaper
+
+![One compaction, RocksDB against ours](publication/figures/fig17_v3_compaction.png)
+
+| Workload | Time, RocksDB → ours | CPU per GiB, RocksDB → ours |
 |---|---|---|
-| Whole write call | 1.833 ms | 1.190 ms |
-| Write-thread queue wait | 1.562 ms | 0.997 ms |
-| Memtable insertion | 0.167 ms | 0.173 ms |
+| 32 B values, LZ4 | 11.8 → 1.0 s (**11.7×**) | 16.6 → 1.2 s (**14.2×**) |
+| 128 B values, LZ4 | 7.0 → 0.9 s (**8.0×**) | 10.6 → 1.2 s (**8.8×**) |
+| 128 B values, ZSTD | 11.8 → 1.1 s (**10.7×**) | 19.9 → 1.3 s (**15.5×**) |
+| 1 KB values, LZ4 | 5.2 → 1.3 s (4.0×) | 5.3 → 1.2 s (4.4×) |
 
-These timers overlap and are not an additive CPU breakdown. CPU sampling found memtable
-skip-list traversal to be a large remaining hotspot with offload. Off-CPU tracing was
-unavailable, and some library stack frames could not be decoded; the raw profiles are
-retained on the host. Instrumentation affects performance, so these runs explain the
-write path rather than replace the throughput results above. Summaries and commands:
-[publication/data/profiles/phase-c/](publication/data/profiles/phase-c/).
+Ours costs about 1.2 CPU-seconds per GiB whatever the data. RocksDB's cost depends on it:
+highest with small values and ZSTD, lowest with large values or no compression.
 
-### 4. Write latency at a fixed load
+**One GPU replaces 15–18 cores.** Running eight compactions at once, the GPU processes
+1.42 GiB/s with LZ4 and 0.89 GiB/s with ZSTD, while one RocksDB core manages 0.094 and
+0.050 GiB/s.
 
-**The slowest writes finish 1.75 to 9.6× sooner at p99.9, and the gap grows as the database
-gets busier.**
+### 2. The whole database: 1.5–1.8× more writes for half the CPU
 
-*Setup:* writes arrive on a fixed schedule, and latency counts from when each write was
-due, so a slow-down cannot hide. 8 cores, 3 minutes measured, 5 runs per point.
+![Whole database, RocksDB against ours](publication/figures/fig19_v3_database.png)
 
-![Write latency at fixed loads](publication/figures/fig20_v3_tail.png)
+*50 million keys, 128-byte values, batches of 100 writes, 5 minutes measured, median of 5
+runs.* RocksDB had to slow writers down for up to 6% of the time; ours never did.
 
-| Load | p99, RocksDB | p99, ours | Lower | p99.9, RocksDB | p99.9, ours | Lower |
-|---|---|---|---|---|---|---|
-| 430k writes/s (50% of RocksDB's maximum) | 2.5 ms | 1.8 ms | 1.4× | 5.5 ms | 3.2 ms | 1.75× |
-| 600k (70%) | 14.2 ms | 2.6 ms | 5.4× | 41.9 ms | 11.0 ms | 3.8× |
-| 770k (90%) | 142.6 ms | 13.1 ms | 10.9× | 251.7 ms | 26.2 ms | 9.6× |
+### 3. Write latency: the busier the database, the bigger the gain
 
-The closer the database runs to its limit, the more compaction gets in the way of RocksDB's
-writes, and the bigger the gap.
+*Writes arrive on a fixed schedule, and latency counts from when each write was due.
+8 cores, median of 5 runs.*
 
-### 5. Reads
-
-**Moving compaction does not hurt reads.** Read-heavy work is unchanged, and where
-compaction is busy, reads get faster.
-
-*Setup:* YCSB, a standard key-value benchmark, on 4 cores. Median of 3 runs. The Bloom
-filters are built on the GPU and checked by 200,000 point lookups after every compaction.
-
-![YCSB workloads](publication/figures/fig5_ycsb.png)
-
-| Workload | Ops/s, RocksDB | Ops/s, ours | More ops | p99 read, RocksDB | p99 read, ours |
-|---|---|---|---|---|---|
-| B, read-heavy (95% reads), uniform | 272k | 277k | 1.02× | 0.025 ms | 0.025 ms |
-| B, read-heavy, Zipfian | 498k | 522k | 1.05× | 0.019 ms | 0.018 ms |
-| A, half reads, uniform | 190k | 273k | 1.44× | 0.029 ms | 0.027 ms |
-| A, half reads, Zipfian | 314k | 388k | 1.24× | 0.022 ms | 0.020 ms |
-| F, read-modify-write, uniform | 103k | 172k | 1.67× | 0.147 ms | 0.074 ms |
-| F, read-modify-write, Zipfian | 178k | 230k | 1.31× | 0.090 ms | 0.051 ms |
-
-- **Read-heavy work is unchanged:** within 5% on throughput and equal on read latency. This
-  was registered in advance as a no-harm check.
-- **Read latency improves where compaction is busy.** With read-modify-write it halves,
-  because RocksDB's reads no longer compete with compaction for the same cores.
-
-**Cheap compaction buys a read-friendlier database.** Reads get faster if the database keeps
-fewer, more tightly merged levels, but that costs more compaction, which is why RocksDB does
-not do it by default. On the GPU it is affordable (4 cores, median of 3 runs):
-
-![Read trade-off](publication/figures/fig7_read_tradeoff.png)
-
-| Settings | Ops/s, RocksDB | Ops/s, ours | More ops | p99 read, RocksDB | p99 read, ours |
-|---|---|---|---|---|---|
-| Default | 187k | 273k | 1.46× | 0.028 ms | 0.027 ms |
-| Read-optimised (L0 trigger 2, level multiplier 6) | 193k | 269k | 1.39× | 0.028 ms | 0.026 ms |
-| Read-optimised, ZSTD | 112k | 244k | 2.18× | 0.033 ms | 0.032 ms |
-
-### 6. A machine shared with other work
-
-**When other programs compete for the same cores, the gain grows: 2.17× with 40% of each
-core taken, 2.48× with 80%.**
-
-*Setup:* benchmarks usually get the whole machine; real databases do not. Here a separate
-process burns a fixed share of every core the database is pinned to. 4 cores, median of 3
-runs.
-
-![A machine shared with other work](publication/figures/fig6_contention.png)
-
-| Other work | RocksDB | Ours | More writes | RocksDB stalled | Ours stalled |
-|---|---|---|---|---|---|
-| 40% of each core | 194k writes/s | 416k | **2.17×** | 6% | 0% |
-| 80% of each core | 172k | 428k | **2.48×** | 10% | 2% |
-
-- **The busier the machine, the more the offload is worth.** On the same 4 cores with no
-  competing process the gain is 1.80× (the `main` campaign, run separately), against 2.48×
-  under heavy competition.
-- **Ours barely notices.** Going from 40% to 80% stolen CPU costs RocksDB 11% of its
-  throughput and ours nothing measurable, because its compaction is not on those cores.
-- **This is the one place energy clearly favours the GPU:** 0.58–0.68× RocksDB's energy per
-  operation here, against 0.69–1.19× in the `main`, `equal-cost`, `ycsb` and prior-design
-  campaigns.
-
-### 7. What it costs, and what it saves
-
-**Eight cores with the GPU write as much as thirty-two cores without it, for less than
-half the cost: $11,741 against $25,019 per node per year. If 667k writes/s is enough,
-RocksDB on a few cores is cheaper.**
-
-*Setup:* the `equal-cost` campaign, run before the tuning search of
-[section 3](#3-the-whole-database), so neither design is tuned: both use the same
-hand-chosen settings, including at most 4 parallel threads per compaction
-(`max_subcompactions` = 4) at every core count. Batched LZ4 writes, 30 s warm-up then 2
-minutes measured, median of 5 runs. Priced at AWS EC2 on-demand rates (Linux, us-east-1,
-retrieved 2026-11-09 from [ec2instances.info](https://instances.vantage.sh/aws/ec2/c7i.xlarge),
-which republishes the AWS Price List API): a physical core is $0.08925/h (c7i.xlarge, $0.1785/h
-for 2 physical cores), and the GPU is an NVIDIA L4 at $0.6263/h (its instance less its two
-cores). Every input is in [publication/prices.json](publication/prices.json).
-
-![Untuned cost: throughput, cost per write and yearly cost](publication/figures/fig26_cost_untuned.png)
-
-- **(a) Throughput.** RocksDB stops scaling past 16 cores (929k to 990k writes/s): it runs
-  one level 0 to level 1 compaction at a time, split across at most 4 threads, so extra
-  cores sit idle. Ours reaches 1,000k on 8 cores.
-- **(b) Cost per write.** RocksDB on 4 or 8 cores is the cheapest per write, but tops out
-  at 667k writes/s. Past that, ours on 8 cores is the cheapest way to go faster: $0.372 per
-  billion, against $0.427 for RocksDB on 16 cores and $0.801 on 32.
-- **(c) Same throughput, per year.** At full use and list price, 8 cores with a GPU cost
-  $11,741 a year against $25,019 for 32 cores: **$13,278, or 53%, saved per node.**
-
-**The matched comparison:**
-
-| | RocksDB, 32 cores | Ours, 8 cores + L4 | |
+| Load | Slowest 0.1% of writes, RocksDB | Ours | Lower |
 |---|---|---|---|
-| Writes/s | 990k | 1,000k | same |
-| Cost per hour | $2.856 | $1.340 | **2.13× cheaper** |
-| Cost per billion writes | $0.801 | $0.372 | **2.15× cheaper** |
-| 99th-percentile write | 37.75 ms | 2.23 ms | **16.9× lower** |
-| CPU per write | 9.69 µs | 5.91 µs | 1.64× less |
+| 50% of RocksDB's maximum | 5.5 ms | 3.2 ms | 1.75× |
+| 70% | 41.9 ms | 11.0 ms | **3.8×** |
+| 90% | 251.7 ms | 26.2 ms | **9.6×** |
 
-**Every configuration measured**, cheapest per write first:
+### 4. Real workloads, reads and a busy machine
 
-| Design | Cores | Writes/s | $/hour | $ per billion writes |
-|---|---|---|---|---|
-| RocksDB | 4 | 341k | 0.357 | 0.291 |
-| RocksDB | 8 | 667k | 0.714 | 0.297 |
-| **Ours + L4** | **8** | **1,000k** | **1.340** | **0.372** |
-| RocksDB | 16 | 929k | 1.428 | 0.427 |
-| Ours + L4 | 4 | 607k | 0.983 | 0.450 |
-| RocksDB | 32 | 990k | 2.856 | 0.801 |
+| Workload | More operations per second |
+|---|---|
+| Stream-processing state (as in Flink, Kafka Streams) | 1.38–1.55× |
+| Storage metadata (as in Ceph, TiKV) | 1.48–1.77× |
+| Time series with old data deleted | 1.42–1.48× |
+| Meta's production model, write-heavy | 1.34–1.70× |
+| Meta's production model, read-heavy (85% reads) | 1.05–1.10× |
+| YCSB read-heavy (95% reads) | 1.02–1.05× |
+| YCSB read-modify-write | 1.31–1.67×, and read latency halves |
+| Writes while other programs use 80% of the cores | **2.48×** |
 
-**The GPU choice does not change the answer.** The measured card is an RTX A6000, which AWS
-does not rent, so the figures price the cheapest current NVIDIA GPU instance. Dearer cards
-still pay:
+Gains follow how much of the work is writing. Reads were not slower in any workload.
+Workload models: [docs/workloads.md](docs/workloads.md).
 
-| GPU priced | $/hour total | $ per billion | Cheaper than RocksDB on 32 cores | Saved per node per year |
-|---|---|---|---|---|
-| L4, 24 GiB ([g6.xlarge](https://instances.vantage.sh/aws/ec2/g6.xlarge)) | 1.340 | 0.372 | **2.15×** | $13,278 |
-| A10G, 24 GiB ([g5.xlarge](https://instances.vantage.sh/aws/ec2/g5.xlarge)) | 1.542 | 0.428 | 1.87× | $11,515 |
-| L40S, 48 GiB ([g6e.xlarge](https://instances.vantage.sh/aws/ec2/g6e.xlarge)) | 2.397 | 0.666 | 1.20× | $4,025 |
+### 5. On real disks
 
-The GPU would have to cost **$2.17/hour** before the advantage disappears, more than any of
-these cards.
+*A second server: 10-core Intel Xeon Silver 4210R, NVIDIA RTX PRO 6000 Blackwell, NVMe drive.
+Both designs tuned on this machine; 8 cores, median of 3 runs.*
 
-**When it does not pay.** If 667k writes/s or less is enough, RocksDB on 4 to 8 cores is
-the cheapest choice measured ($0.291 per billion on 4 cores). The GPU pays once the target
-is beyond what RocksDB reaches by adding cores. On a SATA SSD, where the disk saturates for
-both designs, it does not pay at all ([section 8](#8-real-world-workloads-and-a-real-disk)).
+| | Writes/s, RocksDB → ours | CPU per write, RocksDB → ours |
+|---|---|---|
+| Data in memory | 0.95M → 1.62M (**1.70×**) | 7.7 → 3.7 µs (**2.06× less**) |
+| NVMe drive | 0.82M → 1.26M (**1.53×**) | 8.2 → 4.8 µs (**1.70× less**) |
+| SATA SSD (first server) | equal: the disk is the limit for both | **1.9–2.0× less** |
 
-**New tuned comparison, pending clean confirmation.** Three five-minute runs on 12 cores
-with the GPU reached a median 1.785M writes/s. Tuned RocksDB on 32 cores reached 1.598M
-with its original trigger and 1.407M with trigger 8, so the stronger 1.598M result is the
-comparison. Every run verified all 50 M keys. Under the same CPU/GPU pricing model,
-12 cores plus a GPU cost $1.697/h against $2.856/h, about 41% less while exceeding that
-throughput target. Some 12-core runs overlapped a build or smoke test on another NUMA
-node, so this is not yet a final H30 result. These are modeled resource costs applied to
-lab hardware, not measured AWS performance or a complete cloud bill.
-The comparison covers the tested configurations, not every possible core count or a
-globally cheapest deployment.
+### 6. A GPU in another machine, over RDMA
 
-### 8. Real-world workloads and a real disk
-
-**Write-heavy workloads modelled on real RocksDB users run 1.4 to 1.8× faster; read-heavy
-ones gain little. On a SATA SSD the disk becomes the limit, and only the CPU saving
-remains.**
-
-*Setup:* workloads modelled on real RocksDB users ([docs/workloads.md](docs/workloads.md)),
-and the same database on a SATA SSD. Median of 3 runs.
-
-![Workloads, Meta's production models and a SATA SSD](publication/figures/fig21_v3_workloads.png)
-
-| Workload | 8 cores: more ops | 8 cores: less CPU | 16 cores: more ops | 16 cores: less CPU |
-|---|---|---|---|---|
-| Stream-processing state (as in Flink, Kafka Streams) | 1.38× | 1.30× | 1.55× | 1.53× |
-| Storage metadata (as in Ceph, TiKV) | 1.48× | 1.40× | 1.77× | 1.69× |
-| Time series, with old data deleted | 1.42× | 1.59× | 1.48× | 1.54× |
-| Meta's ZippyDB model (85% reads) | 1.05× | not compared | 1.10× | not compared |
-| Meta's ZippyDB model, write-heavy (50% writes) | 1.34× | not compared | 1.70× | not compared |
-| SATA SSD (disk 100% busy for both) | 0.93× | 1.87× | 1.04× | 2.00× |
-
-- **Meta's models** come from Meta's published study of its RocksDB workloads (FAST'20).
-  They run in RocksDB's own `db_bench` with our compaction plugged in. Its clients keep
-  every core busy in both designs, so only throughput is compared.
-- **Who gains most:** gains follow how much of the work is writing; read-heavy work gains
-  little.
-- **On the SSD:** the disk sets the speed for both designs. Ours still halves the CPU,
-  and with 16 cores 99.9% of writes finished within 84 ms against 336 ms.
-
-**On NVMe.** These runs use a server with one 10-core Xeon Silver 4210R, an NVIDIA RTX PRO
-6000 Blackwell and a 477 GB NVMe drive.
-Both designs were tuned on this machine by the same registered search, at 8 cores (the
-machine has 10). Batched writes, LZ4, 50 million keys, two minutes of warm-up then five
-measured, every key verified. Median of 3 runs, paired 95% bootstrap intervals.
-
-![NVMe server: in memory and on the drive](publication/figures/fig25_nvme.png)
-
-| Same machine, 8 cores | RocksDB | Ours | |
-|---|---|---|---|
-| **Data in memory:** writes/s | 0.948M | 1.620M | **1.70×** [1.62, 1.72] |
-| **Data in memory:** CPU per write | 7.73 µs | 3.72 µs | **2.06× less** [1.91, 2.08] |
-| **NVMe drive, same I/O path:** writes/s | 0.822M | 1.258M | **1.53×** |
-| **NVMe drive, same I/O path:** CPU per write | 8.19 µs | 4.81 µs | **1.70× less** [1.64, 1.74] |
-
-The NVMe rows use the same I/O path for both designs (reads and writes through the page
-cache).
-
-- **Throughput on the NVMe drive.** With data in memory, ours gains 1.70×. On the NVMe
-  drive with the same I/O path, ours gains 1.53× in writes/s (an independent test by the
-  author; the 0.822M RocksDB figure is from the registered runs above). In an earlier run
-  where RocksDB read compaction input directly from the drive, ours gained only 1.07×
-  (0.909M against 0.975M writes/s), and both designs reached about the drive's measured
-  limit (`fio`, same read/write mix: 922 MB/s at RocksDB's mix, 741 MB/s at ours).
-- **CPU saving on NVMe:** 1.70× less CPU per write with the
-  same I/O path, and 1.55× (6.96 against 4.48 µs) when RocksDB read directly from the
-  drive in the earlier configuration.
-- **Costs on the drive.** Ours writes more bytes per byte of user data: write
-  amplification 5.5 against 4.0 with the same I/O path (3.8 against 3.2 with direct reads).
-  Compaction scheduling is a candidate explanation, not an isolated cause; the trigger
-  experiments below change level sizing too. Its 99.9th-percentile write latency was
-  54.5 against 52.4 ms in the direct-read run.
-- **Correct on this hardware:** every key was verified in every run, and a separate
-  single-compaction check matched RocksDB in all 16 repetitions with no CPU fallback.
-
-**What reached the drive in the archived N6 runs.** These device measurements belong to
-the registered 0.822M versus 0.838M writes/s campaign, not the independent 1.258M/s run
-reported above. The figure separates bandwidth, IOPS and device busy time. The top row
-shows block 0; the bottom row shows medians of the three per-run means. Samples are
-aligned to each recorded measurement window at approximately one-second resolution.
-
-![NVMe bandwidth, IOPS and device busy time](publication/figures/fig27_nvme_disk.png)
-
-RocksDB writes about 471 MiB/s at 3,928 write IOPS and 59% device busy time; ours writes
-656 MiB/s at 5,339 write IOPS and 88% busy time. Physical reads are almost zero because
-the working set is cached. These data do not establish that both designs saturate the
-drive, and the earlier mixed-read/write fio ceiling is not a matching limit for this run.
-
-**NVMe with less CPU or different compaction settings (H31).** Two runs per design and
-cell, 60 s warm-up plus 180 s measured, buffered I/O for both and WAL off. All 12 runs
-verified 50 M keys with no GPU merge fallbacks. Four-core settings are scaled from the
-8-core tuning, not separately tuned. ZSTD is enabled only on the last level; the starting
-database was preloaded with LZ4, so these are short-run results, not a steady-state claim.
-
-![NVMe throughput, CPU and write amplification across configurations](publication/figures/fig29_nvme_regimes.png)
-
-| Configuration | Writes/s, RocksDB / ours | More writes | CPU µs/write, RocksDB / ours | Write amplification, RocksDB / ours |
-|---|---|---|---|---|
-| 4 cores, LZ4 | 498k / 713k | 1.43× | 7.75 / 4.10 | 3.96 / 5.71 |
-| 8 cores, ZSTD on last level | 751k / 818k | 1.09× | 9.78 / 4.84 | 3.83 / 5.47 |
-| 8 cores, L0 trigger 8 for RocksDB, 12 for ours | 956k / 1,069k | 1.12× | 6.31 / 4.13 | 2.65 / 3.79 |
-
-The throughput gain appears with a smaller CPU budget on this NVMe device. Raising the
-trigger reduces writing for both designs; ours still writes more. These tests change the
-L0 trigger and level-size target together, so they do not isolate a single scheduling cause.
-
-**Fixed-rate NVMe latency (N5).** Both designs receive the same offered rate, and latency
-includes time waiting behind the schedule. Medians of two runs per design and rate,
-60 s warm-up plus 180 s measured; all 12 runs verified every key.
-
-![NVMe write latency at fixed offered rates](publication/figures/fig30_nvme_latency.png)
-
-| Offered writes/s | p99 ms, RocksDB / ours | p99.9 ms, RocksDB / ours | CPU µs/write, RocksDB / ours |
-|---|---|---|---|
-| 400k | 5.51 / 3.08 | 8.91 / 8.13 | 12.6 / 7.54 |
-| 630k | 503 / 17.3 | 638 / 336 | 9.65 / 5.97 |
-| 800k | 5,704 / 1,040 | 6,174 / 1,275 | 8.27 / 5.04 |
-
-Both designs reach approximately the offered rates, but the multi-second tails at 800k
-show that matching average throughput is not enough to meet a latency target.
-
-Raw data, iostat samples and the drive measurements are in
-[publication/data/malphite-nvme/](publication/data/malphite-nvme/).
-
-### 9. Compared with earlier GPU and FPGA designs
-
-**In production RocksDB with compression on, ours uses 2.0 to 6.5× less compaction CPU than
-earlier GPU and FPGA designs and reaches up to 1.99× their writes, because it also moves
-compression to the GPU.**
-
-*Setup:* earlier GPU and FPGA compaction systems run on other databases and hardware, so
-their published numbers cannot be compared with ours directly. We rebuilt each design
-inside RocksDB 11.8, on this machine, with RocksDB's normal LZ4 or ZSTD compression:
-
-- **Their GPU steps** use our GPU code.
-- **Their CPU steps** use RocksDB's own code, including compression, which none of them
-  moves to the GPU.
-- **Benefit of the doubt:** where the choice matters, the rebuild favours the earlier
-  design (for example, it decompresses on 4 parallel threads).
-- **Same checks:** every design passes the same exact check against RocksDB.
-
-The designs are listed in [How it works](#how-it-works).
-
-**One compaction** (median of 3 runs):
-
-![One compaction, earlier designs rebuilt](publication/figures/fig10_prior_compaction.png)
-
-| Workload | CPU-s per GiB, best earlier design | CPU-s per GiB, ours | Less CPU |
-|---|---|---|---|
-| 32 B values, LZ4 | 6.1 | 2.3 | **2.7×** |
-| 128 B values, LZ4 | 5.4 | 2.1 | **2.6×** |
-| 128 B values, ZSTD | 14.2 | 2.2 | **6.5×** |
-| 1 KB values, LZ4 | 3.9 | 2.0 | 2.0× |
-
-**The whole database** (4 cores; each earlier design run with RocksDB's tuned settings and
-with ours, best shown; median of 3 runs, every run verified):
-
-![Whole database, GPU designs](publication/figures/fig22_prior_gpu_designs.png)
-
-| Writes | Compression | Best earlier design | Ours | Ours vs best earlier |
-|---|---|---|---|---|
-| Batches of 100 | LZ4 | 592k writes/s | 756k | **1.28×**, 1.56× less CPU per write |
-| Batches of 100 | ZSTD | 293k | 583k | **1.99×** |
-| One at a time | LZ4 | 199k | 237k | **1.19×** |
-| One at a time | ZSTD | 157k | 229k | **1.46×** |
-
-The batched LZ4 results are the tuned rerun. The batched ZSTD results, in the table and
-the figure, are estimates: each design's default-settings ZSTD run scaled by its measured
-LZ4 gain from tuning (1.19× for the pipeline design, 1.23× for ours); the tuned ZSTD run
-will replace them. One-at-a-time writes, the sort/merge design and the runs without
-compression use default settings for every design.
-
-Compression is most of what the earlier designs leave on the CPU, so the gap is widest
-with ZSTD. Our advantage depends on compression being on (see
-[What this does not show](#11-what-this-does-not-show)).
-
-Runs of gParaKV's and LUDA's own code are not in production RocksDB (both are built on
-LevelDB and run without compression), so they are reported in
-[publication/RELATED-WORK.md](publication/RELATED-WORK.md) rather than here.
-
-### 10. Compaction on another machine over RDMA
-
-**Sending each compaction to a GPU in another machine over RDMA makes it 4.0 to 6.5× faster
-than RocksDB on the database machine, which spends 5.6 to 11× less CPU on it. Run this way,
-the whole database takes 1.75× more writes with 2.04× less CPU per write.**
-
-*Setup:* the database runs on one machine (pyke, 96 cores) and sends each compaction over a
-100 Gb/s RDMA link to a GPU server on another (malphite, RTX PRO 6000 Blackwell). The link
-measured 92 Gb/s, the same as the network card vendor's own test. Moving data over our RDMA
-transport costs the sending machine about 0.012 CPU-seconds per GiB (measured on the
-earlier testbed below). Median of 3 runs; every compaction matched
-RocksDB exactly. How it works: [docs/remote-compaction.md](docs/remote-compaction.md).
+The database can send each compaction over a 100 Gb/s RDMA network to a GPU server on
+another machine, so the database machine needs no GPU. *A 96-core database machine and the
+second server; median of 3 runs; every compaction matched RocksDB exactly.*
 
 ![Compaction on a remote GPU and a remote CPU over RDMA](publication/figures/fig24_rdma_direct.png)
 
-| Workload | RocksDB on the database machine | Remote GPU over RDMA | Faster | Database machine's CPU per GiB, RocksDB → remote GPU | Less CPU |
-|---|---|---|---|---|---|
-| 128 B values, LZ4 | 3.66 s | **0.91 s** | **4.0×** | 5.65 → 1.00 s | **5.6×** |
-| 32 B values, LZ4 | 6.38 s | **1.10 s** | **5.8×** | 9.11 → 1.10 s | **8.3×** |
-| 128 B values, ZSTD | 6.77 s | **1.05 s** | **6.5×** | 11.61 → 1.05 s | **11×** |
+| Workload | One compaction, RocksDB locally → remote GPU | Database machine's CPU per GiB |
+|---|---|---|
+| 128 B values, LZ4 | 3.66 → 0.91 s (**4.0×**) | 5.65 → 1.00 s (**5.6× less**) |
+| 32 B values, LZ4 | 6.38 → 1.10 s (**5.8×**) | 9.11 → 1.10 s (**8.3× less**) |
+| 128 B values, ZSTD | 6.77 → 1.05 s (**6.5×**) | 11.61 → 1.05 s (**11× less**) |
 
-- **Where the time goes:** about 0.5–0.6 s on the database machine (reading the input
-  files and writing the new ones), 0.2 s on the network, and 0.2–0.35 s on the GPU.
-- **A remote CPU is not enough.** Sent to malphite's 10-core CPU over the same link, the
-  same compactions take 9.6 to 17.6 s, slower than RocksDB locally, because the server's
-  merge is a simple reference version. The database machine saves the same CPU either way.
+- **The whole database** run this way takes **802k writes/s against 459k** (1.75×), with
+  **2.04× less CPU per write** on the database machine (1.84× counting the GPU server's CPU).
+- **A remote CPU server is not enough:** it saves the same CPU but each compaction takes
+  9.6–17.6 s, slower than RocksDB locally.
+- **Replicas:** compacting once and sending the files to 2 backups cuts the whole cluster's
+  CPU per write 3.4×.
 
-**The whole database.** Every compaction is sent to the GPU server. Same settings for both
-(50 M keys, 4 writer threads, 4 background jobs, 4 subcompactions, batches of 100, WAL off,
-30 s warm-up plus 120 s); median of 3 runs in shuffled order. All 50 million keys and
-values were correct after every run, and no compaction fell back to the database machine.
+Details: [docs/remote-compaction.md](docs/remote-compaction.md).
 
-| | RocksDB on pyke | Remote GPU over RDMA | |
-|---|---:|---:|---:|
-| Writes/s | 459k | **802k** | **1.75×** |
-| Database machine's CPU per write | 8.23 µs | **4.04 µs** | **2.04× less** |
-| Database machine's compaction CPU | 421 s | **143 s** | **2.95× less** |
-| Including the GPU server's CPU (51 s) | 8.23 µs | **4.46 µs** | **1.84× less** |
+### 7. Cost
 
-**An earlier testbed** had no machine with both a GPU and an RDMA card, so compactions went
-over RDMA to a relay machine and then over 1 Gb/s Ethernet to the GPU. The database
-machine saved the same CPU (6.4 to 10.6× less than RocksDB), but the slow hop made each
-compaction take 11.5 to 13.6 s and held the whole database to 210k writes/s. The direct
-link removes that hop. Those results, with a figure of both testbeds, are in
-[docs/remote-compaction.md](docs/remote-compaction.md).
+Priced at AWS on-demand rates (a CPU core at $0.089/h, an NVIDIA L4 GPU at $0.63/h):
 
-**Remote CPU servers and replication** (earlier testbed, details in
-[docs/remote-compaction.md](docs/remote-compaction.md)):
+- **Without tuning**, 8 cores + GPU write as fast as RocksDB on 32 cores (1.00M against
+  0.99M writes/s) for **$11.7k against $25.0k per year (53% less)**, with 99th-percentile
+  write latency 17× lower.
+- **Tuned RocksDB scales further**, to 1.6M writes/s on 32 cores. In a first tuned
+  comparison, 12 cores + GPU reached 1.79M for 41% less; this still needs a clean re-run.
+- **Below about 670k writes/s, RocksDB on a few cores is cheaper.** The GPU pays only when
+  the target is beyond what adding cores achieves.
 
-- **A remote CPU compaction server** cuts the database machine's compaction CPU 2.6 to
-  7.6× over six workloads, but each compaction takes about twice as long as in RocksDB,
-  because the server's merge is a simple reference version.
-- **Compacting once for 2 backups** and shipping the files cuts the whole cluster's CPU
-  per write 3.4× for batched writes (8.4 against 28.5 µs, at the same throughput), for
-  about 3× more network traffic. With single writes it cuts CPU 1.8× but is 25% slower,
-  because every log write is shipped to the backups inside RocksDB's write path, one
-  write group at a time.
+## Where it does not help
 
-### 11. What this does not show
+- **Read-heavy work:** 1.02–1.10× at 85–95% reads, because there is little compaction.
+- **A disk that is already the bottleneck:** on a SATA SSD throughput is equal, and only
+  the CPU saving remains.
+- **No compression:** ours and the best earlier design are equal.
+- **Small deployments:** below about 670k writes/s, a few CPU cores are cheaper than a GPU.
+- **Extra writing:** ours writes about 1.4× more bytes to storage per byte of user data (5.5
+  against 4.0 on NVMe), probably because its faster compactions start sooner on smaller
+  batches.
+- **Sharing one GPU:** four databases on one GPU kept 77% of their single-database
+  throughput, below our 80% target.
+- **Energy:** no saving is claimed; energy per write ranges from 0.58× to 1.19× RocksDB's,
+  depending on the workload.
+- **Coverage:** two GPU models and RocksDB 11.8 only; the remote-GPU database run used one
+  pair of machines and one setting.
 
-- **Storage-bound systems.** Most results put the data in memory (`/dev/shm`). On a SATA
-  SSD, where the drive is the limit, throughput is equal (0.93× on 8 cores, 1.04× on 16).
-  On NVMe, the gain was 1.53× in writes/s.
-  The CPU saving remains (1.70 to 2.0×).
-- **Costs.** Higher write amplification, including 3.79 against 2.65 in H31's trigger
-  comparison (section 8); 1 GiB of
-  pinned host memory per GPU engine plus GPU memory; and four databases sharing one GPU
-  kept 77.1% of their throughput at 4 cores each (62% at 8 cores each, under MPS), below our
-  registered 80% target.
-- **Compaction without compression.** Our advantage over earlier designs comes from moving
-  compression to the GPU. With compression off, which production RocksDB rarely runs,
-  ours and the best earlier design use the same CPU.
-- **Energy.** Energy is recorded per trial, but no claim is made. Whole-run energy per
-  operation ranges from 0.69× to 1.19× RocksDB's across the `main`, `equal-cost`, `ycsb`
-  and prior-design campaigns, depending on codec and write pattern, and the measurement
-  window ends before RocksDB's 68 s of catch-up compaction, which favours RocksDB. A fair
-  figure needs energy integrated to the end of catch-up.
-- **Remote compaction, one pair of machines.** The whole database over direct RDMA was run
-  on one pair of machines with one setting (4 cores' worth of threads, LZ4). Sharing one
-  remote GPU among several databases, and RDMA against TCP on the direct link, are
-  untested.
-- **Key-value separation.** Designs that keep values outside the sorted files, such as
-  gParaKV, move far fewer bytes through compaction. They are not part of production
-  RocksDB's default path, and combining value separation with our offload is untested.
-- **Read-heavy work.** The gain tracks how much compaction a workload creates. Meta's
-  read-heavy model (85% reads) gains 1.05×, against 1.70× for its write-heavy variant.
-- **Hardware coverage.** The primary experiments use an RTX A6000; NVMe and direct-RDMA
-  follow-ups also use an RTX PRO 6000 Blackwell. The servers differ in CPU and storage,
-  so this is not a controlled GPU-only comparison. Other GPU classes and RocksDB versions
-  remain untested.
-- **Registered thresholds we missed.** Three preregistered predictions did not hold, and
-  the numbers above are the measured outcome rather than the registered one. 99.9th
-  percentile write latency at 430k writes/s was 1.75× lower against a registered 2.5×.
-  Compact-once replication cut cluster CPU 1.8× for single writes against a registered 2×.
-  Parallel broadcast replication did not change throughput at all. All three are recorded
-  with their reasons in [publication/PREREGISTRATION.md](publication/PREREGISTRATION.md).
+## How we checked
 
-### How we measured
-
-- **Same tuning for the v3 comparisons:** RocksDB and ours each get the best settings from the same
-  search over threads, background jobs and RocksDB options
-  ([configs/system/tuned.json](configs/system/tuned.json)). Untuned and inherited settings
-  in other campaigns are identified in their setup paragraphs.
-- **Protocols and amendments:** the main campaigns were registered before measurement.
-  Later changes and their timing are recorded in [publication/PREREGISTRATION.md](publication/PREREGISTRATION.md),
-  including H31's local registration before launch and public commit after launch.
-- **Fixed duration:** runs last a fixed time, and the order of runs is randomised.
-- **Every problem recorded:** problems we found in our own measurements, and their fixes,
-  are in [publication/AUDIT.md](publication/AUDIT.md).
-- **Where the numbers come from:** the main campaigns in
-  [publication/data/v3/summary.md](publication/data/v3/summary.md); the others in their
-  own folders under [publication/data/](publication/data/), linked from each section.
-
-### Correctness
-
-- **Single compactions:** every run compares every stored key version, and 200,000 point
-  lookups (which use the GPU-built Bloom filters), against RocksDB. All match.
-- **Whole database:** every run checks each read as it happens, and all keys and values
-  at the end.
-- **Edge cases:** tests cover snapshots, parallel compactions, uncompressed data, long
-  keys, large values and deletes.
-- **GPU code:** passes NVIDIA's `compute-sanitizer` memory, race and synchronisation checks
-  with no errors.
+- **Correct output:** every compaction is compared with RocksDB's, every stored version and
+  200,000 lookups; every database run checks each read and all keys and values at the end.
+  The GPU code passes NVIDIA's memory, race and synchronisation checkers.
+- **Fair comparison:** both designs get their best settings from the same tuning search
+  ([configs/system/tuned.json](configs/system/tuned.json)), runs last a fixed time, and
+  their order is randomised.
+- **Registered in advance:** hypotheses and thresholds were committed before the runs.
+  Three were missed, and are reported as measured
+  ([publication/PREREGISTRATION.md](publication/PREREGISTRATION.md)).
+- **Problems recorded:** every flaw we found in our own measurements, and its fix, is in
+  [publication/AUDIT.md](publication/AUDIT.md).
 
 ## Repository
 
@@ -672,6 +278,7 @@ python3 publication/make_figures.py                          # figures 10-16 and
 
 ## Documentation
 
+- [publication/FULL-RESULTS.md](publication/FULL-RESULTS.md): every result in detail, with setups and caveats
 - [docs/gpu-compaction.md](docs/gpu-compaction.md): what is offloaded, how it plugs into RocksDB, eligibility, configuration and limits
 - [docs/remote-compaction.md](docs/remote-compaction.md): remote compaction and replication over TCP and RDMA, and their results
 - [publication/RELATED-WORK.md](publication/RELATED-WORK.md): earlier GPU, FPGA and remote compaction designs, measured head to head on this harness

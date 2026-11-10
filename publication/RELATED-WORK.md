@@ -45,7 +45,7 @@ CPU-centric and proposes a GPU-centric one. We have not rebuilt or run any of th
 
 This is the regime where our result is weakest. Our headline numbers are measured with data
 on `/dev/shm`. On an NVMe drive, our throughput gain over tuned RocksDB is small and the
-result is mainly a CPU saving (README, section 8). Our design reads and writes files through
+result is mainly a CPU saving ([FULL-RESULTS.md, section 8](FULL-RESULTS.md#8-real-world-workloads-and-a-real-disk)). Our design reads and writes files through
 RocksDB's normal file system path, so it does not compete with these papers on I/O, and
 combining a direct SSD-to-GPU path with full-pipeline offload is open.
 
@@ -86,7 +86,7 @@ At equal hardware cost on 8 cores, our design reaches 1,006 kops/s against nativ
 1,057 kops/s on 32 cores, while the pipeline rebuild reaches 804 kops/s. H11 holds as
 registered, but this native run used 1 subcompaction (AUDIT item 16); tuned RocksDB reaches
 about 1.6 M writes/s on 32 cores, so the "8 cores match 32" reading no longer stands. The
-tuned cost comparison is in the README, section 7.
+tuned cost comparison is in [FULL-RESULTS.md, section 7](FULL-RESULTS.md#7-what-it-costs-and-what-it-saves).
 
 ### Where the advantage comes from, and where it stops
 
@@ -205,8 +205,9 @@ time-series models are described in [../docs/workloads.md](../docs/workloads.md)
 3. **Earlier designs rebuilt rather than cited.** Each comparison runs in the same process,
    on the same hardware, against the same inputs, under preregistered fairness rules.
 4. **A remote GPU compaction path over RDMA.** We are not aware of a prior shared GPU
-   compaction service. Over a direct RDMA link, one remote GPU compaction is 4 to 6.4×
-   faster than local RocksDB; the whole database and sharing are not yet measured.
+   compaction service. Over a direct RDMA link, one remote GPU compaction is 4.0 to 6.5×
+   faster than local RocksDB, and the whole database takes 1.75× more writes; sharing one
+   remote GPU among several databases is not yet measured.
 
 ## Citations to complete
 
