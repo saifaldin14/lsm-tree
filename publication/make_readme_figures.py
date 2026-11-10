@@ -8,6 +8,9 @@ fig32_workload_gains  Gain over RocksDB per workload: the v3 workload campaigns 
                       campaign.
 fig33_storage         Writes/s and CPU per write with data in memory and on an NVMe drive (second
                       server) and on a SATA SSD (first server), from archived runs only.
+fig36_other_work      Earlier GPU and FPGA designs rebuilt in the same RocksDB: (a) compaction CPU per
+                      GiB of one compaction, (b) whole-database writes/s on 4 cores with the same
+                      settings for every design.
 fig35_cost_cheaper    The tuned cost comparisons in which ours is cheaper than RocksDB: the same write
                       rate (1.26M writes/s), and the highest rate each reaches. AWS prices from
                       prices.json; ours includes one GPU.
@@ -26,8 +29,8 @@ from matplotlib.transforms import blended_transform_factory
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import campaigns  # noqa: E402
-from make_figures import (DOUBLE_COLUMN, FULL, INK, NATIVE, STYLE, bar, design_legend,  # noqa: E402
-                          finish_axis, panel_label, save)
+from make_figures import (DOUBLE_COLUMN, FULL, INK, NATIVE, PIPELINE, SORT_MERGE, STYLE, bar,  # noqa: E402
+                          design_legend, finish_axis, panel_label, save)
 from make_figures_v3 import (LABELS, cpu_us, load_campaign, native_32_runs, window_ops,  # noqa: E402
                              workload_ratios)
 
@@ -223,10 +226,54 @@ def figure_cost_cheaper():
     save(fig, "fig35_cost_cheaper")
 
 
+OTHER_DESIGNS = (NATIVE, SORT_MERGE, PIPELINE, FULL)
+OTHER_LABELS = {NATIVE: "RocksDB", SORT_MERGE: "GPU sort/merge (as gLSM, gParaKV)",
+                PIPELINE: "GPU pipeline, CPU compression (as LUDA, MSST'24, Alibaba FPGA)", FULL: "Ours"}
+
+
+def figure_other_work():
+    from make_figures import PRIOR_COMPACTION, by_design
+    from make_figures import cpu_per_gib as compaction_cpu_per_gib
+    tags = [("v32-lz4", "32 B, LZ4"), ("v128-lz4", "128 B, LZ4"), ("v128-zstd", "128 B, ZSTD"),
+            ("v128-none", "128 B, none")]
+    compaction = [(label, {d: median(compaction_cpu_per_gib(PRIOR_COMPACTION[tag][d])) for d in OTHER_DESIGNS
+                           if d in PRIOR_COMPACTION.get(tag, {})}) for tag, label in tags]
+    database = []
+    for codec, label in (("lz4", "LZ4"), ("zstd", "ZSTD"), ("none", "None")):
+        entries = [e for e in campaigns.summarise(campaigns.load(f"prior-{codec}"))
+                   if e["config"].get("writes") == "batched"]
+        values = by_design(entries, "ops_per_second")
+        database.append((label, {d: values[d][0] / 1e3 for d in OTHER_DESIGNS if d in values}))
+    fig, axes = plt.subplots(1, 2, figsize=(DOUBLE_COLUMN, 2.8), gridspec_kw={"width_ratios": [1.25, 1]})
+    panels = [(compaction, "One compaction: CPU per GiB (s)", "{:.1f}", "Values, compression"),
+              (database, "Whole database: k writes/s", "{:.0f}", "Compression")]
+    width = 0.2
+    for ax, letter, (groups, ylabel, fmt, xlabel) in zip(axes, "ab", panels):
+        top = 0.0
+        for index, (_, values) in enumerate(groups):
+            for offset, design in enumerate(OTHER_DESIGNS):
+                if design not in values:
+                    continue
+                x = index + (offset - 1.5) * width
+                bar(ax, [x], [values[design]], width * 0.92, design)
+                ax.annotate(fmt.format(values[design]), (x, values[design]), xytext=(0, 1.2),
+                            textcoords="offset points", ha="center", va="bottom", fontsize=5.2, color=INK)
+                top = max(top, values[design])
+        ax.set_xticks(range(len(groups)), [label for label, _ in groups], fontsize=6.6)
+        ax.set_xlabel(xlabel, fontsize=6.8)
+        ax.set_ylim(0, top * 1.15)
+        finish_axis(ax, ylabel)
+        panel_label(ax, letter)
+    fig.tight_layout(w_pad=2.0, rect=(0, 0, 1, 0.84))
+    design_legend(fig, OTHER_DESIGNS, y=0.84, labels=OTHER_LABELS, ncol=2)
+    save(fig, "fig36_other_work")
+
+
 def main() -> int:
     figure_workload_gains()
     figure_storage()
     figure_cost_cheaper()
+    figure_other_work()
     return 0
 
 
