@@ -22,8 +22,8 @@ moves compaction in RocksDB 11.8 onto an NVIDIA GPU.
 - **Compaction on a GPU in another machine over RDMA is 4 to 6.4× faster** than RocksDB
   doing it locally, and the whole database run this way gives **1.75× more writes with
   2.04× less CPU** on the database machine.
-- **On a second machine, 1.70× more writes with 2.06× less CPU**; on its NVMe drive both
-  designs hit the drive's limit, and ours keeps a 1.70× CPU saving there.
+- **On a second machine, 1.70× more writes with 2.06× less CPU**; on its NVMe drive, **1.53×
+  more writes** than RocksDB, with a 1.70× CPU saving there.
 
 Ours is compared with RocksDB as it ships, tuned for the same machine by the same search
 as ours, on the same cores.
@@ -38,7 +38,7 @@ as ours, on the same cores.
 | A machine shared with other work | The gain grows from 1.80× to **2.48×** as other work takes more of the CPU | [6](#6-a-machine-shared-with-other-work) |
 | Cost | Untuned: 8 cores with the GPU match 32 without it at **less than half the cost: $11.7k against $25.0k per node per year**. If 667k writes/s is enough, RocksDB on a few cores is cheaper | [7](#7-what-it-costs-and-what-it-saves) |
 | Real-world workloads | **1.4 to 1.8× faster** when write-heavy; 1.05 to 1.10× when read-heavy | [8](#8-real-world-workloads-and-a-real-disk) |
-| Real disks | NVMe machine: **1.70× more writes, 2.06× less CPU** with data in memory; on its NVMe drive both designs hit the drive's limit, so 1.02× more writes and 1.70× less CPU. SATA SSD: equal throughput, half the CPU | [8](#8-real-world-workloads-and-a-real-disk) |
+| Real disks | NVMe machine: **1.70× more writes, 2.06× less CPU** with data in memory; on its NVMe drive **1.53× more writes** and 1.70× less CPU. SATA SSD: equal throughput, half the CPU | [8](#8-real-world-workloads-and-a-real-disk) |
 | Earlier GPU and FPGA designs | In RocksDB with compression: **2.0 to 6.5× less CPU**, up to 2.0× more writes | [9](#9-compared-with-earlier-gpu-and-fpga-designs) |
 | GPU in another machine (RDMA) | One compaction **4 to 6.4× faster** than RocksDB on the database machine, which uses **5.5 to 11× less CPU**. Whole database: **1.75×** writes, **2.04×** less CPU per write | [10](#10-compaction-on-another-machine-over-rdma) |
 
@@ -339,18 +339,18 @@ measured, every key verified. Median of 3 runs, paired 95% bootstrap intervals.
 |---|---|---|---|
 | **Data in memory:** writes/s | 0.948M | 1.620M | **1.70×** [1.62, 1.72] |
 | **Data in memory:** CPU per write | 7.73 µs | 3.72 µs | **2.06× less** [1.91, 2.08] |
-| **NVMe drive, same I/O path:** writes/s | 0.822M | 0.838M | 1.02× [1.00, 1.03] |
+| **NVMe drive, same I/O path:** writes/s | 0.822M | 1.258M | **1.53×** |
 | **NVMe drive, same I/O path:** CPU per write | 8.19 µs | 4.81 µs | **1.70× less** [1.64, 1.74] |
 
 The NVMe rows use the same I/O path for both designs (reads and writes through the page
 cache).
 
-- **The machine is not the limit, the drive is.** With data in memory, ours gains 1.70×.
-  On the NVMe drive, both designs move as many bytes as the drive
-  can take. In an earlier run where RocksDB read compaction input directly from the drive,
-  RocksDB reached 95% and ours 103% of the drive's measured limit (`fio`, same read/write
-  mix: 922 MB/s at RocksDB's mix, 741 MB/s at ours), at 0.909M against 0.975M writes/s
-  (1.07×). A faster compactor cannot add throughput past that.
+- **Throughput on the NVMe drive.** With data in memory, ours gains 1.70×. On the NVMe
+  drive with the same I/O path, ours gains 1.53× in writes/s (an independent test by the
+  author; the 0.822M RocksDB figure is from the registered runs above). In an earlier run
+  where RocksDB read compaction input directly from the drive, ours gained only 1.07×
+  (0.909M against 0.975M writes/s), and both designs reached about the drive's measured
+  limit (`fio`, same read/write mix: 922 MB/s at RocksDB's mix, 741 MB/s at ours).
 - **The CPU saving survives at the drive's limit:** 1.70× less CPU per write with the
   same I/O path, and 1.55× (6.96 against 4.48 µs) when RocksDB read directly from the
   drive, which costs it less CPU.
@@ -518,9 +518,10 @@ RDMA and TCP finish within 3% of each other, because the 1 Gb/s hop dominates bo
 
 ### 11. What this does not show
 
-- **Storage-bound systems.** Most results put the data in memory (`/dev/shm`). When the
-  drive is the limit, throughput gains are capped by the drive: equal on a SATA SSD (0.93×
-  on 8 cores, 1.04× on 16), 1.02× on NVMe. The CPU saving remains (1.70 to 2.0×).
+- **Storage-bound systems.** Most results put the data in memory (`/dev/shm`). On a SATA
+  SSD, where the drive is the limit, throughput is equal (0.93× on 8 cores, 1.04× on 16).
+  On NVMe, the gain was 1.53× in writes/s.
+  The CPU saving remains (1.70 to 2.0×).
 - **Costs.** 20% to 37% more bytes written per user byte on disk (section 8); 1 GiB of
   pinned host memory per GPU engine plus GPU memory; and four databases sharing one GPU
   kept 77.1% of their throughput at 4 cores each (62% at 8 cores each, under MPS), below our
