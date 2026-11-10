@@ -36,7 +36,7 @@ unless stated otherwise. The GPU is in addition to those cores.
 ## Where the remaining CPU goes
 
 Compaction CPU per write falls from 3.5–4.2 µs to 0.8 µs. The CPU spent accepting writes,
-about 2.3 µs, is unchanged, so the whole database gains about 2× rather than 10×. Tuned
+about 2.3 µs, is unchanged, so the whole database gains about 2×. Tuned
 runs, LZ4, median of 5:
 
 ![CPU per write, split by job](publication/figures/fig39_cpu_per_write.png)
