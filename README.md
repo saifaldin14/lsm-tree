@@ -376,17 +376,20 @@ The designs are listed in [How it works](#how-it-works).
 | 128 B values, ZSTD | 14.2 | 2.2 | **6.5×** |
 | 1 KB values, LZ4 | 3.9 | 2.0 | 2.0× |
 
-**The whole database** (4 cores, same settings for every design; median of 5 runs with
-LZ4, 3 with ZSTD):
+**The whole database** (4 cores; each earlier design run with RocksDB's tuned settings and
+with ours, best shown; median of 3 runs, every run verified):
 
 ![Whole database, GPU designs](publication/figures/fig22_prior_gpu_designs.png)
 
 | Writes | Compression | Best earlier design | Ours | Ours vs best earlier |
 |---|---|---|---|---|
-| Batches of 100 | LZ4 | 496k writes/s | 616k | **1.24×**, 3.8× lower 99th-percentile latency |
+| Batches of 100 | LZ4 | 592k writes/s | 756k | **1.28×**, 1.56× less CPU per write |
 | Batches of 100 | ZSTD | 246k | 475k | **1.93×** |
 | One at a time | LZ4 | 199k | 237k | **1.19×** |
 | One at a time | ZSTD | 157k | 229k | **1.46×** |
+
+The batched LZ4 row is the tuned rerun. The ZSTD and one-at-a-time rows, and the figure,
+are still from the default-settings run until their tuned rerun finishes.
 
 Compression is most of what the earlier designs leave on the CPU, so the gap is widest
 with ZSTD. Our advantage depends on compression being on (see

@@ -39,10 +39,9 @@ def tuned_throughput() -> dict[tuple[str, int], float]:
     return out
 
 
-def shared_gpu() -> dict[tuple[str, int], list[float]]:
-    """{(design, instances): per-instance ingest-and-compact writes/s, one value per block}."""
-    path = HERE / "data" / "shared-gpu" / "results.jsonl"
-    out: dict[tuple[str, int], list[float]] = {}
+def shared_gpu(path: Path = HERE / "data" / "shared-gpu" / "results.jsonl") -> dict[tuple[str, int, int], list[float]]:
+    """{(design, cores, instances): per-instance ingest-and-compact writes/s, one value per block}."""
+    out: dict[tuple[str, int, int], list[float]] = {}
     if not path.exists():
         return out
     for line in path.read_text().splitlines():
@@ -53,8 +52,30 @@ def shared_gpu() -> dict[tuple[str, int], list[float]]:
         if not results or any("keys" not in (r.get("verification") or {}) for r in results):
             continue
         per = statistics.mean(r["ingest_and_compact"]["ops_per_second"] for r in results)
-        out.setdefault((trial["design"], instances), []).append(per)
+        out.setdefault((trial["design"], trial["cores"], instances), []).append(per)
     return out
+
+
+def shared_table(title: str, shared: dict[tuple[str, int, int], list[float]]) -> None:
+    print(f"\n## {title}\n")
+    print("| Cores | Databases | RocksDB per database | Ours per database | Ours kept vs 1 database | "
+          "RocksDB $/billion | Ours $/billion (GPU / N) | Ours / RocksDB |")
+    print("|---:|---:|---:|---:|---:|---:|---:|---:|")
+    fmt = lambda v, f: f.format(v) if v is not None else "-"
+    for cores in sorted({k[1] for k in shared}):
+        base = shared.get(("full", cores, 1))
+        base = statistics.median(base) if base else None
+        nat1 = shared.get(("native", cores, 1))
+        for n in sorted({k[2] for k in shared if k[1] == cores}):
+            nat = shared.get(("native", cores, n)) or nat1
+            ours = shared.get(("full", cores, n))
+            nv = statistics.median(nat) if nat else None
+            ov = statistics.median(ours) if ours else None
+            nb = per_billion(cores * CORE, nv) if nv else None
+            ob = per_billion(cores * CORE + GPU / n, ov) if ov else None
+            print(f"| {cores} | {n} | {fmt(nv and nv / 1e3, '{:.0f}k')} | {fmt(ov and ov / 1e3, '{:.0f}k')} | "
+                  f"{fmt(ov and base and ov / base, '{:.0%}')} | {fmt(nb, '{:.3f}')} | {fmt(ob, '{:.3f}')} | "
+                  f"{fmt(nb and ob and ob / nb, '{:.2f}')} |")
 
 
 def main() -> int:
@@ -97,21 +118,9 @@ def main() -> int:
 
     shared = shared_gpu()
     if shared:
-        print("\n## Earlier shared-GPU campaign (4 cores per database, untuned RocksDB, no MPS)\n")
-        print("| Databases | RocksDB per database | Ours per database | Ours kept vs 1 database | "
-              "RocksDB $/billion | Ours $/billion (GPU / N) |")
-        print("|---:|---:|---:|---:|---:|---:|")
-        base = statistics.median(shared.get(("full", 1), [float("nan")]))
-        for n in sorted({k[1] for k in shared}):
-            nat = shared.get(("native", n))
-            ours = shared.get(("full", n))
-            nv = statistics.median(nat) if nat else None
-            ov = statistics.median(ours) if ours else None
-            nb = per_billion(4 * CORE, nv) if nv else None
-            ob = per_billion(4 * CORE + GPU / n, ov) if ov else None
-            fmt = lambda v, f: f.format(v) if v is not None else "-"
-            print(f"| {n} | {fmt(nv and nv / 1e3, '{:.0f}k')} | {fmt(ov and ov / 1e3, '{:.0f}k')} | "
-                  f"{fmt(ov and ov / base, '{:.0%}')} | {fmt(nb, '{:.3f}')} | {fmt(ob, '{:.3f}')} |")
+        shared_table("Earlier shared-GPU campaign (untuned RocksDB, no MPS)", shared)
+    for extra in sys.argv[1:]:
+        shared_table(f"Shared GPU, {extra} (RocksDB at N=1 where not run shared)", shared_gpu(Path(extra)))
     return 0
 
 

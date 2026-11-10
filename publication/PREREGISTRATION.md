@@ -171,6 +171,11 @@ every compressed workload.
 - **Hypothesis H8b:** with tuned settings, full offload's throughput and its CPU per write
   are both better than the better pipeline arm's, with the 95% CI excluding 1, for LZ4
   and for ZSTD. Whatever the outcome, these runs replace the untuned numbers in the README.
+- **Outcome, LZ4 (2026-11-10, `data/prior-tuned/lz4`, 3 blocks, all verified): supported.**
+  Full offload 756k writes/s and 4.28 µs CPU per write; better pipeline arm (full
+  offload's flags) 592k and 6.69 µs: 1.28× throughput (CI 1.27 to 1.28), 1.56× less CPU
+  (CI 1.55 to 1.57). Pipeline with native's flags 523k; native 498k. ZSTD paused for the
+  MPS quick pass and resumes after it.
 
 ### Shared GPU with MPS, tuned (added 2026-11-10, before these runs)
 
@@ -201,6 +206,11 @@ runs all processes through one server so their kernels can overlap.
 - **Also run, after MPS is stopped:** native RocksDB on 32 cores with its registered
   tuned settings and the X3 protocol (120 s plus 300 s, 3 blocks, seed 109), replacing
   the 60 s tuning trial in the cost figure.
+- **Order changed before any data (10:58):** to report sooner, a quick pass runs first: one
+  block (seed 108) of full offload at 8 cores with N in {1, 2, 4}, at 4 cores with N in
+  {1, 4}, and native at N=1 for 4 and 8 cores. Then the 32-core run, then the full grid
+  above. The quick pass is reported as one block; the full grid replaces it when done.
+  The tuned earlier-design campaign is paused (it resumes by trial) and runs last.
 LUDA's code is public (github.com/xpsair/luda, commit 89792ac). It is LevelDB 1.22 with
 GPU flushes and compactions, and no block compression.
 

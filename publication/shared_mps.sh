@@ -41,6 +41,10 @@ for cores in (4, 8):
                            "flags": t["flags"], "instances": n})
 json.dump({"_comment": "Shared GPU with MPS, tuned v3-headline settings; PREREGISTRATION.md.",
            "common": common, "trials": trials}, open(f"{out}/grid-mps.json", "w"), indent=1)
+quick = [t for t in trials if (t["design"] == "full" and (t["cores"] == 8 or t["instances"] != 2))
+         or (t["design"] == "native" and t["instances"] == 1)]
+json.dump({"_comment": "Quick first pass of grid-mps.json, 1 block; PREREGISTRATION.md.",
+           "common": common, "trials": quick}, open(f"{out}/grid-mps-quick.json", "w"), indent=1)
 native32 = {"design": "native", "mode": "native_cpu", "cores": 32, "writes": "batched",
             "flags": {"batch-size": 100, "disable-wal": True, "background-jobs": 32, "threads": 64,
                       "subcompactions": 32, "pipelined-write": True, "adaptive-yield": False,
@@ -59,6 +63,22 @@ nvidia-cuda-mps-control -d
 sleep 2
 pgrep -u "$USER" -x nvidia-cuda-mps-control > /dev/null && echo "== MPS control daemon up $(date)"
 
+resume=(); [ -f "$out/mps-quick/schedule.json" ] && resume=(--resume)
+echo "== mps-quick $(date)"
+python3 publication/system_campaign.py "$out/mps-quick" --golden "$shm/golden-50m" --grid "$out/grid-mps-quick.json" \
+  --blocks 1 --seed 108 --scratch "$shm/scratch" --idle-seconds 0 "${resume[@]}" || echo "== mps-quick failed rc=$?"
+echo "== mps-quick done, clients seen: $(grep -c 'New client' "$mps/log/control.log" 2>/dev/null || echo 0) $(date)"
+stop_mps
+unset CUDA_MPS_PIPE_DIRECTORY CUDA_MPS_LOG_DIRECTORY
+
+resume=(); [ -f "$out/native32/schedule.json" ] && resume=(--resume)
+echo "== native32 $(date)"
+python3 publication/system_campaign.py "$out/native32" --golden "$shm/golden-50m" --grid "$out/grid-native32.json" \
+  --blocks 3 --seed 109 --scratch "$shm/scratch" --idle-seconds 0 "${resume[@]}" || echo "== native32 failed rc=$?"
+
+export CUDA_MPS_PIPE_DIRECTORY=$mps/pipe CUDA_MPS_LOG_DIRECTORY=$mps/log
+nvidia-cuda-mps-control -d
+sleep 2
 resume=(); [ -f "$out/mps/schedule.json" ] && resume=(--resume)
 echo "== mps $(date)"
 python3 publication/system_campaign.py "$out/mps" --golden "$shm/golden-50m" --grid "$out/grid-mps.json" \
@@ -69,8 +89,8 @@ stop_mps
 trap - EXIT
 unset CUDA_MPS_PIPE_DIRECTORY CUDA_MPS_LOG_DIRECTORY
 
-resume=(); [ -f "$out/native32/schedule.json" ] && resume=(--resume)
-echo "== native32 $(date)"
-python3 publication/system_campaign.py "$out/native32" --golden "$shm/golden-50m" --grid "$out/grid-native32.json" \
-  --blocks 3 --seed 109 --scratch "$shm/scratch" --idle-seconds 0 "${resume[@]}" || echo "== native32 failed rc=$?"
+if [ -n "${THEN_PRIOR:-}" ]; then
+  echo "== resuming prior-tuned $(date)"
+  SHM=$shm publication/prior_tuned.sh "$THEN_PRIOR" || echo "== prior-tuned failed rc=$?"
+fi
 echo "== DONE $(date)"
