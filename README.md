@@ -18,7 +18,8 @@ moves compaction in RocksDB 11.8 onto an NVIDIA GPU.
 - **2.0 to 6.5× less compaction CPU than earlier GPU and FPGA designs**, rebuilt inside
   production RocksDB with compression on.
 - **Compaction on a GPU in another machine over RDMA is 4 to 6.4× faster** than RocksDB
-  doing it locally.
+  doing it locally, and the whole database run this way gives **1.75× more writes with
+  2.04× less CPU** on the database machine.
 - **On a second machine, 1.70× more writes with 2.06× less CPU**; on its NVMe drive both
   designs hit the drive's limit, and ours keeps a 1.46× CPU saving there.
 
@@ -37,7 +38,7 @@ as ours, on the same cores.
 | Real-world workloads | **1.4 to 1.8× faster** when write-heavy; 1.05 to 1.10× when read-heavy | [8](#8-real-world-workloads-and-a-real-disk) |
 | Real disks | NVMe machine: **1.70× more writes, 2.06× less CPU** with data in memory; on its NVMe drive both designs hit the drive's limit, so 1.07× more writes and 1.46× less CPU. SATA SSD: equal throughput, half the CPU | [8](#8-real-world-workloads-and-a-real-disk) |
 | Earlier GPU and FPGA designs | In RocksDB with compression: **2.0 to 6.5× less CPU**, up to 1.9× more writes | [9](#9-compared-with-earlier-gpu-and-fpga-designs) |
-| GPU in another machine (RDMA) | One compaction **4 to 6.4× faster** than RocksDB on the database machine, which uses **5.5 to 11× less CPU**. Whole database not yet measured this way | [10](#10-compaction-on-another-machine-over-rdma) |
+| GPU in another machine (RDMA) | One compaction **4 to 6.4× faster** than RocksDB on the database machine, which uses **5.5 to 11× less CPU**. Whole database: **1.75×** writes, **2.04×** less CPU per write | [10](#10-compaction-on-another-machine-over-rdma) |
 
 What this does not show is in [section 11](#11-what-this-does-not-show).
 
@@ -399,7 +400,8 @@ LevelDB and run without compression), so they are reported in
 
 **Sending a compaction to a GPU in another machine over RDMA finishes it 4 to 6.4× faster
 than RocksDB does on the database machine, and that machine spends 5.5 to 11× less CPU on
-it.** This is for one compaction at a time; the whole database has not yet been run this way.
+it.** Running the whole database this way, with every compaction sent to the remote GPU, gives
+1.75× RocksDB's write throughput with half the database machine's CPU per write.
 
 *Setup:* compaction can also run on another machine over a 100 Gb/s RDMA network, and a
 replicated database can compact once for all its copies
@@ -432,8 +434,24 @@ RocksDB exactly.
   link removes that hop.
 - **Different machines.** The two testbeds use different machines and GPUs (the earlier
   GPU was an RTX A6000), so compare ratios within a testbed, not times across them.
-- **Not yet measured:** the whole database with every compaction sent to the remote GPU
-  over the direct link, several databases sharing one GPU, and whether RDMA beats TCP.
+- **Not yet measured:** several databases sharing one remote GPU, and whether RDMA beats
+  TCP on the direct link.
+
+**The whole database over the direct link.** The database on pyke sends every compaction
+to the GPU server on malphite. Same settings for both designs (50 M records, 4 writer
+threads, 4 background jobs, 4 subcompactions, batches of 100, WAL off, 30 s warm-up plus
+120 s); median of 3 repetitions in shuffled order. All 50 million keys and values were
+correct after every run.
+
+| | RocksDB on pyke | Remote GPU over RDMA | |
+|---|---:|---:|---:|
+| Writes/s | 459k | **802k** | **1.75×** |
+| Database machine's CPU per write | 8.23 µs | **4.04 µs** | **2.04× less** |
+| Database machine's compaction CPU | 421 s | **143 s** | **2.95× less** |
+| Including the GPU server's CPU (51 s) | 8.23 µs | **4.46 µs** | **1.84× less** |
+
+The earlier relay run (below) was held to 210k writes/s by its 1 Gb/s hop; over the
+direct link the remote GPU is faster than RocksDB on its own machine.
 
 The figure below is from the earlier relay testbed. Its "estimate" bar, the relay's
 measured hops removed by arithmetic, is superseded by the direct measurement above.
@@ -456,8 +474,8 @@ RDMA and TCP finish within 3% of each other, because the 1 Gb/s hop dominates bo
   to the GPU, all 50 million keys and values were correct after each run, and no
   compaction fell back to the database machine. The 1 Gb/s link was the limit: writers
   had to wait 18% of the time, so the database took 210k writes/s against 545k for
-  RocksDB, while its machine used 4.0 µs of CPU per write against 6.4. This has not been
-  repeated over the direct link.
+  RocksDB, while its machine used 4.0 µs of CPU per write against 6.4. Over the direct
+  link the same run gives 802k against 459k (above).
 
 **Remote CPU servers and replication** (earlier testbed, details and figures in
 [docs/remote-compaction.md](docs/remote-compaction.md)):
@@ -487,10 +505,10 @@ RDMA and TCP finish within 3% of each other, because the 1 Gb/s hop dominates bo
   and prior-design campaigns, depending on codec and write pattern, and the measurement
   window ends before RocksDB's 68 s of catch-up compaction, which favours RocksDB. A fair
   figure needs energy integrated to the end of catch-up.
-- **Remote compaction under load.** A single remote GPU compaction over direct RDMA is
-  4 to 6.4× faster than RocksDB locally, but the whole database has only been run through
-  the slow relay, not over the direct link. Sharing one remote GPU among several
-  databases, and RDMA against TCP, are also untested.
+- **Remote compaction, one pair of machines.** The whole database over direct RDMA was run
+  on one pair of machines with one setting (4 cores' worth of threads, LZ4). Sharing one
+  remote GPU among several databases, and RDMA against TCP on the direct link, are
+  untested.
 - **Key-value separation.** Designs that keep values outside the sorted files, such as
   gParaKV, move far fewer bytes through compaction. They are not part of production
   RocksDB's default path, and combining value separation with our offload is untested.

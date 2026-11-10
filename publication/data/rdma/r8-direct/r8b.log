@@ -1,0 +1,9 @@
+== r8 direct Tue Nov 10 10:24:54 AM EST 2026
+r8 repetition 1 remote_gpu_rdma: 808290 ops/s, verified 50000000 keys
+r8 repetition 1 native: 467632 ops/s, verified 50000000 keys
+r8 repetition 2 native: 467049 ops/s, verified 50000000 keys
+r8 repetition 2 remote_gpu_rdma: 810472 ops/s, verified 50000000 keys
+r8 repetition 3 remote_gpu_rdma: 812779 ops/s, verified 50000000 keys
+r8 repetition 3 native: 464540 ops/s, verified 50000000 keys
+== r8 exit=0 Tue Nov 10 10:45:23 AM EST 2026
+== DONE Tue Nov 10 10:45:23 AM EST 2026

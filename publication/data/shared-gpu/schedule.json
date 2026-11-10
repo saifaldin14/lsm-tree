@@ -1,0 +1,314 @@
+[
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "instances": 2,
+  "writes": "batched",
+  "block": 0
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "instances": 1,
+  "writes": "batched",
+  "block": 0
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "instances": 8,
+  "writes": "batched",
+  "block": 0
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "instances": 2,
+  "writes": "batched",
+  "block": 0
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "instances": 4,
+  "writes": "batched",
+  "block": 0
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "instances": 4,
+  "writes": "batched",
+  "block": 0
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "instances": 1,
+  "writes": "batched",
+  "block": 0
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "instances": 8,
+  "writes": "batched",
+  "block": 0
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "instances": 1,
+  "writes": "batched",
+  "block": 1
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "instances": 4,
+  "writes": "batched",
+  "block": 1
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "instances": 8,
+  "writes": "batched",
+  "block": 1
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "instances": 4,
+  "writes": "batched",
+  "block": 1
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "instances": 2,
+  "writes": "batched",
+  "block": 1
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "instances": 2,
+  "writes": "batched",
+  "block": 1
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "instances": 8,
+  "writes": "batched",
+  "block": 1
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "instances": 1,
+  "writes": "batched",
+  "block": 1
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "instances": 1,
+  "writes": "batched",
+  "block": 2
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "instances": 1,
+  "writes": "batched",
+  "block": 2
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "instances": 4,
+  "writes": "batched",
+  "block": 2
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "instances": 8,
+  "writes": "batched",
+  "block": 2
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "instances": 2,
+  "writes": "batched",
+  "block": 2
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "instances": 8,
+  "writes": "batched",
+  "block": 2
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "instances": 4,
+  "writes": "batched",
+  "block": 2
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 4,
+  "flags": {
+   "batch-size": 100,
+   "disable-wal": true,
+   "background-jobs": 4
+  },
+  "instances": 2,
+  "writes": "batched",
+  "block": 2
+ }
+]

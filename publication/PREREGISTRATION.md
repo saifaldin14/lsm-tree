@@ -172,8 +172,35 @@ every compressed workload.
   are both better than the better pipeline arm's, with the 95% CI excluding 1, for LZ4
   and for ZSTD. Whatever the outcome, these runs replace the untuned numbers in the README.
 
-### LUDA head-to-head (added 2026-11-10, before these runs)
+### Shared GPU with MPS, tuned (added 2026-11-10, before these runs)
 
+The cost of a dedicated GPU is not repaid at 4 to 8 cores. One database uses a small share
+of the GPU, so the GPU's cost per database falls if several share it. The earlier
+shared-GPU campaign (untuned native, no MPS) kept 95% of ours' single-database throughput
+with 2 databases and 69% with 4, and its total GPU throughput stopped growing at 4. Each
+database process has its own CUDA context, so the GPU time-slices between them. CUDA MPS
+runs all processes through one server so their kernels can overlap.
+
+- **Run** (`shared_mps.sh`, zyra, after the tuned earlier-design campaign ends):
+  - CUDA MPS daemon started as the user for the GPU arms only, and stopped afterwards.
+  - Databases per GPU N in {1, 2, 4}, at 4 and at 8 cores per database. Each database
+    has its own cores and its own copy of `golden-50m`.
+  - Native and full offload use their registered `v3-headline.json` settings for that
+    core count, with the same N.
+  - 30 s warm-up plus 120 s, as the registered shared-GPU campaign; verification on;
+    2 blocks, schedule seed 108.
+- **Reported:** per-database ingest-plus-compaction throughput, the share of ours'
+  N=1 throughput each database keeps, GPU utilisation, CPU fallbacks, and cost per
+  write with the GPU priced at `prices.json` divided by N.
+- **Parity thresholds**, computed before the runs by `cost_model.py` from the tuned runs
+  and `prices.json`: ours' per-database cost matches native's when each database keeps
+  at least 92% (4 cores, N=4), 96% (8 cores, N=2) or 81% (8 cores, N=4) of its N=1
+  throughput.
+- **Hypothesis H7b:** at 8 cores with N=4, each database keeps at least 81%. No other
+  outcome is predicted; every N and core count is reported.
+- **Also run, after MPS is stopped:** native RocksDB on 32 cores with its registered
+  tuned settings and the X3 protocol (120 s plus 300 s, 3 blocks, seed 109), replacing
+  the 60 s tuning trial in the cost figure.
 LUDA's code is public (github.com/xpsair/luda, commit 89792ac). It is LevelDB 1.22 with
 GPU flushes and compactions, and no block compression.
 
@@ -623,6 +650,10 @@ repeated with the database on pyke and the GPU server on malphite over 100 Gb/s 
   verification and fallback count.
 - **Hypothesis H13b:** remote GPU throughput is at least native's (median ratio ≥ 1.0),
   with less database-node CPU per write. If it is not, that is reported as a loss.
+- **Outcome (2026-11-10, `data/rdma/r8-direct`): supported.** Medians of 3: 802k against
+  459k writes/s (1.75×); database-node CPU per write 4.04 against 8.23 µs (2.04× less);
+  4.46 µs including the GPU server's 51 s of CPU. Every run verified all 50 M keys. The
+  first attempt did not start (missing `/dev/shm/sa29ali` on pyke) and produced no data.
 
 ## Changes after data collection
 
