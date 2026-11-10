@@ -369,10 +369,13 @@ def figure_nvme():
         finish_axis(ax, ylabel)
         panel_label(ax, letter)
         if metric == "ops":
-            ratio = REPORTED_NVME_OPS["full"] / REPORTED_NVME_OPS["native"]
-            ax.text(0, top * 1.12, f"{ratio:.2f}×", ha="center", va="bottom", fontsize=7.5,
-                    fontweight="bold", color=INK)
-            ax.set_ylim(0, top * 1.3)
+            native, full = REPORTED_NVME_OPS["native"], REPORTED_NVME_OPS["full"]
+            bracket_y = full * 1.23
+            ax.plot([-0.2, -0.2, 0.2, 0.2], [native * 1.22, bracket_y, bracket_y, full * 1.1],
+                    color=INK, linewidth=0.8)
+            ax.text(0, bracket_y * 1.02, f"{full / native:.2f}× more writes", ha="center", va="bottom",
+                    fontsize=7.5, fontweight="bold", color=INK)
+            ax.set_ylim(0, bracket_y * 1.22)
     fig.tight_layout(w_pad=2.5, rect=(0, 0, 1, 0.9))
     design_legend(fig, (NATIVE, FULL), y=0.9, labels=LABELS)
     save(fig, "fig25_nvme")
