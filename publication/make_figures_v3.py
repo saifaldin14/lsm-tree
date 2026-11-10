@@ -26,6 +26,7 @@ from make_figures import (DISPLAY, DOUBLE_COLUMN, FULL, INK, LABEL_BOX, NATIVE, 
 HERE = Path(__file__).resolve().parent
 V3 = HERE / "data" / "v3"
 LABELS = DISPLAY
+SHARED_COLOR = "#E69F00"
 DESIGN = {"native_cpu": NATIVE, "cuda_merge": FULL, "native": NATIVE, "full": FULL}
 X1 = [("x1-v32-lz4", "32 B\nLZ4"), ("x1-v128-lz4", "128 B\nLZ4"), ("x1-v1024-lz4", "1 KB\nLZ4"),
       ("x1-v128-zstd", "128 B\nZSTD"), ("x1-v128-none", "128 B\nnone"), ("x1-v128-lz4-del0.1", "128 B LZ4\n10% del.")]
@@ -214,6 +215,50 @@ def tuning_best(design, cores):
     return best
 
 
+def shared_per_database(path):
+    """{(cores, instances): median per-database writes/s of full offload} from a shared-GPU results file."""
+    out = {}
+    if not path.exists():
+        return out
+    for line in path.read_text().splitlines():
+        record = json.loads(line)
+        trial = record["trial"]
+        if trial["design"] != "full" or record.get("exit_code") != 0:
+            continue
+        n = trial.get("instances", 1)
+        results = [record["result"]] if n == 1 and "result" in record else record.get("results") or []
+        if results and all("keys" in (r.get("verification") or {}) for r in results):
+            per = statistics.mean(r["ingest_and_compact"]["ops_per_second"] for r in results)
+            out.setdefault((trial["cores"], n), []).append(per)
+    return {k: median(v) for k, v in out.items()}
+
+
+def shared_cost(points, core_hour, gpu_hour):
+    """{cores: (dollars per billion, databases)}: ours with one GPU shared by the cheapest N in {1, 2, 4}.
+
+    Per-database throughput is the tuned single-database median times the share kept with N
+    databases: from the MPS run where measured, else from the earlier shared-GPU run, capped by
+    the highest total GPU throughput measured."""
+    mps = shared_per_database(HERE / "data" / "shared-mps" / "mps-quick" / "results.jsonl")
+    earlier = shared_per_database(HERE / "data" / "shared-gpu" / "results.jsonl")
+    ceiling = max([v * n for (_, n), v in {**earlier, **mps}.items()], default=float("inf"))
+    out = {}
+    for cores, solo in points.items():
+        options = []
+        for n in (1, 2, 4):
+            if (cores, n) in mps and (cores, 1) in mps:
+                kept = mps[(cores, n)] / mps[(cores, 1)]
+            elif (4, n) in earlier and (4, 1) in earlier:
+                kept = earlier[(4, n)] / earlier[(4, 1)]
+            else:
+                continue
+            per = min(solo * kept, ceiling / n) if n > 1 else solo
+            options.append(((cores * core_hour + gpu_hour / n) / (per * 3600 / 1e9), n))
+        if options:
+            out[cores] = min(options)
+    return out
+
+
 def figure_cost(headline):
     """Cost: (a) writes/s and (b) $ per billion writes against cores, tuned runs, prices.json."""
     prices = json.loads((HERE / "prices.json").read_text())
@@ -252,6 +297,16 @@ def figure_cost(headline):
         ax.set_ylim(0, ax.get_ylim()[1] * 1.15)
         finish_axis(ax, ylabel)
         panel_label(ax, letter)
+    shared = {c: v for c, v in shared_cost(points[FULL], core_hour, gpu_hour).items() if v[1] > 1}
+    if shared:
+        cores = sorted(shared)
+        ys = [shared[c][0] for c in cores]
+        line, = axes[1].plot(cores, ys, marker="s", markersize=3.5, color=SHARED_COLOR, linewidth=1.2,
+                             label="Ours, one GPU shared by N databases")
+        for c, y in zip(cores, ys):
+            axes[1].annotate(f"{y:.2f} (N={shared[c][1]})", (c, y), xytext=(6, -3), textcoords="offset points",
+                             ha="left", va="top", fontsize=5.4, color=INK, bbox=LABEL_BOX, zorder=4)
+        axes[1].legend(handles=[line], frameon=False, fontsize=6, loc="upper left")
     fig.text(0.5, 0.005, "Ours includes one GPU at the L4 price. Hollow point: RocksDB on 32 cores, best 60 s tuning "
              "trial (other points: 5-min runs, median of 5).", ha="center", va="bottom", fontsize=5.8, color="#555555")
     fig.tight_layout(w_pad=2.5, rect=(0, 0.05, 1, 0.88))

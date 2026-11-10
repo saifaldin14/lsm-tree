@@ -265,6 +265,14 @@ Every input is in [publication/prices.json](publication/prices.json).
 - **RocksDB's 32-core point is the weakest number here:** it is the best of five
   60-second tuning trials (1.52 to 1.61M), not a five-minute run. Taking the best trial
   favours RocksDB.
+- **Sharing one GPU closes most of the low-core gap.** With two databases on one GPU, each
+  paying half, ours costs $0.263 per billion at 4 cores (from $0.365) and $0.239 at 8 cores
+  (from $0.295): parity with RocksDB at 8 cores, still 27% dearer at 4. Four databases per
+  GPU are not cheaper: measured under CUDA MPS at 8 cores each, the GPU served 3.13M
+  writes/s in total, but each database kept only 62% of its single-database throughput,
+  so it costs $0.31 per billion. The two-database points are estimates, from the share kept
+  in an earlier shared-GPU run (95%) applied to the tuned single-database throughput; the
+  measured MPS runs will replace them.
 
 **How much the GPU choice matters.** The measured card is an RTX A6000, which AWS does not
 rent, so the table prices the cheapest current-generation NVIDIA GPU instance. Larger and
