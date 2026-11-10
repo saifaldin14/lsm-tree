@@ -35,6 +35,6 @@
       "gpu_hour": 1.6825
     }
   ],
-"break_even_gpu_hour": 2.59,
-"break_even_basis": "price at which 16 cores plus one GPU (2.26M writes/s, tuned, median of 5) costs the same per write as native RocksDB on 32 cores (1.607M writes/s, best 60 s tuning trial); above every GPU listed here"
+  "break_even_gpu_hour": 2.59,
+  "break_even_basis": "price at which 16 cores plus one GPU (2.26M writes/s, tuned, median of 5) costs the same per write as native RocksDB on 32 cores (1.607M writes/s, best 60 s tuning trial); above every GPU listed here"
 }
