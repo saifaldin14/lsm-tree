@@ -35,11 +35,11 @@ from make_figures import DOUBLE_COLUMN, INK, finish_axis, panel_label, save  # n
 
 WORKLOADS = [("v128-lz4", "128 B values, LZ4"), ("v32-lz4", "32 B values, LZ4"), ("v128-zstd", "128 B values, ZSTD")]
 SEGMENTS = {  # name: (label, colour, hatch)
-    "db": ("Database node (read inputs, write outputs)", "#8c8c8c", ""),
-    "native": ("Compaction on the database node's CPU", "#8c8c8c", ""),
+    "db": ("Database node (read inputs, write outputs)", "#4d4d4d", ""),
+    "native": ("Compaction on the database node's CPU", "#4d4d4d", ""),
     "rdma": ("RDMA (100 GbE)", "#E69F00", ""),
-    "relay": ("Relay", "#F0E442", ""),
-    "gbe": ("TCP over 1 GbE", "#56B4E9", "///"),
+    "relay": ("Relay", "#9E7B00", ""),
+    "gbe": ("TCP over 1 GbE", "#3399CC", "///"),
     "cpu_server": ("Compaction server, CPU", "#0072B2", ""),
     "gpu": ("Compaction server, GPU", "#D55E00", ""),
     "loopback": ("Loopback TCP", "#CC79A7", ""),
@@ -132,6 +132,8 @@ ROWS = [("native", "Native RocksDB"), ("remote-cpu-rdma", "Remote CPU server, RD
         ("remote-gpu-tcp", "Remote GPU, TCP (1 GbE)"),
         ("remote-gpu-relay", "Remote GPU, RDMA + relay (measured)"),
         ("estimate", "Remote GPU, RDMA only (estimate)")]
+# Figure-only names; the summary table keeps ROWS.
+FIGURE_LABELS = {"native": "RocksDB", "estimate": "Remote GPU, RDMA only\n(estimate, not measured)"}
 LEGEND = ["db", "rdma", "relay", "gbe", "cpu_server", "gpu"]
 
 
@@ -153,8 +155,13 @@ def figure(summary, workloads):
             left = 0.0
             for name, value in entry["parts"].items():
                 _, colour, hatch = SEGMENTS["db" if name == "native" else name]
-                left_ax.barh(y, value, 0.74, left=left, color=colour, hatch=hatch, edgecolor="white", linewidth=0.4,
-                             zorder=2, alpha=0.5 if estimate else 1.0)
+                if estimate:
+                    # Outline only: arithmetic from measured hops, not a measurement.
+                    left_ax.barh(y, value, 0.74, left=left, facecolor="white", edgecolor=colour, linewidth=0.9,
+                                 linestyle="--", zorder=2)
+                else:
+                    left_ax.barh(y, value, 0.74, left=left, color=colour, hatch=hatch, edgecolor="white",
+                                 linewidth=0.4, zorder=2)
                 left += value
             left_ax.annotate(f"{entry['wall']:.2f} s", (left, y), xytext=(2, 0), textcoords="offset points", va="center",
                              fontsize=5.8, color=INK)
@@ -163,13 +170,13 @@ def figure(summary, workloads):
                 right_ax.annotate("same as measured", (0, y), xytext=(2, 0), textcoords="offset points",
                                   va="center", fontsize=5.6, color="#666666", style="italic")
                 continue
-            colour = SEGMENTS["gpu"][1] if "gpu" in key else SEGMENTS["cpu_server"][1] if "cpu" in key else "#8c8c8c"
+            colour = SEGMENTS["gpu"][1] if "gpu" in key else SEGMENTS["cpu_server"][1] if "cpu" in key else SEGMENTS["db"][1]
             hatch = SEGMENTS["gbe"][2] if key == "remote-gpu-tcp" else ""
             value = entry["cpu_gib"]
             right_ax.barh(y, value, 0.74, color=colour, hatch=hatch, edgecolor="white", linewidth=0.4, zorder=2)
             right_ax.annotate(f"{value:.2f}", (value, y), xytext=(2, 0), textcoords="offset points", va="center",
                               fontsize=5.8, color=INK)
-        left_ax.set_yticks(range(rows), [label for _, label in ROWS], fontsize=6.4)
+        left_ax.set_yticks(range(rows), [FIGURE_LABELS.get(key, label) for key, label in ROWS], fontsize=6.4)
         left_ax.set_ylim(rows - 0.45, -0.55)
         left_ax.set_xlim(0, time_max * 1.13)
         right_ax.set_xlim(0, cpu_max * 1.22)

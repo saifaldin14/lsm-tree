@@ -25,6 +25,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
+from matplotlib.ticker import FuncFormatter
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -33,7 +34,8 @@ import campaigns  # noqa: E402
 DATA = HERE / "data"
 OUT = HERE / "figures"
 
-# Okabe-Ito colourblind-safe palette; hatches keep designs distinct in greyscale.
+# Okabe-Ito colours. RocksDB is dark grey so it differs from ours (orange) in lightness, not only
+# hue, and stays distinct in greyscale and for colour-blind readers; hatches separate the rest.
 NATIVE, OUTPUT_ONLY, MERGE, FULL = ("Native RocksDB", "GPU compression only", "GPU merge",
                                     "GPU merge + block building")
 # Earlier designs rebuilt in our system (PREREGISTRATION.md, H8-H11).
@@ -42,9 +44,11 @@ PIPELINE = "GPU pipeline, CPU compression (as LUDA, MSST'24)"
 DESIGNS = (NATIVE, OUTPUT_ONLY, MERGE, FULL)
 KEY = {"native": NATIVE, "compression_only": OUTPUT_ONLY, "merge": MERGE, "full": FULL,
        "sort_merge": SORT_MERGE, "pipeline_no_compression": PIPELINE}
+# Names shown in figures; the README uses these too. KEY names stay in the summary tables.
+DISPLAY = {NATIVE: "RocksDB", FULL: "Ours"}
 STYLE = {
-    NATIVE: {"color": "#8c8c8c", "hatch": ""},
-    OUTPUT_ONLY: {"color": "#56B4E9", "hatch": "///"},
+    NATIVE: {"color": "#4d4d4d", "hatch": ""},
+    OUTPUT_ONLY: {"color": "#3399CC", "hatch": "///"},
     MERGE: {"color": "#0072B2", "hatch": "..."},
     FULL: {"color": "#D55E00", "hatch": ""},
     SORT_MERGE: {"color": "#009E73", "hatch": "xxx"},
@@ -166,6 +170,14 @@ def panel_label(ax, letter):
             va="bottom", ha="left", color=INK)
 
 
+def plain_log_axis(ax, axis="y"):
+    """Label a log axis 1, 10, 100 rather than 10^0, 10^1, 10^2."""
+    (ax.yaxis if axis == "y" else ax.xaxis).set_major_formatter(FuncFormatter(lambda v, _: f"{v:g}"))
+
+
+LABEL_BOX = {"boxstyle": "round,pad=0.12", "facecolor": "white", "edgecolor": "none", "alpha": 0.85}
+
+
 def save(fig, name):
     OUT.mkdir(exist_ok=True)
     fig.savefig(OUT / f"{name}.pdf")
@@ -176,7 +188,7 @@ def save(fig, name):
 def design_legend(fig, designs, y=0.9, labels=None, ncol=None):
     labels = labels or {}
     handles = [Patch(facecolor=STYLE[d]["color"], hatch=STYLE[d]["hatch"], edgecolor="white", linewidth=0.4,
-                     label=labels.get(d, d)) for d in designs]
+                     label=labels.get(d, DISPLAY.get(d, d))) for d in designs]
     fig.legend(handles=handles, loc="lower center", ncol=ncol or len(designs), bbox_to_anchor=(0.5, y),
                handlelength=1.6, columnspacing=1.4)
 
@@ -295,7 +307,7 @@ def figure_deferred(main):
             tops = whiskers(ax, [index - width / 2, index + width / 2], [during, total])
             value_labels(ax, list(light) + list(solid), lambda v: f"{v:.0f}", size=6.5, offsets=tops)
             top = max(top, *tops)
-            labels.append(f"{design}\n(catch-up {entry['drain_seconds'][0]:.1f} s)")
+            labels.append(f"{DISPLAY.get(design, design)}\n(catch-up {entry['drain_seconds'][0]:.1f} s)")
         ax.set_xticks(range(len(labels)), labels)
         ax.set_ylim(0, top * 1.15)
         ax.set_title(title, loc="left", fontsize=8, color=INK, pad=9)
@@ -304,8 +316,9 @@ def figure_deferred(main):
     if not drawn:
         plt.close(fig)
         return
-    handles = [Patch(facecolor="#8c8c8c", alpha=0.35, edgecolor="#8c8c8c", label="During the run"),
-               Patch(facecolor="#8c8c8c", edgecolor="white", label="Including catch-up compaction")]
+    grey = STYLE[NATIVE]["color"]
+    handles = [Patch(facecolor=grey, alpha=0.35, edgecolor=grey, label="During the run"),
+               Patch(facecolor=grey, edgecolor="white", label="Including catch-up compaction")]
     fig.tight_layout(w_pad=3, rect=(0, 0, 1, 0.9))
     fig.legend(handles=handles, loc="lower center", ncol=2, bbox_to_anchor=(0.5, 0.9), handlelength=1.6)
     save(fig, "fig3_deferred_compaction")
@@ -330,9 +343,12 @@ def figure_equal_cost(main, equal):
         lows = [(ci[0] - ci[1]) / 1000 for _, ci in series]
         highs = [(ci[2] - ci[0]) / 1000 for _, ci in series]
         ax.errorbar(xs, ys, yerr=[lows, highs], color=STYLE[KEY[key]]["color"], marker=marker, markersize=4,
-                    linewidth=1.2, capsize=1.5, elinewidth=0.6, label=KEY[key], zorder=3)
+                    linewidth=1.2, capsize=1.5, elinewidth=0.6, label=DISPLAY.get(KEY[key], KEY[key]), zorder=3)
+        # RocksDB's labels go below its line and ours above, so neither sits on a marker.
+        below = key == "native"
         for x, y in zip(xs, ys):
-            ax.annotate(f"{y:.0f}", (x, y), xytext=(0, 4), textcoords="offset points", ha="center", fontsize=6.2)
+            ax.annotate(f"{y:.0f}", (x, y), xytext=(0, -7 if below else 6), textcoords="offset points", ha="center",
+                        va="top" if below else "bottom", fontsize=6.2, bbox=LABEL_BOX, zorder=4)
     ax.set_xscale("log", base=2)
     ax.set_xticks([4, 8, 16, 32], ["4", "8", "16", "32"])
     ax.set_xlabel("Physical cores")
@@ -371,7 +387,7 @@ def figure_contention(main, entries):
         if e["design"] in ("native", "full"):
             rows.append(e)
     conditions = [(2, 0, "2 cores"), (4, 0, "4 cores"), (8, 0, "8 cores"), (16, 0, "16 cores"),
-                  (4, 40, "4 cores,\n40% load"), (4, 80, "4 cores,\n80% load")]
+                  (4, 40, "4 cores,\n40% taken"), (4, 80, "4 cores,\n80% taken")]
     groups = []
     for cores, burn, label in conditions:
         values = {KEY[e["design"]]: tuple(v / 1000 for v in e["ops_per_second"]) for e in rows
@@ -380,21 +396,30 @@ def figure_contention(main, entries):
             groups.append((label, values))
     if len(groups) < 2:
         return
-    fig, ax = plt.subplots(figsize=(DOUBLE_COLUMN, 2.2))
+    fig, ax = plt.subplots(figsize=(DOUBLE_COLUMN, 2.4))
     grouped_bars(ax, groups, [NATIVE, FULL], None, lambda v: f"{v:.0f}", size=6.0)
+    # Two experiments share this chart: a core-count sweep, and 4 cores with another process
+    # taking a share of every core.
+    split = sum(1 for label, _ in groups if "taken" not in label)
+    if 0 < split < len(groups):
+        ax.axvline(split - 0.5, color=INK, linewidth=0.6, linestyle=":", zorder=1)
+        ax.text((split - 1) / 2, 1.02, "Machine to itself", transform=ax.get_xaxis_transform(), ha="center",
+                va="bottom", fontsize=7, color=INK)
+        ax.text(split + (len(groups) - split - 1) / 2, 1.02, "Other work on the same cores",
+                transform=ax.get_xaxis_transform(), ha="center", va="bottom", fontsize=7, color=INK)
     finish_axis(ax, "Throughput (kops/s)")
-    fig.tight_layout(rect=(0, 0, 1, 0.88))
-    design_legend(fig, [NATIVE, FULL], y=0.88)
+    fig.tight_layout(rect=(0, 0, 1, 0.84))
+    design_legend(fig, [NATIVE, FULL], y=0.86)
     save(fig, "fig6_contention")
 
 
 def figure_read_tradeoff(entries):
     if not entries:
         return
-    shapes = [("default", "Default"), ("aggressive", "Aggressive"), ("aggressive-zstd", "Aggressive + ZSTD")]
-    fig, axes = plt.subplots(1, 3, figsize=(DOUBLE_COLUMN, 2.1))
+    shapes = [("default", "Default"), ("aggressive", "Read-\noptimised"), ("aggressive-zstd", "Read-\noptimised,\nZSTD")]
+    fig, axes = plt.subplots(1, 3, figsize=(DOUBLE_COLUMN, 2.3))
     panels = [("Throughput (kops/s)", "ops_per_second", 1e-3, lambda v: f"{v:.0f}"),
-              ("p99 read latency (ms)", "p99_read_ms", 1.0, lambda v: f"{v:.2f}"),
+              ("p99 read latency (ms)", "p99_read_ms", 1.0, lambda v: f"{v:.3f}"),
               ("CPU time per op (µs)", "cpu_us_per_op", 1.0, lambda v: f"{v:.1f}")]
     for ax, letter, (ylabel, metric, scale, fmt) in zip(axes, "abc", panels):
         groups = []
@@ -425,7 +450,7 @@ def figure_shared_gpu(entries):
             ax.errorbar(xs, ys, yerr=[[(ci[0] - ci[1]) * scale for _, ci in series],
                                       [(ci[2] - ci[0]) * scale for _, ci in series]],
                         color=STYLE[KEY[key]]["color"], marker=marker, markersize=4, linewidth=1.2, capsize=1.5,
-                        elinewidth=0.6, label=KEY[key], zorder=3)
+                        elinewidth=0.6, label=DISPLAY.get(KEY[key], KEY[key]), zorder=3)
         ax.set_xscale("log", base=2)
         ax.set_xticks([1, 2, 4, 8], ["1", "2", "4", "8"])
         ax.set_xlabel("Database instances (4 cores each)")
@@ -463,7 +488,7 @@ def figure_ssd(entries):
 # ---------------------------------------------------------------- earlier designs (H8-H12)
 
 PRIOR_DESIGNS = (NATIVE, SORT_MERGE, PIPELINE, FULL)
-PRIOR_LABELS = {FULL: "GPU merge + block building, GPU compression (ours)"}
+PRIOR_LABELS = DISPLAY
 PRIOR_FILES = {"s3": None, "s2": MERGE, "sortmerge": SORT_MERGE, "pipeline": PIPELINE}
 CODEC_LABEL = {"lz4": "LZ4", "zstd": "ZSTD", "none": "No\ncompression"}
 
@@ -680,9 +705,9 @@ def gparakv_table():
 # ---------------------------------------------------------------- remote compaction and replication (R1-R6)
 
 RDMA = DATA / "rdma"
-TRANSPORTS = [("ib_write_bw", "ib_write_bw (hardware ceiling)", "#8c8c8c", "o", "--"),
+TRANSPORTS = [("ib_write_bw", "ib_write_bw (hardware ceiling)", "#4d4d4d", "o", "--"),
               ("rdma_push", "Ours, RDMA push", "#D55E00", "s", "-"),
-              ("ib_read_bw", "ib_read_bw", "#bbbbbb", "o", ":"),
+              ("ib_read_bw", "ib_read_bw", "#8c8c8c", "o", ":"),
               ("rdma_pull", "Ours, RDMA pull", "#CC79A7", "^", "-"),
               ("tcp", "Ours, TCP", "#0072B2", "D", "-")]
 
@@ -717,6 +742,7 @@ def figure_rdma_transport():
         ax.set_xlabel("Transfer size (bytes)")
         if log:
             ax.set_yscale("log")
+            plain_log_axis(ax)
         else:
             ax.set_ylim(0, 100)
         finish_axis(ax, ylabel)
@@ -728,8 +754,8 @@ def figure_rdma_transport():
     save(fig, "fig14_rdma_transport")
 
 
-REMOTE_VARIANTS = [("local", "native_cpu", "Native RocksDB (local)", "#8c8c8c", ""),
-                   ("local", "cpu_merge", "CPU merge (local; the server's backend)", "#56B4E9", "///"),
+REMOTE_VARIANTS = [("local", "native_cpu", "RocksDB (local)", "#4d4d4d", ""),
+                   ("local", "cpu_merge", "CPU merge (local; the server's backend)", "#3399CC", "///"),
                    ("remote-rdma-push", "remote_merge", "Remote, RDMA push", "#D55E00", ""),
                    ("remote-rdma-pull", "remote_merge", "Remote, RDMA pull", "#CC79A7", "\\\\\\"),
                    ("remote-tcp", "remote_merge", "Remote, TCP", "#0072B2", "...")]
@@ -783,9 +809,10 @@ def figure_rdma_isolated():
     save(fig, "fig15_rdma_isolated")
 
 
-R6_DESIGNS = [("per_replica", "Per-replica compaction (each backup compacts)", "#8c8c8c", ""),
-              ("once_primary_cpu", "Compact once on the primary's CPU, ship files", "#56B4E9", "///"),
+R6_DESIGNS = [("per_replica", "Per-replica compaction (each backup compacts)", "#4d4d4d", ""),
+              ("once_primary_cpu", "Compact once on the primary's CPU, ship files", "#3399CC", "///"),
               ("once_server", "Compact once on the compaction server, ship files", "#D55E00", "")]
+R6_SHORT = {"per_replica": "Each\ncompacts", "once_primary_cpu": "Once,\nprimary", "once_server": "Once,\nserver"}
 
 
 def load_rdma_replication():
@@ -861,11 +888,13 @@ def figure_rdma_replication():
             value_labels(ax, rect, lambda v: f"{v:.1f}", size=6)
         finish_axis(ax, "Replication traffic per op (KiB)")
         for ax in row:
-            ax.set_xticks(xs, [""] * len(xs))
+            ax.set_xticks(xs, [R6_SHORT[key] for key, _, _, _ in designs], fontsize=6)
             panel_label(ax, next(letters))
     handles = [Patch(facecolor=color, hatch=hatch, edgecolor="white", label=label) for _, label, color, hatch in R6_DESIGNS]
-    handles += [Patch(facecolor="#555555", alpha=a, label=f"CPU: {p}") for a, p in ((1.0, "primary"), (0.6, "backups"),
-                                                                                    (0.3, "compaction server"))]
+    # The stacked CPU bars use each design's colour; the shade, not the hue, gives the node.
+    handles += [Patch(facecolor="#4d4d4d", alpha=a, label=f"Middle panels, {shade}: {p}")
+                for a, shade, p in ((1.0, "solid", "primary's CPU"), (0.6, "lighter", "backups' CPU"),
+                                    (0.3, "lightest", "compaction server's CPU"))]
     fig.tight_layout(h_pad=1.8, w_pad=1.6, rect=(0, 0, 1, 0.82 if len(rows) > 1 else 0.7))
     fig.legend(handles=handles, loc="lower center", ncol=2, bbox_to_anchor=(0.5, 0.82 if len(rows) > 1 else 0.7))
     save(fig, "fig16_rdma_replication")

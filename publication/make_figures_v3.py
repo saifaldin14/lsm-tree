@@ -17,15 +17,15 @@ import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+from matplotlib.transforms import blended_transform_factory
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from make_figures import (DOUBLE_COLUMN, FULL, INK, NATIVE, STYLE, bar, design_legend,  # noqa: E402
-                          finish_axis, panel_label, save)
+from make_figures import (DISPLAY, DOUBLE_COLUMN, FULL, INK, LABEL_BOX, NATIVE, STYLE, bar,  # noqa: E402
+                          design_legend, finish_axis, panel_label, plain_log_axis, save)
 
 HERE = Path(__file__).resolve().parent
 V3 = HERE / "data" / "v3"
-OURS = "GPU offload (ours)"
-LABELS = {NATIVE: "Native RocksDB (tuned)", FULL: OURS}
+LABELS = DISPLAY
 DESIGN = {"native_cpu": NATIVE, "cuda_merge": FULL, "native": NATIVE, "full": FULL}
 X1 = [("x1-v32-lz4", "32 B\nLZ4"), ("x1-v128-lz4", "128 B\nLZ4"), ("x1-v1024-lz4", "1 KB\nLZ4"),
       ("x1-v128-zstd", "128 B\nZSTD"), ("x1-v128-none", "128 B\nnone"), ("x1-v128-lz4-del0.1", "128 B LZ4\n10% del.")]
@@ -95,8 +95,8 @@ def cpu_us(result):
     return result["accounting"]["window"]["cores"] * 1e6 / window_ops(result)
 
 
-def ratio_label(ax, x, top, text):
-    ax.annotate(text, (x, top), xytext=(0, 2), textcoords="offset points", ha="center", va="bottom",
+def ratio_label(ax, x, top, text, offset=2):
+    ax.annotate(text, (x, top), xytext=(0, offset), textcoords="offset points", ha="center", va="bottom",
                 fontsize=7, fontweight="bold", color=INK)
 
 
@@ -121,6 +121,7 @@ def figure_compaction(isolated):
                         ha="center", va="bottom", fontsize=5.6, color=INK)
             ratio_label(ax, index, native * 1.9, f"{native / ours:.1f}×")
         ax.set_yscale("log")
+        plain_log_axis(ax)
         ax.set_xticks(range(len(tags)), [label for _, label in tags])
         low = min(median(metric(isolated[t][FULL])) for t, _ in tags)
         high = max(median(metric(isolated[t][NATIVE])) for t, _ in tags)
@@ -155,20 +156,20 @@ def figure_cores(isolated):
         bar(ax, [index + width / 2], [gpu], width * 0.95, FULL)
         ax.annotate(f"{gpu:.2f}\n(GPU + {gpu_cores:.1f} cores)", (index + width / 2, gpu), xytext=(0, 1.5),
                     textcoords="offset points", ha="center", va="bottom", fontsize=5.6, color=INK)
-        ratio_label(ax, index, max(gpu, native8) * 1.32, f"GPU matches {gpu / per_core:.0f} native cores")
+        ratio_label(ax, index, max(gpu, native8) * 1.32, f"GPU matches {gpu / per_core:.0f} RocksDB cores")
         del rects
     ax.set_xticks(range(len(rows)), [r[0] for r in rows])
     ax.set_ylim(0, max(max(r[2], r[3]) for r in rows) * 1.6)
     finish_axis(ax, "Compaction throughput (GiB/s)")
     fig.tight_layout(rect=(0, 0, 1, 0.86))
-    design_legend(fig, (NATIVE, FULL), y=0.86, labels={NATIVE: "Native, 8 cores", FULL: "GPU offload (ours)"})
+    design_legend(fig, (NATIVE, FULL), y=0.86, labels={NATIVE: "RocksDB, 8 cores", FULL: "Ours"})
     save(fig, "fig18_v3_cores")
 
 
 def figure_database(headline, bottom):
     """Whole database: (a) throughput and (b) CPU per write, by cores and codec setup."""
     groups = [(f"{c} cores\nLZ4", headline, c) for c in (4, 8, 16)] + \
-             [(f"{c} cores\nZSTD bottom", bottom, c) for c in (4, 8)]
+             [(f"{c} cores\nZSTD on\nlast level", bottom, c) for c in (4, 8)]
     groups = [g for g in groups if g[1].get((NATIVE, g[2])) and g[1].get((FULL, g[2]))]
     if not groups:
         return
@@ -185,10 +186,11 @@ def figure_database(headline, bottom):
                 ax.annotate(fmt.format(value), (index + offset, value), xytext=(0, 1.5), textcoords="offset points",
                             ha="center", va="bottom", fontsize=5.6, color=INK)
             better = ours / native if letter == "a" else native / ours
-            ratio_label(ax, index, max(native, ours) * 1.17, f"{better:.2f}×")
-        ax.set_xticks(range(len(groups)), [g[0] for g in groups], fontsize=6.4)
+            # Above the bars' own value labels, not on top of them.
+            ratio_label(ax, index, max(native, ours), f"{better:.2f}×", offset=10)
+        ax.set_xticks(range(len(groups)), [g[0] for g in groups], fontsize=6)
         top = max(max(median([metric(r) for r in runs[(d, c)]]) * scale for d in (NATIVE, FULL)) for _, runs, c in groups)
-        ax.set_ylim(0, top * 1.38)
+        ax.set_ylim(0, top * 1.45)
         finish_axis(ax, ylabel)
         panel_label(ax, letter)
     fig.tight_layout(w_pad=2.5, rect=(0, 0, 1, 0.87))
@@ -203,9 +205,11 @@ def figure_tail(openloop):
         return
     fig, axes = plt.subplots(1, 2, figsize=(DOUBLE_COLUMN, 2.4))
     for ax, letter, (percentile, label) in zip(axes, "ab", [("p99_ns", "p99"), ("p999_ns", "p99.9")]):
+        plotted = []
         for design in (NATIVE, FULL):
             xs = [r for r in rates if openloop.get((design, r))]
             ys = [median([res["write_latency"][percentile] / 1e6 for res in openloop[(design, r)]]) for r in xs]
+            plotted += ys
             style = STYLE[design]
             ax.plot([x / 1000 for x in xs], ys, marker="o", markersize=3.5, color=style["color"], linewidth=1.2,
                     label=f"{LABELS[design]}, median")
@@ -213,10 +217,16 @@ def figure_tail(openloop):
             points = [(x / 1000, res["write_latency"][percentile] / 1e6) for x in xs for res in openloop[(design, x)]]
             ax.scatter([p[0] for p in points], [p[1] for p in points], s=9, marker="x", color=style["color"],
                        linewidths=0.8, zorder=3, label=f"{LABELS[design]}, each run")
+            # RocksDB's labels go above its line and ours below, so neither sits on a marker.
+            above = design == NATIVE
             for x, y in zip(xs, ys):
-                ax.annotate(f"{y:.1f}", (x / 1000, y), xytext=(0, 3), textcoords="offset points", ha="center",
-                            fontsize=5.6, color=INK)
+                ax.annotate(f"{y:.1f}", (x / 1000, y), xytext=(0, 5 if above else -6), textcoords="offset points",
+                            ha="center", va="bottom" if above else "top", fontsize=5.6, color=INK, bbox=LABEL_BOX,
+                            zorder=4)
         ax.set_yscale("log")
+        # Room below the lowest and above the highest median for their labels.
+        ax.set_ylim(min(plotted) / 2.2, max(plotted) * 2.2)
+        plain_log_axis(ax)
         ax.set_xlabel("Offered load (k writes/s)")
         finish_axis(ax, f"{label} write latency (ms)")
         panel_label(ax, letter)
@@ -321,7 +331,7 @@ def workload_ratios():
     """[(label, throughput ratio, CPU-per-operation ratio or None)] for X6-X8, medians over runs."""
     import re
     rows = []
-    for name, title in (("stream", "Stream state"), ("metadata", "Metadata"), ("timeseries", "Time series")):
+    for name, title in (("stream", "Stream\nstate"), ("metadata", "Metadata"), ("timeseries", "Time\nseries")):
         runs = load_campaign(f"v3-{name}")
         for cores in (8, 16):
             if runs.get((NATIVE, cores)) and runs.get((FULL, cores)):
@@ -354,21 +364,26 @@ def figure_workloads():
     rows = workload_ratios()
     if not rows:
         return
-    fig, axes = plt.subplots(2, 1, figsize=(DOUBLE_COLUMN, 3.9), sharex=True)
-    for ax, letter, (index, ylabel) in zip(axes, "ab", [(1, "Throughput vs native"), (2, "CPU saving per operation")]):
+    fig, axes = plt.subplots(2, 1, figsize=(DOUBLE_COLUMN, 4.1), sharex=True)
+    for ax, letter, (index, ylabel) in zip(axes, "ab", [(1, "Throughput vs RocksDB"), (2, "CPU saving per operation")]):
         xs = [i for i, row in enumerate(rows) if row[index] is not None]
         values = [rows[i][index] for i in xs]
         rects = bar(ax, xs, values, 0.6, FULL)
         for x, value in zip(xs, values):
             ax.annotate(f"{value:.2f}×", (x, value), xytext=(0, 1.5), textcoords="offset points", ha="center",
-                        va="bottom", fontsize=6, color=INK)
+                        va="bottom", fontsize=6, color=INK, bbox=LABEL_BOX, zorder=4)
         del rects
+        for i, row in enumerate(rows):
+            if row[index] is None:
+                ax.text(i, 0.08, "not\ncompared", ha="center", va="bottom", fontsize=5.4, color="#555555",
+                        style="italic")
         ax.axhline(1.0, color=STYLE[NATIVE]["color"], linewidth=1.0, linestyle="--", zorder=1)
+        ax.text(1.005, 1.0, "RocksDB = 1", transform=blended_transform_factory(ax.transAxes, ax.transData),
+                ha="left", va="center", fontsize=6, color=STYLE[NATIVE]["color"], clip_on=False)
         ax.set_ylim(0, max(values) * 1.25)
         finish_axis(ax, ylabel)
         panel_label(ax, letter)
     axes[1].set_xticks(range(len(rows)), [row[0] for row in rows], fontsize=5.8)
-    axes[0].text(-0.45, 1.03, "native = 1", ha="left", va="bottom", fontsize=6, color=STYLE[NATIVE]["color"])
     fig.tight_layout(h_pad=0.8)
     save(fig, "fig21_v3_workloads")
 
