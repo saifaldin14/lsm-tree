@@ -451,7 +451,7 @@ transport costs the sending machine about 0.012 CPU-seconds per GiB (measured on
 earlier testbed below). Median of 3 runs; every compaction matched
 RocksDB exactly. How it works: [docs/remote-compaction.md](../docs/remote-compaction.md).
 
-![Compaction on a remote GPU and a remote CPU over RDMA](figures/fig31_rdma_direct.png)
+![Compaction on a remote GPU and a remote CPU over RDMA, with where the time goes](figures/fig34_rdma_direct_breakdown.png)
 
 | Workload | RocksDB on the database machine | Remote GPU over RDMA | Faster | Database machine's CPU per GiB, RocksDB → remote GPU | Less CPU |
 |---|---|---|---|---|---|

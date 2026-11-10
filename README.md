@@ -186,14 +186,11 @@ The database can send each compaction over a 100 Gb/s RDMA network to a GPU serv
 another machine, so the database machine needs no GPU. *A 96-core database machine and the
 second server; median of 3 runs; every compaction matched RocksDB exactly.*
 
-![Compaction on a remote GPU and a remote CPU over RDMA](publication/figures/fig31_rdma_direct.png)
+![One compaction on a remote GPU over RDMA against RocksDB](publication/figures/fig31_rdma_direct.png)
 
-| Workload | One compaction, RocksDB locally → remote GPU | Database machine's CPU per GiB |
-|---|---|---|
-| 128 B values, LZ4 | 3.66 → 0.91 s (**4.0×**) | 5.65 → 1.00 s (**5.6× less**) |
-| 32 B values, LZ4 | 6.38 → 1.10 s (**5.8×**) | 9.11 → 1.10 s (**8.3× less**) |
-| 128 B values, ZSTD | 6.77 → 1.05 s (**6.5×**) | 11.61 → 1.05 s (**11× less**) |
-
+- **Each compaction is 4.0–6.5× faster, and the database machine spends 5.6–11× less CPU
+  on it.** Of the remote GPU's 0.9–1.1 s, moving the data over the network takes only
+  about 0.2 s.
 - **The whole database** run this way takes **802k writes/s against 459k** (1.75×), with
   **2.04× less CPU per write** on the database machine (1.84× counting the GPU server's CPU).
 - **A remote CPU server is not enough:** it saves the same CPU but each compaction takes

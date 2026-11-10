@@ -31,7 +31,8 @@ from matplotlib.patches import Patch
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
-from make_figures import DOUBLE_COLUMN, INK, finish_axis, panel_label, save  # noqa: E402
+from make_figures import (DOUBLE_COLUMN, FULL, INK, NATIVE, bar, design_legend, finish_axis,  # noqa: E402
+                          panel_label, save)
 
 WORKLOADS = [("v128-lz4", "128 B values, LZ4"), ("v32-lz4", "32 B values, LZ4"), ("v128-zstd", "128 B values, ZSTD")]
 SEGMENTS = {  # name: (label, colour, hatch)
@@ -168,6 +169,35 @@ DIRECT_ROWS = [("direct-native", "RocksDB on the database machine"),
 DIRECT_LEGEND = ["db", "rdma", "cpu_server", "gpu"]
 
 
+def figure_direct(summary, workloads):
+    """README figure: RocksDB on the database machine against the remote GPU over RDMA,
+    (a) time of one compaction and (b) the database machine's CPU per GiB, with the gain."""
+    labels = {NATIVE: "RocksDB on the database machine", FULL: "Ours: compaction sent to a GPU in another machine"}
+    fig, axes = plt.subplots(1, 2, figsize=(DOUBLE_COLUMN, 2.6))
+    panels = [("wall", "Time of one compaction (s)", "{:.2f} s", "faster"),
+              ("cpu_gib", "Database machine's CPU\nper GiB compacted (s)", "{:.2f}", "less CPU")]
+    width = 0.38
+    for ax, letter, (metric, ylabel, fmt, word) in zip(axes, "ab", panels):
+        top = 0.0
+        for index, (workload, _) in enumerate(workloads):
+            native = summary[workload]["direct-native"][metric]
+            ours = summary[workload]["remote-gpu-rdma"][metric]
+            for x, value, design in ((index - width / 2, native, NATIVE), (index + width / 2, ours, FULL)):
+                bar(ax, [x], [value], width * 0.95, design)
+                ax.annotate(fmt.format(value), (x, value), xytext=(0, 1.5), textcoords="offset points",
+                            ha="center", va="bottom", fontsize=6.2, color=INK)
+            ax.annotate(f"{native / ours:.1f}× {word}", (index, native), xytext=(0, 12), textcoords="offset points",
+                        ha="center", va="bottom", fontsize=7.2, fontweight="bold", color=INK)
+            top = max(top, native)
+        ax.set_xticks(range(len(workloads)), [title.replace(" values, ", " values\n") for _, title in workloads])
+        ax.set_ylim(0, top * 1.35)
+        finish_axis(ax, ylabel)
+        panel_label(ax, letter)
+    fig.tight_layout(w_pad=2.5, rect=(0, 0, 1, 0.88))
+    design_legend(fig, (NATIVE, FULL), y=0.88, labels=labels)
+    save(fig, "fig31_rdma_direct")
+
+
 def figure(summary, workloads, rows_spec=ROWS, legend=LEGEND, out_name="fig23_rdma_gpu", divider=3.5):
     """Per workload: (a) where the time of one compaction goes, (b) database-node CPU per GiB."""
     ROWS = rows_spec  # noqa: N806
@@ -294,7 +324,8 @@ def main() -> int:
     figure(summary, workloads)
     direct_workloads = [(w, t) for w, t in workloads if "remote-gpu-rdma" in summary[w]]
     if direct_workloads:
-        figure(summary, direct_workloads, DIRECT_ROWS, DIRECT_LEGEND, "fig31_rdma_direct", None)
+        figure_direct(summary, direct_workloads)
+        figure(summary, direct_workloads, DIRECT_ROWS, DIRECT_LEGEND, "fig34_rdma_direct_breakdown", None)
     text = table(summary, workloads)
     r8 = root.parent / "r8-database.jsonl"
     if r8.exists():
