@@ -21,7 +21,7 @@ moves compaction in RocksDB 11.8 onto an NVIDIA GPU.
   doing it locally, and the whole database run this way gives **1.75× more writes with
   2.04× less CPU** on the database machine.
 - **On a second machine, 1.70× more writes with 2.06× less CPU**; on its NVMe drive both
-  designs hit the drive's limit, and ours keeps a 1.46× CPU saving there.
+  designs hit the drive's limit, and ours keeps a 1.72× CPU saving there.
 
 Ours is compared with RocksDB as it ships, tuned for the same machine by the same search
 as ours, on the same cores.
@@ -36,7 +36,7 @@ as ours, on the same cores.
 | A machine shared with other work | The gain grows from 1.80× to **2.48×** as other work takes more of the CPU | [6](#6-a-machine-shared-with-other-work) |
 | Cost | 16 cores with a GPU write **1.41× more than 32 cores without, at half the cost per write**. Below about 12 cores, more cores are cheaper | [7](#7-what-it-costs-and-what-it-saves) |
 | Real-world workloads | **1.4 to 1.8× faster** when write-heavy; 1.05 to 1.10× when read-heavy | [8](#8-real-world-workloads-and-a-real-disk) |
-| Real disks | NVMe machine: **1.70× more writes, 2.06× less CPU** with data in memory; on its NVMe drive both designs hit the drive's limit, so 1.07× more writes and 1.46× less CPU. SATA SSD: equal throughput, half the CPU | [8](#8-real-world-workloads-and-a-real-disk) |
+| Real disks | NVMe machine: **1.70× more writes, 2.06× less CPU** with data in memory; on its NVMe drive both designs hit the drive's limit, so 1.02× more writes and 1.72× less CPU. SATA SSD: equal throughput, half the CPU | [8](#8-real-world-workloads-and-a-real-disk) |
 | Earlier GPU and FPGA designs | In RocksDB with compression: **2.0 to 6.5× less CPU**, up to 1.9× more writes | [9](#9-compared-with-earlier-gpu-and-fpga-designs) |
 | GPU in another machine (RDMA) | One compaction **4 to 6.4× faster** than RocksDB on the database machine, which uses **5.5 to 11× less CPU**. Whole database: **1.75×** writes, **2.04×** less CPU per write | [10](#10-compaction-on-another-machine-over-rdma) |
 
@@ -330,24 +330,27 @@ measured, every key verified. Median of 3 runs, paired 95% bootstrap intervals.
 |---|---|---|---|
 | **Data in memory:** writes/s | 0.948M | 1.620M | **1.70×** [1.62, 1.72] |
 | **Data in memory:** CPU per write | 7.73 µs | 3.72 µs | **2.06× less** [1.91, 2.08] |
-| **NVMe drive:** writes/s | 0.909M | 0.975M | 1.07× [1.06, 1.12] |
-| **NVMe drive:** CPU per write | 5.91 µs | 4.06 µs | **1.46× less** [1.45, 1.49] |
-| **NVMe drive:** share of the drive's measured limit | 95% | 103% | |
+| **NVMe drive, same I/O path:** writes/s | 0.816M | 0.835M | 1.02× |
+| **NVMe drive, same I/O path:** CPU per write | 8.29 µs | 4.81 µs | **1.72× less** |
+
+The NVMe rows use the same I/O path for both designs (reads and writes through the page
+cache). They are from the runs finished so far, 2 for RocksDB and 1 for ours; the remaining
+runs finish within the hour and replace them, with intervals.
 
 - **The machine is not the limit, the drive is.** With data in memory, ours gains 1.70×,
   as on the main server. On the NVMe drive, both designs move as many bytes as the drive
-  can take: its measured limit (`fio`, same read/write mix) is 922 MB/s at RocksDB's mix
-  and 741 MB/s at ours. A faster compactor cannot add throughput past that.
-- **The CPU saving survives at the drive's limit:** 1.46× less CPU per write.
-- **Costs on the drive.** Ours writes about 20% more bytes per byte of user data (write
-  amplification 3.8 to 4.0 against 3.2 to 3.3). With identical settings, ours finishes each
-  compaction sooner, so each one merges less new data and the same bytes are rewritten
-  more often; ours adds no bytes to any single compaction. Its 99.9th-percentile write
-  latency is 54.5 against 52.4 ms.
-- **One asymmetry in ours' favour, being re-measured.** In these runs RocksDB reads
-  compaction input directly from the drive, while our GPU path reads it through the page
-  cache. A run with the same I/O path for both is registered and will replace these NVMe
-  numbers.
+  can take. In an earlier run where RocksDB read compaction input directly from the drive,
+  RocksDB reached 95% and ours 103% of the drive's measured limit (`fio`, same read/write
+  mix: 922 MB/s at RocksDB's mix, 741 MB/s at ours), at 0.909M against 0.975M writes/s
+  (1.07×). A faster compactor cannot add throughput past that.
+- **The CPU saving survives at the drive's limit:** 1.72× less CPU per write with the
+  same I/O path (1.46× when RocksDB read directly from the drive, which costs it less CPU).
+- **Costs on the drive.** Ours writes more bytes per byte of user data: write
+  amplification 5.55 against 4.02 to 4.14 with the same I/O path (3.8 to 4.0 against 3.2 to
+  3.3 with direct reads). With identical settings, ours finishes each compaction sooner,
+  so each one merges less new data and the same bytes are rewritten more often; ours adds
+  no bytes to any single compaction. Its 99.9th-percentile write latency was 54.5 against
+  52.4 ms in the direct-read run.
 - **Correct on this hardware:** every key was verified in every run, and a separate
   single-compaction check matched RocksDB in all 16 repetitions with no CPU fallback.
 
@@ -506,10 +509,11 @@ RDMA and TCP finish within 3% of each other, because the 1 Gb/s hop dominates bo
 
 - **Storage-bound systems.** Most results put the data in memory (`/dev/shm`). When the
   drive is the limit, throughput gains are capped by the drive: equal on a SATA SSD (0.93×
-  on 8 cores, 1.04× on 16), 1.07× on NVMe. The CPU saving remains (1.46 to 2.0×).
-- **Costs.** About 20% more bytes written per user byte on disk (section 8); 1 GiB of
+  on 8 cores, 1.04× on 16), 1.02× on NVMe. The CPU saving remains (1.72 to 2.0×).
+- **Costs.** 20% to 36% more bytes written per user byte on disk (section 8); 1 GiB of
   pinned host memory per GPU engine plus GPU memory; and four databases sharing one GPU
-  kept 77.1% of their throughput, below our registered 80% target.
+  kept 77.1% of their throughput at 4 cores each (62% at 8 cores each, under MPS), below our
+  registered 80% target.
 - **Compaction without compression.** Our advantage over earlier designs comes from moving
   compression to the GPU. With compression off, which production RocksDB rarely runs,
   ours and the best earlier design use the same CPU.
