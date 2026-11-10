@@ -1,0 +1,269 @@
+{
+ "_comment": "Registered tune-search.json, 8-core subset, on malphite NVMe with direct I/O as in X8.",
+ "common": {
+  "records": 50000000,
+  "read-percent": 0,
+  "warmup-seconds": 20,
+  "duration-seconds": 60,
+  "verify": true,
+  "use-direct-io": true
+ },
+ "trials": [
+  {
+   "design": "native",
+   "mode": "native_cpu",
+   "cores": 8,
+   "writes": "batched",
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 8,
+    "threads": 8,
+    "subcompactions": 4,
+    "pipelined-write": false,
+    "adaptive-yield": true,
+    "allow-fallocate": false
+   }
+  },
+  {
+   "design": "native",
+   "mode": "native_cpu",
+   "cores": 8,
+   "writes": "batched",
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 8,
+    "threads": 8,
+    "subcompactions": 4,
+    "pipelined-write": true,
+    "adaptive-yield": true,
+    "allow-fallocate": false
+   }
+  },
+  {
+   "design": "native",
+   "mode": "native_cpu",
+   "cores": 8,
+   "writes": "batched",
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 8,
+    "threads": 8,
+    "subcompactions": 8,
+    "pipelined-write": false,
+    "adaptive-yield": true,
+    "allow-fallocate": false
+   }
+  },
+  {
+   "design": "native",
+   "mode": "native_cpu",
+   "cores": 8,
+   "writes": "batched",
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 8,
+    "threads": 8,
+    "subcompactions": 8,
+    "pipelined-write": true,
+    "adaptive-yield": true,
+    "allow-fallocate": false
+   }
+  },
+  {
+   "design": "native",
+   "mode": "native_cpu",
+   "cores": 8,
+   "writes": "batched",
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 8,
+    "threads": 16,
+    "subcompactions": 4,
+    "pipelined-write": false,
+    "adaptive-yield": false,
+    "allow-fallocate": false
+   }
+  },
+  {
+   "design": "native",
+   "mode": "native_cpu",
+   "cores": 8,
+   "writes": "batched",
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 8,
+    "threads": 16,
+    "subcompactions": 4,
+    "pipelined-write": true,
+    "adaptive-yield": false,
+    "allow-fallocate": false
+   }
+  },
+  {
+   "design": "native",
+   "mode": "native_cpu",
+   "cores": 8,
+   "writes": "batched",
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 8,
+    "threads": 16,
+    "subcompactions": 8,
+    "pipelined-write": false,
+    "adaptive-yield": false,
+    "allow-fallocate": false
+   }
+  },
+  {
+   "design": "native",
+   "mode": "native_cpu",
+   "cores": 8,
+   "writes": "batched",
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 8,
+    "threads": 16,
+    "subcompactions": 8,
+    "pipelined-write": true,
+    "adaptive-yield": false,
+    "allow-fallocate": false
+   }
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 8,
+   "writes": "batched",
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 8,
+    "threads": 8,
+    "subcompactions": 4,
+    "pipelined-write": false,
+    "adaptive-yield": true,
+    "allow-fallocate": false
+   }
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 8,
+   "writes": "batched",
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 8,
+    "threads": 8,
+    "subcompactions": 4,
+    "pipelined-write": true,
+    "adaptive-yield": true,
+    "allow-fallocate": false
+   }
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 8,
+   "writes": "batched",
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 8,
+    "threads": 8,
+    "subcompactions": 8,
+    "pipelined-write": false,
+    "adaptive-yield": true,
+    "allow-fallocate": false
+   }
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 8,
+   "writes": "batched",
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 8,
+    "threads": 8,
+    "subcompactions": 8,
+    "pipelined-write": true,
+    "adaptive-yield": true,
+    "allow-fallocate": false
+   }
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 8,
+   "writes": "batched",
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 8,
+    "threads": 16,
+    "subcompactions": 4,
+    "pipelined-write": false,
+    "adaptive-yield": false,
+    "allow-fallocate": false
+   }
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 8,
+   "writes": "batched",
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 8,
+    "threads": 16,
+    "subcompactions": 4,
+    "pipelined-write": true,
+    "adaptive-yield": false,
+    "allow-fallocate": false
+   }
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 8,
+   "writes": "batched",
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 8,
+    "threads": 16,
+    "subcompactions": 8,
+    "pipelined-write": false,
+    "adaptive-yield": false,
+    "allow-fallocate": false
+   }
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 8,
+   "writes": "batched",
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 8,
+    "threads": 16,
+    "subcompactions": 8,
+    "pipelined-write": true,
+    "adaptive-yield": false,
+    "allow-fallocate": false
+   }
+  }
+ ]
+}

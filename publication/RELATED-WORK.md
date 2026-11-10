@@ -17,7 +17,7 @@ each block, and write the file with its index, filter and metadata.
 | Design | Stands in for | On the accelerator | Left on the CPU |
 | --- | --- | --- | --- |
 | Sort/merge offload | gLSM, gParaKV | unpack, sort, merge, drop hidden versions | input decompression, `CompactionIterator`, block building, compression, checksums |
-| Pipeline offload without compression | LUDA (MSST'24), Alibaba's FPGA design (FAST'20) | unpack, sort, merge, deletions, block building, filter hashes | input decompression, output compression and checksums |
+| Pipeline offload without compression | LUDA (arXiv'20), the MSST'24 design, Alibaba's FPGA design (FAST'20) | unpack, sort, merge, deletions, block building, filter hashes | input decompression, output compression and checksums |
 | Ours | — | steps 1 to 4 and the Bloom filter | file cuts, index, metadata, file writing |
 
 ### How the rebuilds work
@@ -29,10 +29,25 @@ in [PREREGISTRATION.md](PREREGISTRATION.md).
 
 The rebuilds are deliberately generous to the earlier designs. Input decompression runs on
 four parallel read threads rather than serially, and LUDA's CPU-assisted sort is replaced by
-our faster GPU sort. Two things are not reproduced: MSST'24's direct SSD-to-GPU transfers,
-which cannot help when the data is on `/dev/shm`, and the separate value storage used by
+our faster GPU sort. Two things are not reproduced: the NVMe-to-GPU data path that the
+MSST'24 design and its follow-ups optimise (see below), which cannot help when the data is on
+`/dev/shm`, and the separate value storage used by
 gLSM and gParaKV, which our GPU path does not support. The second is covered separately in
 section 2 by running gParaKV's own code.
+
+### GPU compaction on the NVMe data path
+
+The most recent GPU compaction work targets moving data between NVMe and the GPU rather than
+the compaction steps themselves. The MSST'24 design (Zhou et al.) accelerates compaction for
+NVMe-backed stores and compares against LUDA. GPComp (TPDS'25, same group) adds an SPDK-based
+SSD-to-GPU peer-to-peer I/O stack. GCLComp argues that these SSD-to-GPU stacks are still
+CPU-centric and proposes a GPU-centric one. We have not rebuilt or run any of them.
+
+This is the regime where our result is weakest. Our headline numbers are measured with data
+on `/dev/shm`. On an NVMe drive, our throughput gain over tuned RocksDB is small and the
+result is mainly a CPU saving (README, section 8). Our design reads and writes files through
+RocksDB's normal file system path, so it does not compete with these papers on I/O, and
+combining a direct SSD-to-GPU path with full-pipeline offload is open.
 
 ### Isolated compaction
 
@@ -81,8 +96,8 @@ a deployment that disables it would see no benefit from our work over LUDA's des
 
 ## 2. Key-value separation
 
-gParaKV (SC'25) is the only earlier system in this area with public code
-(<https://github.com/KV890/gParaKV>). We ran it unmodified under its own YCSB driver, with
+gParaKV (SC'25) publishes its code (<https://github.com/KV890/gParaKV>), as does LUDA
+(<https://github.com/xpsair/luda>, section 1). We ran gParaKV unmodified under its own YCSB driver, with
 one client, 4 cores and the same GPU, and connected RocksDB with and without our offload to
 the same driver. Median of 3 repetitions.
 
@@ -137,8 +152,11 @@ within 2% of each other here because neither transport is the bottleneck, so pre
 H13 and H14 cannot be evaluated on this hardware. A database-level run shows the same effect:
 throughput falls from 545 kops/s native to 210 kops/s with remote GPU compaction.
 
-Putting the GPU on the RoCE fabric is a topology change, not a design change, but until it is
-measured we make no claim about remote GPU compaction latency.
+Putting the GPU on the RoCE fabric is a topology change, not a design change. Measured later
+on a second testbed where the database machine and the GPU machine share a 100 Gb/s RoCE
+link (data in [data/rdma/r7-direct](data/rdma/r7-direct)), one remote GPU compaction takes
+0.92 to 1.12 s against 3.66 to 6.77 s for RocksDB on the database machine (4.0 to 6.4×),
+with 5.5 to 11× less database-node CPU. The whole database has not been run over that link.
 
 ## 4. Workload models
 
@@ -150,8 +168,9 @@ time-series models are described in [../docs/workloads.md](../docs/workloads.md)
 
 ## 5. What is new here
 
-1. **The whole compaction on the GPU, including compression.** Earlier GPU and FPGA designs
-   stop before compression. Rebuilt on the same harness, that gap is worth 2.6x to 6.5x in
+1. **The whole compaction on the GPU, including compression.** The earlier GPU and FPGA
+   designs we rebuilt stop before compression (we have not checked GPComp and GCLComp in
+   detail). Rebuilt on the same harness, that gap is worth 2.6x to 6.5x in
    compaction CPU and up to 1.93x in database throughput. Without compression the advantage
    disappears.
 2. **Measured inside production RocksDB.** RocksDB 11.8 with its own file cuts, index,
@@ -160,8 +179,8 @@ time-series models are described in [../docs/workloads.md](../docs/workloads.md)
 3. **Earlier designs rebuilt rather than cited.** Each comparison runs in the same process,
    on the same hardware, against the same inputs, under preregistered fairness rules.
 4. **A remote GPU compaction path over RDMA.** We are not aware of a prior shared GPU
-   compaction service. The CPU-offload result is measured; the latency result is negative on
-   this testbed and reported as such.
+   compaction service. Over a direct RDMA link, one remote GPU compaction is 4 to 6.4×
+   faster than local RocksDB; the whole database and sharing are not yet measured.
 
 ## Citations to complete
 
@@ -175,8 +194,11 @@ still need to be written before submission.
 | `rubbledb2023` | RubbleDB | ATC'23 | needs authors and title |
 | `novalsm2021` | Nova-LSM | SIGMOD'21 | needs authors and title |
 | `dlsm2023` | dLSM | ICDE'23 | needs authors and title |
-| `caaslsm2024` | CaaS-LSM | SIGMOD'24 | needs authors and title |
-| `luda2024` | LUDA | MSST'24 | needs authors and title |
-| `fpga2020` | Alibaba FPGA compaction | FAST'20 | needs authors and title |
-| `glsm` | gLSM | — | needs venue, authors, title |
+| `caaslsm2024` | CaaS-LSM: Compaction-as-a-Service for LSM-based Key-Value Stores in Storage Disaggregated Infrastructure (Yu, Guo, Zhuang, Thakkar, Wang, Cao) | SIGMOD'24 | full entry known; code at github.com/asu-idi/CaaS-LSM |
+| `luda2020` | LUDA: Boost LSM Key Value Store Compactions with GPUs (Xu, Wan, Huang, Yang, Tang, Wu, Xie) | arXiv:2004.03054 (2020) | code at github.com/xpsair/luda; its README gives a different title ("A Customized GPU Acceleration Scheme..."), so check for a later published version |
+| `zhou2024msst` | A GPU-accelerated Compaction Strategy for LSM-based Key-Value Store System (Zhou, Chen, Cui, Wang, Liu) | MSST'24 | full entry known |
+| `gpcomp2025` | GPComp: Using GPU and SSD-GPU Peer to Peer DMA to Accelerate LSM-Tree Compaction for Key-Value Store (Zhou et al.) | IEEE TPDS 36(9):1920-1936, 2025 | needs full author list |
+| `gclcomp` | GCLComp: A GPU-Centric Compaction Strategy for LSM-Based KV Store | IEEE (document 11323134) | needs venue, year, authors |
+| `fpga2020` | FPGA-Accelerated Compactions for LSM-based Key-Value Store (Zhang et al., Alibaba) | FAST'20 | needs full author list |
+| `glsm2024` | gLSM: Using GPGPU to Accelerate Compactions in LSM-tree-based Key-value Stores (Sun et al.) | ACM TOS 2024, doi 10.1145/3633782 | needs full author list |
 | `gparakv2025` | gParaKV | SC'25 | code at github.com/KV890/gParaKV |

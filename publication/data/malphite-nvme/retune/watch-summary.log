@@ -1,0 +1,38 @@
+== watcher start Tue Nov 10 06:40:47 EST 2026
+== re-tune finished Tue Nov 10 08:04:01 EST 2026
+[3/6] {'design': 'native', 'mode': 'native_cpu', 'cores': 8, 'writes': 'batched', 'flags': {'batch-size': 100, 'disable-wal': True, 'background-jobs': 8, 'threads': 16, 'subcompactions': 8, 'pipelined-write': True, 'adaptive-yield': False, 'allow-fallocate': False}, 'block': 1} exit=0 ops/s=881835.4023790433
+[4/6] {'design': 'full', 'mode': 'cuda_merge', 'cores': 8, 'writes': 'batched', 'flags': {'batch-size': 100, 'disable-wal': True, 'background-jobs': 8, 'threads': 16, 'subcompactions': 4, 'pipelined-write': True, 'adaptive-yield': False, 'allow-fallocate': False}, 'block': 1} exit=0 ops/s=944993.341159082
+[5/6] {'design': 'full', 'mode': 'cuda_merge', 'cores': 8, 'writes': 'batched', 'flags': {'batch-size': 100, 'disable-wal': True, 'background-jobs': 8, 'threads': 16, 'subcompactions': 4, 'pipelined-write': True, 'adaptive-yield': False, 'allow-fallocate': False}, 'block': 2} exit=0 ops/s=977668.1765583268
+[6/6] {'design': 'native', 'mode': 'native_cpu', 'cores': 8, 'writes': 'batched', 'flags': {'batch-size': 100, 'disable-wal': True, 'background-jobs': 8, 'threads': 16, 'subcompactions': 8, 'pipelined-write': True, 'adaptive-yield': False, 'allow-fallocate': False}, 'block': 2} exit=0 ops/s=877654.8488704371
+== confirmation exit=0 Tue Nov 10 08:02:41 AM EST 2026
+== DONE Tue Nov 10 08:02:41 AM EST 2026
+
+=== tuning search (registered rule: max throughput, stall < 5%, verified) ===
+  full   0.964 M/s stall 0.023 elig True  thr=16 sub=4 pipe=True ay=False
+  full   0.948 M/s stall 0.021 elig True  thr=16 sub=4 pipe=False ay=False
+  full   0.948 M/s stall 0.019 elig True  thr=8 sub=4 pipe=False ay=True
+  full   0.930 M/s stall 0.018 elig True  thr=8 sub=4 pipe=True ay=True
+  full   0.929 M/s stall 0.022 elig True  thr=16 sub=8 pipe=False ay=False
+  full   0.914 M/s stall 0.020 elig True  thr=8 sub=8 pipe=False ay=True
+  full   0.877 M/s stall 0.026 elig True  thr=16 sub=8 pipe=True ay=False
+  full   0.864 M/s stall 0.025 elig True  thr=8 sub=8 pipe=True ay=True
+  native 0.997 M/s stall 0.010 elig True  thr=16 sub=8 pipe=True ay=False
+  native 0.960 M/s stall 0.015 elig True  thr=16 sub=4 pipe=False ay=False
+  native 0.941 M/s stall 0.010 elig True  thr=16 sub=8 pipe=False ay=False
+  native 0.936 M/s stall 0.013 elig True  thr=16 sub=4 pipe=True ay=False
+  native 0.848 M/s stall 0.010 elig True  thr=8 sub=8 pipe=False ay=True
+  native 0.836 M/s stall 0.001 elig True  thr=8 sub=4 pipe=False ay=True
+  native 0.834 M/s stall 0.002 elig True  thr=8 sub=8 pipe=True ay=True
+  native 0.801 M/s stall 0.001 elig True  thr=8 sub=4 pipe=True ay=True
+frozen at 2026-11-10T07:14:40
+
+=== confirmation: 6 trials, failures 0 ===
+  full   block 0: 0.970 M/s cpu 4.07 us cores 3.95 p99.9 54.5 ms stall 0.022 gpu% 14.879958246346556
+  full   block 1: 0.975 M/s cpu 4.06 us cores 3.96 p99.9 54.5 ms stall 0.022 gpu% 13.496881496881496
+  full   block 2: 1.001 M/s cpu 4.01 us cores 4.02 p99.9 54.5 ms stall 0.021 gpu% 14.43125
+  native block 0: 0.917 M/s cpu 5.91 us cores 5.42 p99.9 52.4 ms stall 0.014 gpu% 0.0
+  native block 1: 0.909 M/s cpu 5.91 us cores 5.37 p99.9 52.4 ms stall 0.013 gpu% 0.0
+  native block 2: 0.891 M/s cpu 5.97 us cores 5.32 p99.9 54.5 ms stall 0.015 gpu% 0.0
+  throughput: 1.07x  95% CI [1.06, 1.12]
+  CPU reduction: 1.46x  95% CI [1.45, 1.49]
+== watcher done Tue Nov 10 08:04:03 EST 2026

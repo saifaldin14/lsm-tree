@@ -150,6 +150,46 @@ Runs:
 Analysis, statistics and exclusions are as above. Native and full offload are
 re-run inside these campaigns so that every ratio is paired within a block.
 
+### LUDA head-to-head (added 2026-11-10, before these runs)
+
+LUDA's code is public (github.com/xpsair/luda, commit 89792ac). It is LevelDB 1.22 with
+GPU flushes and compactions, and no block compression.
+
+- **Build (`luda/setup.sh`).** moderngpu is pinned to 01aabbe (2019-09-12, before LUDA's
+  code). Two changes were needed to LUDA's source to make it build and run on this machine,
+  and nothing else is changed:
+  - LUDA's one `mgpu::merge` call passes moderngpu's sm_35 launch shape (128 x 11). The
+    default for newer GPUs needs 61,440 bytes of shared memory for LUDA's 32-byte
+    record, over the 48 KiB limit, so it does not link.
+  - `thread_write_file` gets the `return nullptr;` it is missing. GCC 13 treats the
+    missing return as unreachable and crashes the first compaction.
+- **Workload limits found before any measurement.** LUDA keeps each key in a fixed
+  32-byte buffer and sizes its buffers for 1 KiB values in 15 MiB tables, as its own test
+  does. YCSB's keys (up to 23 bytes plus 8 bytes of LevelDB metadata) overflow it.
+  So LUDA does not run under gParaKV's YCSB driver without a further change, and we do
+  not make one. The comparison uses `db_bench`, which LUDA builds, with its 16-byte keys
+  and 1 KiB values.
+- **Systems,** each through its own `db_bench`, on the same 4 cores and GPU with data on
+  tmpfs:
+  - LevelDB 1.22: the stock release LUDA forked (github.com/google/leveldb, tag 1.22). LUDA's
+    own switch for turning the GPU off (`GPU_ACCELERATE` 0) deadlocks in the first
+    compaction, so it is not used. This was found in a 500k-key trial before any measurement.
+  - LUDA.
+  - Native RocksDB (`lsm_db_bench`, `LSM_DB_BENCH_MODE=native_cpu`).
+  - Full offload (`lsm_db_bench`, `LSM_DB_BENCH_MODE=cuda_merge`).
+- **Settings.** No compression anywhere: LUDA has none, and LevelDB was built without
+  snappy. The LevelDB-family systems use LUDA's table options (15 MiB memtable and files,
+  10-bit Bloom filter). RocksDB uses the same memtable and file size and Bloom filter,
+  with 4 background jobs and 4 subcompactions.
+- **Measurement.** `fillrandom` of 10 M keys from one thread, then `readrandom` of 1 M
+  keys. We report fill throughput and CPU time from `/usr/bin/time`. Correctness check:
+  LevelDB's `db_bench` uses a fixed seed, so LUDA must find exactly as many keys as
+  LevelDB in `readrandom`.
+- **Hypothesis.** None; this is descriptive, as H12. The two code bases differ (LevelDB
+  against RocksDB), so the comparisons that mean something are LUDA against LevelDB and
+  ours against RocksDB, each on the same harness.
+- **Repetitions.** 3, in shuffled order.
+
 ## Remote compaction and replication over RDMA (added before these runs)
 
 Every result above comes from one machine. These experiments move compaction off the
@@ -472,6 +512,46 @@ All runs verified against native RocksDB. Numbers: `data/v3/summary.md`.
     48 ms (8 cores) and 84 against 336 ms (16 cores).
   - The disk statistics come from the campaign's `iostat` log (`v3-ssd/device.json`),
     because btrfs hides the disk from the benchmark's own device lookup.
+
+### NVMe follow-up on malphite (registered 2026-11-10, before these runs)
+
+The tuned NVMe confirmation on malphite (`data/malphite-nvme/retune`, 8 cores, 3 blocks)
+gave 1.07× throughput (95% CI 1.06–1.12) and 1.46× less CPU per write. Before any of the
+runs below, analysis of that data showed:
+
+- Ours had 863 memtable-limit write delays against native's 98, while native had more
+  L0-file-count delays (194 against 100).
+- Ours drove the NVMe harder: median write latency 3.0 against 0.8 ms, read latency 11.4
+  against 5.3 ms, queue depth 43 against 24, and `%util` 81% against 69%.
+- Write amplification over ingest plus catch-up compaction was 3.8–4.0 for ours against
+  3.2–3.3 for native. The selected settings differ in subcompactions (4 for ours, 8 for
+  native).
+
+Four checks follow, all on malphite with the build and golden database of the confirmation.
+They use 50 M records, 120 s warm-up plus 300 s, 3 blocks and schedule seed 5. Settings are
+frozen from `tuned-malphite.json` unless stated. The confirmation stays the reported NVMe
+result; these checks explain it and do not replace it, and no setting is re-selected from
+them.
+
+- **N1, same machine in memory.** The confirmation grid with data on `/dev/shm`. tmpfs has
+  no direct I/O, so I/O is buffered, as in the v3 in-memory campaigns.
+  - Rule: if ours' throughput ratio is at least 1.30×, the small NVMe gain is attributed
+    to the storage path. If it is at most 1.15×, it is attributed to the machine.
+    Otherwise it is reported as mixed.
+- **N2, subcompactions.** The NVMe confirmation with ours at subcompactions = 8 (every other
+  setting frozen), paired with frozen native in each block.
+  - Rule: if ours' ingest-plus-compaction write amplification comes within 5% of native's,
+    the gap is attributed to the subcompaction setting. Throughput is reported either way.
+- **N3, 4 cores on NVMe.** Direct I/O, with the registered 4-core settings of
+  `v3-headline.json` for both designs. These were tuned on the main server, not malphite;
+  this is stated wherever N3 is reported.
+  - Descriptive: tests whether a CPU-bound regime exists on this NVMe drive.
+- **N4, device ceiling.** `fio` on the same file system with direct I/O, 1 MiB requests,
+  queue depth 32, 60 s each: sequential write, then mixed workloads at the read:write byte
+  ratios of the confirmation (`iostat` medians): 32% reads (ours, about 765 MB/s in
+  total) and 50% reads (native, about 880 MB/s in total).
+  - Rule: if ours' combined read plus write bandwidth is at least 80% of the mixed
+    ceiling, the drive is called saturated for ours.
 
 ## Changes after data collection
 

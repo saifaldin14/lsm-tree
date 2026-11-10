@@ -1,0 +1,314 @@
+{
+ "_comment": "Selection rule from PREREGISTRATION.md: per design, highest throughput with stall < 5% and passing verification. Frozen before the confirmation run.",
+ "frozen_at": "2026-11-10T07:14:40",
+ "selected": {
+  "native": {
+   "design": "native",
+   "mode": "native_cpu",
+   "cores": 8,
+   "writes": "batched",
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 8,
+    "threads": 16,
+    "subcompactions": 8,
+    "pipelined-write": true,
+    "adaptive-yield": false,
+    "allow-fallocate": false
+   },
+   "block": 0
+  },
+  "full": {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 8,
+   "writes": "batched",
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 8,
+    "threads": 16,
+    "subcompactions": 4,
+    "pipelined-write": true,
+    "adaptive-yield": false,
+    "allow-fallocate": false
+   },
+   "block": 0
+  }
+ },
+ "search": [
+  {
+   "design": "native",
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 8,
+    "threads": 16,
+    "subcompactions": 4,
+    "pipelined-write": false,
+    "adaptive-yield": false,
+    "allow-fallocate": false
+   },
+   "ops_per_second": 960334.4375653567,
+   "stall_fraction": 0.014929222137896202,
+   "verified": true,
+   "eligible": true
+  },
+  {
+   "design": "full",
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 8,
+    "threads": 8,
+    "subcompactions": 8,
+    "pipelined-write": true,
+    "adaptive-yield": true,
+    "allow-fallocate": false
+   },
+   "ops_per_second": 864040.3987458748,
+   "stall_fraction": 0.024751827760268665,
+   "verified": true,
+   "eligible": true
+  },
+  {
+   "design": "full",
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 8,
+    "threads": 8,
+    "subcompactions": 8,
+    "pipelined-write": false,
+    "adaptive-yield": true,
+    "allow-fallocate": false
+   },
+   "ops_per_second": 914479.5747889573,
+   "stall_fraction": 0.019590473361544083,
+   "verified": true,
+   "eligible": true
+  },
+  {
+   "design": "full",
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 8,
+    "threads": 16,
+    "subcompactions": 4,
+    "pipelined-write": true,
+    "adaptive-yield": false,
+    "allow-fallocate": false
+   },
+   "ops_per_second": 963541.3818426729,
+   "stall_fraction": 0.02300252443290338,
+   "verified": true,
+   "eligible": true
+  },
+  {
+   "design": "full",
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 8,
+    "threads": 16,
+    "subcompactions": 4,
+    "pipelined-write": false,
+    "adaptive-yield": false,
+    "allow-fallocate": false
+   },
+   "ops_per_second": 947826.8165372643,
+   "stall_fraction": 0.02136162404581697,
+   "verified": true,
+   "eligible": true
+  },
+  {
+   "design": "native",
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 8,
+    "threads": 8,
+    "subcompactions": 8,
+    "pipelined-write": true,
+    "adaptive-yield": true,
+    "allow-fallocate": false
+   },
+   "ops_per_second": 833581.4938144693,
+   "stall_fraction": 0.0021983967503791833,
+   "verified": true,
+   "eligible": true
+  },
+  {
+   "design": "native",
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 8,
+    "threads": 16,
+    "subcompactions": 8,
+    "pipelined-write": false,
+    "adaptive-yield": false,
+    "allow-fallocate": false
+   },
+   "ops_per_second": 941428.0798070079,
+   "stall_fraction": 0.009685703322398093,
+   "verified": true,
+   "eligible": true
+  },
+  {
+   "design": "native",
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 8,
+    "threads": 8,
+    "subcompactions": 4,
+    "pipelined-write": false,
+    "adaptive-yield": true,
+    "allow-fallocate": false
+   },
+   "ops_per_second": 836095.5645053269,
+   "stall_fraction": 0.0013938058009161463,
+   "verified": true,
+   "eligible": true
+  },
+  {
+   "design": "native",
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 8,
+    "threads": 8,
+    "subcompactions": 4,
+    "pipelined-write": true,
+    "adaptive-yield": true,
+    "allow-fallocate": false
+   },
+   "ops_per_second": 800677.9279459941,
+   "stall_fraction": 0.0007386994272256268,
+   "verified": true,
+   "eligible": true
+  },
+  {
+   "design": "full",
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 8,
+    "threads": 16,
+    "subcompactions": 8,
+    "pipelined-write": true,
+    "adaptive-yield": false,
+    "allow-fallocate": false
+   },
+   "ops_per_second": 876966.4151756827,
+   "stall_fraction": 0.0255471805082717,
+   "verified": true,
+   "eligible": true
+  },
+  {
+   "design": "full",
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 8,
+    "threads": 16,
+    "subcompactions": 8,
+    "pipelined-write": false,
+    "adaptive-yield": false,
+    "allow-fallocate": false
+   },
+   "ops_per_second": 929120.4368961703,
+   "stall_fraction": 0.02201953054009913,
+   "verified": true,
+   "eligible": true
+  },
+  {
+   "design": "native",
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 8,
+    "threads": 16,
+    "subcompactions": 4,
+    "pipelined-write": true,
+    "adaptive-yield": false,
+    "allow-fallocate": false
+   },
+   "ops_per_second": 935764.8007077056,
+   "stall_fraction": 0.01339107771447681,
+   "verified": true,
+   "eligible": true
+  },
+  {
+   "design": "native",
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 8,
+    "threads": 8,
+    "subcompactions": 8,
+    "pipelined-write": false,
+    "adaptive-yield": true,
+    "allow-fallocate": false
+   },
+   "ops_per_second": 847636.0282590931,
+   "stall_fraction": 0.00969239559080726,
+   "verified": true,
+   "eligible": true
+  },
+  {
+   "design": "full",
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 8,
+    "threads": 8,
+    "subcompactions": 4,
+    "pipelined-write": false,
+    "adaptive-yield": true,
+    "allow-fallocate": false
+   },
+   "ops_per_second": 947826.7520536052,
+   "stall_fraction": 0.018597678007380908,
+   "verified": true,
+   "eligible": true
+  },
+  {
+   "design": "full",
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 8,
+    "threads": 8,
+    "subcompactions": 4,
+    "pipelined-write": true,
+    "adaptive-yield": true,
+    "allow-fallocate": false
+   },
+   "ops_per_second": 929503.2045532754,
+   "stall_fraction": 0.017790237525869314,
+   "verified": true,
+   "eligible": true
+  },
+  {
+   "design": "native",
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 8,
+    "threads": 16,
+    "subcompactions": 8,
+    "pipelined-write": true,
+    "adaptive-yield": false,
+    "allow-fallocate": false
+   },
+   "ops_per_second": 997134.9080808256,
+   "stall_fraction": 0.009718170751284769,
+   "verified": true,
+   "eligible": true
+  }
+ ]
+}
