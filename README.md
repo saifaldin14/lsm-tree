@@ -34,6 +34,10 @@ the same search, on the same CPU cores. The GPU is in addition to those cores.
 | Against earlier GPU and FPGA designs | **2.0–6.5× less compaction CPU**; their database gains are 1.14–1.41× over RocksDB, ours 1.75× |
 | Cost (AWS prices) | At high write rates, **half RocksDB's cost per write**: 2.26M writes/s on 16 cores + GPU, against RocksDB's best of 1.60M on 32 cores |
 
+Every result at a glance, as ours relative to RocksDB (1× means equal):
+
+![Every result at a glance](publication/figures/fig38_overview.png)
+
 ## How good is this?
 
 **The compaction result is strong.** A 10× drop in compaction cost, and one GPU replacing
@@ -41,13 +45,10 @@ about 16 cores, hold across value sizes and compression types, and every compact
 RocksDB's output exactly.
 
 **The whole-database result is solid but not 10×.** Once compaction is on the GPU, most of
-the CPU left goes to RocksDB accepting writes:
+the CPU left goes to RocksDB accepting writes, which this project does not change
+(tuned runs, LZ4, median of 5):
 
-| CPU per write | RocksDB | Ours |
-|---|---|---|
-| Compaction | 3.5–5.5 µs | **0.8 µs** |
-| Flushing memory to files | 1.0 µs | 0.7 µs |
-| Accepting the write | 2.3 µs | 2.3 µs |
+![CPU per write, split by job](publication/figures/fig39_cpu_per_write.png)
 
 So the database gains about 2×, and further gains would need the write path itself to be
 faster. The gain is largest when the machine is busy: 9.6× lower worst-case latency near
@@ -140,9 +141,11 @@ Every table and figure, with full setups and caveats, is in
 Ours costs about 1.2 CPU-seconds per GiB whatever the data. RocksDB's cost depends on it:
 highest with small values and ZSTD, lowest with large values or no compression.
 
-**One GPU replaces 15–18 cores.** Running eight compactions at once, the GPU processes
-1.42 GiB/s with LZ4 and 0.89 GiB/s with ZSTD, while one RocksDB core manages 0.094 and
-0.050 GiB/s.
+**One GPU replaces 15–18 cores.** Running eight compactions at once on 8 cores, the GPU
+processes 1.42 GiB/s with LZ4 and 0.89 GiB/s with ZSTD, using 2.0 and 1.3 cores of its own.
+One RocksDB core manages 0.094 and 0.050 GiB/s.
+
+![Compaction throughput: one GPU against RocksDB on 8 cores](publication/figures/fig18_v3_cores.png)
 
 ### 2. The whole database: 1.5–1.8× more writes for half the CPU
 
@@ -204,11 +207,7 @@ published production models, and the standard YCSB benchmark. Median of 3 runs.*
 RocksDB throughput. Ours barely notices. *Half reads, half writes, 4 cores, the same
 untuned settings for both designs, median of 3 runs.*
 
-| Settings | RocksDB | Ours | Gain |
-|---|---|---|---|
-| Default (LZ4) | 187k ops/s | 273k | 1.46× |
-| Compact more often | 193k | 269k | 1.39× |
-| Compact more often, ZSTD | 112k | 244k | **2.18×** |
+![Throughput with different settings](publication/figures/fig40_settings.png)
 
 Switching to ZSTD costs RocksDB 42% of its throughput, and ours 9%.
 
@@ -246,8 +245,11 @@ second server; median of 3 runs; every compaction matched RocksDB exactly.*
   **2.04× less CPU per write** on the database machine (1.84× counting the GPU server's CPU).
 - **A remote CPU server is not enough:** it saves the same CPU but each compaction takes
   9.6–17.6 s, slower than RocksDB locally.
-- **Replicas:** compacting once and sending the files to 2 backups cuts the whole cluster's
-  CPU per write 3.4×.
+- **Replicas:** with 2 backups, compacting once and sending the files to them cuts the CPU of
+  all three machines per write 3.4× for batched writes and 1.8× for single writes (earlier
+  testbed, compacting on the primary's CPU):
+
+![CPU of all machines per write with 2 backups](publication/figures/fig41_replication.png)
 
 Details: [docs/remote-compaction.md](docs/remote-compaction.md).
 
@@ -339,6 +341,7 @@ ONLY="isolated headline bottomzstd openloop stream metadata timeseries mixgraph 
 python3 publication/make_figures_v3.py                       # figures 17-21 from publication/data/v3/
 python3 publication/make_figures.py                          # figures 10-16 and 22
 python3 publication/make_readme_figures.py                   # figures 32, 33, 35-37 (README summaries)
+python3 publication/make_readme_figures_more.py              # figures 38-41 (README summaries)
 python3 publication/rdma/analyze_r7.py                       # figures 23 and 31 (remote GPU over RDMA)
 ```
 
