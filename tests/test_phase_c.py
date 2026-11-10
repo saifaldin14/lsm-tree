@@ -46,6 +46,14 @@ class PhaseCTests(unittest.TestCase):
                 self.assertEqual(command[command.index("--mode") + 1], trial["mode"])
                 self.assertTrue(all(arg.startswith("--") for arg in command[4::2]))
 
+    def test_memory_retry_changes_all_baseline_arms_only(self):
+        grids = phase_c.build_grids(self.headline, self.root, preferred_baselines=True)
+        for name in ("b", "blob-smoke"):
+            for trial in grids[name]["trials"]:
+                self.assertEqual(trial["memory"], "preferred")
+        for trial in grids["w"]["trials"] + grids["profile"]["trials"]:
+            self.assertNotIn("memory", trial)
+
     def test_protocol_cannot_silently_change(self):
         path = self.root / "grid.json"
         phase_c.write_once(path, {"seed": 114})

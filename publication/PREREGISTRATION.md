@@ -793,6 +793,18 @@ ours writes fewer bytes.
   raw profiles are retained for re-analysis. They do not provide off-CPU durations.
   BlobDB's write amplification will not be compared using the SST-only counter, which
   omits blob-file writes.
+- **W completed (`data/wa-trigger/w`):** all eight runs verified 50 M keys with no GPU
+  merge fallbacks. At trigger 16, native/full median write amplification is 2.52/3.64;
+  at 24 it is 2.17/3.09, with 971k/1,467k writes/s. Neither setting reaches the within-10%
+  target. These measurements do not establish that the higher write amplification is fixed.
+- **Baseline retry amendment (2026-11-10, after the first B failures):** kernel logs
+  identify `CONSTRAINT_MEMORY_POLICY` OOM kills on NUMA node 0 for BlobDB and universal
+  trials, despite free memory on other nodes. All B arms, including both offload arms,
+  are rerun in a separate `base-b-preferred` campaign with `memory: preferred`, keeping
+  cores, data, settings, durations, repetitions and seed unchanged. The GPU BlobDB smoke
+  is retried under the same policy. Verified profile scratch copies are removed first;
+  profile artifacts and raw samples remain. The original failed cohort is retained and
+  is not mixed into the retry medians.
 
 ## Changes after data collection
 
