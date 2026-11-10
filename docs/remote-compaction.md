@@ -118,8 +118,8 @@ compaction server, for the whole replica set.
 ## Results so far (CPU compaction server)
 
 These were measured on two machines linked at 100 Gb/s (ConnectX-6 Dx, RoCE), with the
-compaction server running the CPU merge (`cpu_merge`). The README summarises them in
-[section 10](../README.md#10-compaction-on-another-machine-over-rdma).
+compaction server running the CPU merge (`cpu_merge`). They are summarised in
+[publication/FULL-RESULTS.md, section 10](../publication/FULL-RESULTS.md#10-compaction-on-another-machine-over-rdma).
 
 - **Transport:** RDMA push reaches 92 Gb/s (the `ib_write_bw` ceiling) and costs the
   client about 0.012 CPU-seconds per GiB. TCP reaches 6–7 Gb/s at about 1 CPU-second
@@ -175,7 +175,7 @@ replication traffic per write. Median of 5 runs.
 ## Results: GPU compaction over RDMA (through a relay)
 
 This was the first GPU testbed, before a machine with both a GPU and an RDMA link was
-found; the direct-link results are in the README, section 10. Here `rdma_campaign.py r7` chains three machines: the
+found; the direct-link results are in [publication/FULL-RESULTS.md](../publication/FULL-RESULTS.md#10-compaction-on-another-machine-over-rdma), section 10. Here `rdma_campaign.py r7` chains three machines: the
 database node (AMD EPYC 7662, 4 cores) sends each job over RDMA (ConnectX-6 Dx, 100 Gb/s)
 to a relay (`--backend remote_merge`), which forwards it over TCP on 1 Gb/s Ethernet to a
 `cuda_merge` server on the A6000 host (8 cores of the GPU's NUMA node). The same
@@ -209,7 +209,7 @@ Medians of 3 warm runs ([data](../publication/data/rdma/r7/summary.md),
   merge is slower than RocksDB's own compaction.
 
 Both testbeds side by side (rows above the dashed line: this relay testbed; below it: the
-direct link of README section 10, on different machines, so compare rows within a
+direct link of FULL-RESULTS.md section 10, on different machines, so compare rows within a
 testbed):
 
 ![GPU compaction over RDMA, relay and direct testbeds](../publication/figures/fig23_rdma_gpu.png)
@@ -233,6 +233,6 @@ testbed):
   file crosses the network twice: server to primary, then primary to each backup.
 - **GPU over RDMA was first estimated, then measured.** On the relay testbed, GPU-over-RDMA
   times were estimates from measured hops. On a second testbed with a direct 100 Gb/s link
-  they are measured (README, section 10).
+  they are measured (publication/FULL-RESULTS.md, section 10).
 - **GPUDirect RDMA is not used.** On the server, received data passes through host memory
   before the GPU. Data-center GPUs could receive directly with GPUDirect RDMA.

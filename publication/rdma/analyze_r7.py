@@ -161,7 +161,7 @@ ROWS = [("native", "Native RocksDB"), ("remote-cpu-rdma", "Remote CPU server, RD
 FIGURE_LABELS = {"native": "RocksDB", "direct-native": "RocksDB (direct link)",
                  "remote-gpu-rdma": "Remote GPU, direct RDMA"}
 LEGEND = ["db", "rdma", "relay", "gbe", "cpu_server", "gpu"]
-# The direct testbed alone (README section 10).
+# The direct testbed alone (README section 6, FULL-RESULTS.md section 10).
 DIRECT_ROWS = [("direct-native", "RocksDB on the database machine"),
                ("direct-cpu-rdma", "Remote CPU server over RDMA"),
                ("remote-gpu-rdma", "Remote GPU over RDMA (ours)")]
