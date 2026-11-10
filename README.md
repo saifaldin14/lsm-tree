@@ -52,8 +52,9 @@ write), which no design here offloads.
 
 - **Ratios compare ours with RocksDB**, worded so a bigger number is better for ours: "3×
   less CPU" means RocksDB used three times as much. A ratio below 1× means ours was worse.
-- **CPU per write** is the CPU time of every thread in the database, divided by the writes
-  it completed.
+- **CPU per write** is CPU time divided by completed writes. The original v3 comparisons
+  use thread-accounting totals; the NVMe follow-ups and new CPU-usage figure use whole-process
+  counters. Thread-accounting totals can omit threads that exited between samples.
 - **99th and 99.9th percentile** latency, written p99 and p99.9, is the time within which
   99% and 99.9% of writes finished. They show the slowest writes, which averages hide.
 - **A stall** is RocksDB deliberately slowing writers because compaction has fallen behind.
@@ -152,6 +153,32 @@ Where the CPU goes, per write:
 - RocksDB had to slow writers down for up to 6% of the time; ours never did.
 - With 16 cores, 99.9% of writes finished within 9 ms with ours, against 210 ms with
   RocksDB.
+
+**How many cores are busy?** The figure below uses whole-process CPU time over the
+measurement window, averaged over the five runs. At 8 cores, RocksDB uses 7.44 cores and
+ours 5.65; at 16, they use 10.48 and 10.01 respectively, while ours completes more writes.
+The role counters miss some short-lived threads, so their difference from process CPU
+is shown as unattributed. The outline is unused process core budget, not machine idle time.
+The earlier per-role CPU accounting and this process-level total are distinct measures.
+
+![Process CPU use and unused core budget](publication/figures/fig28_cpu_use.png)
+
+**Remaining write-path bottleneck.** Separate instrumented runs at 8 cores used 30 s of
+warm-up and a 60 s measured window; both verified all 50 M keys. Mean sampled timings
+per batch of 100 writes were:
+
+| Sampled wall time per batch | RocksDB | Ours |
+|---|---|---|
+| Whole write call | 1.833 ms | 1.190 ms |
+| Write-thread queue wait | 1.562 ms | 0.997 ms |
+| Memtable insertion | 0.167 ms | 0.173 ms |
+
+These timers overlap and are not an additive CPU breakdown. CPU sampling found memtable
+skip-list traversal to be a large remaining hotspot with offload. Off-CPU tracing was
+unavailable, and some library stack frames could not be decoded; the raw profiles are
+retained on the host. Instrumentation affects performance, so these runs explain the
+write path rather than replace the throughput results above. Summaries and commands:
+[publication/data/profiles/phase-c/](publication/data/profiles/phase-c/).
 
 ### 4. Write latency at a fixed load
 
@@ -299,6 +326,17 @@ the cheapest choice measured ($0.291 per billion on 4 cores). The GPU pays once 
 is beyond what RocksDB reaches by adding cores. On a SATA SSD, where the disk saturates for
 both designs, it does not pay at all ([section 8](#8-real-world-workloads-and-a-real-disk)).
 
+**New tuned comparison, pending clean confirmation.** Three five-minute runs on 12 cores
+with the GPU reached a median 1.785M writes/s. Tuned RocksDB on 32 cores reached 1.598M
+with its original trigger and 1.407M with trigger 8, so the stronger 1.598M result is the
+comparison. Every run verified all 50 M keys. Under the same CPU/GPU pricing model,
+12 cores plus a GPU cost $1.697/h against $2.856/h, about 41% less while exceeding that
+throughput target. Some 12-core runs overlapped a build or smoke test on another NUMA
+node, so this is not yet a final H30 result. These are modeled resource costs applied to
+lab hardware, not measured AWS performance or a complete cloud bill.
+The comparison covers the tested configurations, not every possible core count or a
+globally cheapest deployment.
+
 ### 8. Real-world workloads and a real disk
 
 **Write-heavy workloads modelled on real RocksDB users run 1.4 to 1.8× faster; read-heavy
@@ -355,12 +393,58 @@ cache).
   same I/O path, and 1.55× (6.96 against 4.48 µs) when RocksDB read directly from the
   drive, which costs it less CPU.
 - **Costs on the drive.** Ours writes more bytes per byte of user data: write
-  amplification 5.5 against 4.0 with the same I/O path (3.8 against 3.2 with direct reads). With identical settings, ours finishes each compaction sooner,
-  so each one merges less new data and the same bytes are rewritten more often; ours adds
-  no bytes to any single compaction. Its 99.9th-percentile write latency was 54.5 against
-  52.4 ms in the direct-read run.
+  amplification 5.5 against 4.0 with the same I/O path (3.8 against 3.2 with direct reads).
+  Compaction scheduling is a candidate explanation, not an isolated cause; the trigger
+  experiments below change level sizing too. Its 99.9th-percentile write latency was
+  54.5 against 52.4 ms in the direct-read run.
 - **Correct on this hardware:** every key was verified in every run, and a separate
   single-compaction check matched RocksDB in all 16 repetitions with no CPU fallback.
+
+**What reached the drive in the archived N6 runs.** These device measurements belong to
+the registered 0.822M versus 0.838M writes/s campaign, not the independent 1.258M/s run
+reported above. The figure separates bandwidth, IOPS and device busy time. The top row
+shows block 0; the bottom row shows medians of the three per-run means. Samples are
+aligned to each recorded measurement window at approximately one-second resolution.
+
+![NVMe bandwidth, IOPS and device busy time](publication/figures/fig27_nvme_disk.png)
+
+RocksDB writes about 471 MiB/s at 3,928 write IOPS and 59% device busy time; ours writes
+656 MiB/s at 5,339 write IOPS and 88% busy time. Physical reads are almost zero because
+the working set is cached. These data do not establish that both designs saturate the
+drive, and the earlier mixed-read/write fio ceiling is not a matching limit for this run.
+
+**NVMe with less CPU or different compaction settings (H31).** Two runs per design and
+cell, 60 s warm-up plus 180 s measured, buffered I/O for both and WAL off. All 12 runs
+verified 50 M keys with no GPU merge fallbacks. Four-core settings are scaled from the
+8-core tuning, not separately tuned. ZSTD is enabled only on the last level; the starting
+database was preloaded with LZ4, so these are short-run results, not a steady-state claim.
+
+![NVMe throughput, CPU and write amplification across configurations](publication/figures/fig29_nvme_regimes.png)
+
+| Configuration | Writes/s, RocksDB / ours | More writes | CPU µs/write, RocksDB / ours | Write amplification, RocksDB / ours |
+|---|---|---|---|---|
+| 4 cores, LZ4 | 498k / 713k | 1.43× | 7.75 / 4.10 | 3.96 / 5.71 |
+| 8 cores, ZSTD on last level | 751k / 818k | 1.09× | 9.78 / 4.84 | 3.83 / 5.47 |
+| 8 cores, L0 trigger 8 for RocksDB, 12 for ours | 956k / 1,069k | 1.12× | 6.31 / 4.13 | 2.65 / 3.79 |
+
+The throughput gain appears with a smaller CPU budget on this NVMe device. Raising the
+trigger reduces writing for both designs; ours still writes more. These tests change the
+L0 trigger and level-size target together, so they do not isolate a single scheduling cause.
+
+**Fixed-rate NVMe latency (N5).** Both designs receive the same offered rate, and latency
+includes time waiting behind the schedule. Medians of two runs per design and rate,
+60 s warm-up plus 180 s measured; all 12 runs verified every key.
+
+![NVMe write latency at fixed offered rates](publication/figures/fig30_nvme_latency.png)
+
+| Offered writes/s | p99 ms, RocksDB / ours | p99.9 ms, RocksDB / ours | CPU µs/write, RocksDB / ours |
+|---|---|---|---|
+| 400k | 5.51 / 3.08 | 8.91 / 8.13 | 12.6 / 7.54 |
+| 630k | 503 / 17.3 | 638 / 336 | 9.65 / 5.97 |
+| 800k | 5,704 / 1,040 | 6,174 / 1,275 | 8.27 / 5.04 |
+
+Both designs reach approximately the offered rates, but the multi-second tails at 800k
+show that matching average throughput is not enough to meet a latency target.
 
 Raw data, iostat samples and the drive measurements are in
 [publication/data/malphite-nvme/](publication/data/malphite-nvme/).

@@ -738,6 +738,16 @@ ours writes fewer bytes.
 - **Reported:** writes/s, CPU per write, write amplification, drive MB/s and utilisation,
   every cell, whatever the outcome.
 - **Hypothesis H31:** in at least one cell ours' throughput is at least 1.2x RocksDB's.
+- **Measured outcome (2026-11-10, `data/malphite-nvme/h31`):** all 12 trials passed
+  verification of 50 M keys with zero GPU merge fallbacks. Medians of two runs per arm:
+  C4 713k against 498k writes/s (1.43x), BZ 818k against 751k (1.09x), TR 1,069k against
+  956k (1.12x). C4 exceeds the point threshold. The small repetition count, inherited
+  settings and cached working set limit generalisation. TR write amplification is
+  3.79 against 2.65, so the extra-writing issue is not resolved.
+- **N5 completed (`data/malphite-nvme/followup/n5`):** all 12 trials verified 50 M keys.
+  At 400k, 630k and 800k offered writes/s, native/full median p99.9 latencies are
+  8.91/8.13, 638/336 and 6,174/1,275 ms. Achieved rates are near the offered rates, but
+  multi-second tails at 800k are not an acceptable low-latency result.
 
 ### Contention, write amplification and baselines on zyra (added 2026-11-10, before these runs)
 
@@ -778,6 +788,11 @@ ours writes fewer bytes.
   followed launch. P/W/B have not started at this amendment. The earlier trigger-16
   extension completed before the queue hand-off; it is retained separately from W,
   whose slowdown and stop settings differ.
+- **Profile execution:** both 60 s profile runs verified 50 M keys. CPU records cover
+  each measured window, but some library stack frames produce DWARF decoding warnings;
+  raw profiles are retained for re-analysis. They do not provide off-CPU durations.
+  BlobDB's write amplification will not be compared using the SST-only counter, which
+  omits blob-file writes.
 
 ## Changes after data collection
 

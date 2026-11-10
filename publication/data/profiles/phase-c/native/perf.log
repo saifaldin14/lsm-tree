@@ -1,0 +1,2 @@
+[ perf record: Woken up 2284 times to write data ]
+[ perf record: Captured and wrote 575.384 MB /tmp/sa29ali/profile-checked/native/oncpu.data (70980 samples) ]

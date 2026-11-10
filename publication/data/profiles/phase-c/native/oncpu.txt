@@ -1,0 +1,490 @@
+# To display the perf.data header info, please use --header/--header-only options.
+#
+#
+# Total Lost Samples: 0
+#
+# Samples: 42K of event 'cpu-clock:u' (time slices: 10895279.859747,10895339.858220)
+# Event count (approx.): 432383834060
+#
+# Overhead  Command          Shared Object        Symbol                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  IPC   [IPC Coverage]
+# ........  ...............  ...................  ......................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................  ....................
+#
+    14.19%  rocksdb:low      lsm_system_bench     [.] LZ4_compress_fast_extState                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          -      -            
+            |
+            ---LZ4_compress_fast_extState
+               LZ4_compress_fast
+               0xffffffffffffffff
+
+     9.07%  lsm-foreground   lsm_system_bench     [.] rocksdb::InlineSkipList<rocksdb::MemTableRep::KeyComparator const&>::FindSpliceForLevel<true>                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       -      -            
+            |
+            ---rocksdb::InlineSkipList<rocksdb::MemTableRep::KeyComparator const&>::FindSpliceForLevel<true>
+               |          
+                --8.78%--rocksdb::InlineSkipList<rocksdb::MemTableRep::KeyComparator const&>::Insert<true>
+                          |          
+                           --8.74%--rocksdb::InlineSkipList<rocksdb::MemTableRep::KeyComparator const&>::InsertConcurrently
+                                     rocksdb::MemTable::Add
+                                     rocksdb::(anonymous namespace)::MemTableInserter::PutCFImpl<rocksdb::(anonymous namespace)::MemTableInserter::PutCF(unsigned int, rocksdb::Slice const&, rocksdb::Slice const&)::{lambda(rocksdb::WriteBatch*, unsigned int, rocksdb::Slice const&, rocksdb::Slice const&)#1}>
+                                     rocksdb::(anonymous namespace)::MemTableInserter::PutCF
+                                     rocksdb::WriteBatchInternal::Iterate
+                                     rocksdb::WriteBatchInternal::InsertInto
+                                     rocksdb::DBImpl::WriteImpl
+
+     3.14%  rocksdb:low      lsm_system_bench     [.] rocksdb::CompactionMergingIterator::Next                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            -      -            
+            |
+            ---rocksdb::CompactionMergingIterator::Next
+               |          
+               |--1.56%--rocksdb::CompactionIterator::Next
+               |          |          
+               |           --1.53%--rocksdb::CompactionJob::ProcessKeyValue
+               |                     rocksdb::CompactionJob::ProcessKeyValueCompaction
+               |                     rocksdb::CompactionJob::RunSubcompactions
+               |                     rocksdb::CompactionJob::Run
+               |                     rocksdb::DBImpl::BackgroundCompaction
+               |                     rocksdb::DBImpl::BackgroundCallCompaction
+               |                     0xffffffffffffffff
+               |          
+                --1.29%--rocksdb::ClippingIterator::Next
+                          |          
+                           --1.14%--rocksdb::CompactionIterator::Next
+                                     rocksdb::CompactionJob::ProcessKeyValue
+                                     rocksdb::CompactionJob::ProcessKeyValueCompaction
+                                     |          
+                                      --0.99%--0x7f5de8e24792
+                                                start_thread
+                                                __GI___clone (inlined)
+
+     3.03%  rocksdb:low      libc-2.31.so         [.] __memmove_avx_unaligned_erms                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        -      -            
+            |
+            ---__memmove_avx_unaligned_erms
+               |          
+                --1.57%--rocksdb::BlockBuilder::AddWithLastKeyImpl
+                          |          
+                           --1.44%--rocksdb::BlockBuilder::AddWithLastKey
+                                     rocksdb::BlockBasedTableBuilder::Add
+                                     rocksdb::CompactionOutputs::AddToOutput
+                                     rocksdb::SubcompactionState::AddToOutput
+                                     rocksdb::CompactionJob::ProcessKeyValue
+                                     rocksdb::CompactionJob::ProcessKeyValueCompaction
+                                     |          
+                                      --1.16%--rocksdb::CompactionJob::RunSubcompactions
+                                                rocksdb::CompactionJob::Run
+                                                rocksdb::DBImpl::BackgroundCompaction
+                                                rocksdb::DBImpl::BackgroundCallCompaction
+                                                0xffffffffffffffff
+
+     2.92%  rocksdb:high     lsm_system_bench     [.] LZ4_compress_fast_extState                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          -      -            
+            |
+            ---LZ4_compress_fast_extState
+               LZ4_compress_fast
+               0xffffffffffffffff
+
+     2.87%  lsm-foreground   lsm_system_bench     [.] (anonymous namespace)::make_value                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   -      -            
+            |
+            ---(anonymous namespace)::make_value
+               (anonymous namespace)::run((anonymous namespace)::Config const&)::{lambda(unsigned int)#4}::operator()
+               |          
+                --2.86%--0x7f5de8e24792
+                          start_thread
+                          __GI___clone (inlined)
+
+     2.86%  rocksdb:low      lsm_system_bench     [.] LZ4_decompress_safe                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 -      -            
+            |
+            ---LZ4_decompress_safe
+               LZ4_decompress_safe_continue
+               rocksdb::(anonymous namespace)::LZ4_DecompressBlock
+               rocksdb::(anonymous namespace)::BuiltinDecompressorV2::DecompressBlock
+               rocksdb::DecompressBlockData
+               rocksdb::DecompressSerializedBlock
+               rocksdb::BlockFetcher::ReadBlockContents
+               |          
+                --2.86%--rocksdb::ReadAndParseBlockFromFile<rocksdb::Block_kData>
+                          rocksdb::BlockBasedTable::RetrieveBlock<rocksdb::Block_kData>
+                          rocksdb::BlockBasedTable::NewDataBlockIterator<rocksdb::DataBlockIter>
+                          rocksdb::BlockBasedTableIterator::InitDataBlock
+                          |          
+                           --2.86%--rocksdb::BlockBasedTableIterator::FindBlockForward
+                                     rocksdb::BlockBasedTableIterator::NextAndGetResult
+                                     |          
+                                     |--2.02%--rocksdb::(anonymous namespace)::LevelIterator::NextAndGetResult
+                                     |          rocksdb::CompactionMergingIterator::Next
+                                     |          |          
+                                     |           --2.00%--0xffffffffffffffff
+                                     |          
+                                      --0.84%--rocksdb::CompactionMergingIterator::Next
+
+     2.79%  lsm-foreground   lsm_system_bench     [.] rocksdb::MemTable::KeyComparator::operator()                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        -      -            
+            |
+            ---rocksdb::MemTable::KeyComparator::operator()
+               |          
+                --2.65%--rocksdb::InlineSkipList<rocksdb::MemTableRep::KeyComparator const&>::FindSpliceForLevel<true>
+                          |          
+                           --2.42%--rocksdb::InlineSkipList<rocksdb::MemTableRep::KeyComparator const&>::Insert<true>
+                                     rocksdb::InlineSkipList<rocksdb::MemTableRep::KeyComparator const&>::InsertConcurrently
+                                     rocksdb::MemTable::Add
+                                     rocksdb::(anonymous namespace)::MemTableInserter::PutCFImpl<rocksdb::(anonymous namespace)::MemTableInserter::PutCF(unsigned int, rocksdb::Slice const&, rocksdb::Slice const&)::{lambda(rocksdb::WriteBatch*, unsigned int, rocksdb::Slice const&, rocksdb::Slice const&)#1}>
+                                     rocksdb::(anonymous namespace)::MemTableInserter::PutCF
+                                     rocksdb::WriteBatchInternal::Iterate
+                                     rocksdb::WriteBatchInternal::InsertInto
+                                     rocksdb::DBImpl::WriteImpl
+
+     2.65%  rocksdb:low      lsm_system_bench     [.] rocksdb::CompactionIterator::NextFromInput                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          -      -            
+            |
+            ---rocksdb::CompactionIterator::NextFromInput
+               rocksdb::CompactionIterator::Next
+               |          
+                --2.62%--rocksdb::CompactionJob::ProcessKeyValue
+                          rocksdb::CompactionJob::ProcessKeyValueCompaction
+                          |          
+                          |--2.10%--rocksdb::CompactionJob::RunSubcompactions
+                          |          rocksdb::CompactionJob::Run
+                          |          rocksdb::DBImpl::BackgroundCompaction
+                          |          rocksdb::DBImpl::BackgroundCallCompaction
+                          |          0xffffffffffffffff
+                          |          
+                           --0.51%--0x7f5de8e24792
+                                     start_thread
+                                     __GI___clone (inlined)
+
+     1.77%  rocksdb:low      lsm_system_bench     [.] rocksdb::CompactionOutputs::AddToOutput                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             -      -            
+            |
+            ---rocksdb::CompactionOutputs::AddToOutput
+               rocksdb::SubcompactionState::AddToOutput
+               |          
+                --1.74%--rocksdb::CompactionJob::ProcessKeyValue
+                          rocksdb::CompactionJob::ProcessKeyValueCompaction
+                          |          
+                           --1.33%--rocksdb::CompactionJob::RunSubcompactions
+                                     rocksdb::CompactionJob::Run
+                                     rocksdb::DBImpl::BackgroundCompaction
+                                     rocksdb::DBImpl::BackgroundCallCompaction
+                                     0xffffffffffffffff
+
+     1.77%  rocksdb:low      lsm_system_bench     [.] rocksdb::BlockBuilder::AddWithLastKeyImpl                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           -      -            
+            |
+            ---rocksdb::BlockBuilder::AddWithLastKeyImpl
+               |          
+                --1.64%--rocksdb::BlockBuilder::AddWithLastKey
+                          |          
+                           --1.63%--rocksdb::BlockBasedTableBuilder::Add
+                                     rocksdb::CompactionOutputs::AddToOutput
+                                     rocksdb::SubcompactionState::AddToOutput
+                                     rocksdb::CompactionJob::ProcessKeyValue
+                                     rocksdb::CompactionJob::ProcessKeyValueCompaction
+                                     |          
+                                      --1.27%--rocksdb::CompactionJob::RunSubcompactions
+                                                rocksdb::CompactionJob::Run
+                                                rocksdb::DBImpl::BackgroundCompaction
+                                                rocksdb::DBImpl::BackgroundCallCompaction
+                                                0xffffffffffffffff
+
+     1.76%  rocksdb:low      libc-2.31.so         [.] __memcmp_avx2_movbe                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 -      -            
+            |
+            ---__memcmp_avx2_movbe
+               |          
+                --1.19%--non-virtual thunk to rocksdb::(anonymous namespace)::BytewiseComparatorImpl::Compare(rocksdb::Slice const&, rocksdb::Slice const&) const
+                          |          
+                           --0.84%--rocksdb::CompactionMergingIterator::Next
+
+     1.55%  lsm-foreground   lsm_system_bench     [.] (anonymous namespace)::run((anonymous namespace)::Config const&)::{lambda(unsigned int)#4}::operator()                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              -      -            
+            |
+            ---(anonymous namespace)::run((anonymous namespace)::Config const&)::{lambda(unsigned int)#4}::operator()
+               0x7f5de8e24792
+               start_thread
+               __GI___clone (inlined)
+
+     1.53%  lsm-foreground   libc-2.31.so         [.] __memcmp_avx2_movbe                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 -      -            
+            |
+            ---__memcmp_avx2_movbe
+               non-virtual thunk to rocksdb::(anonymous namespace)::BytewiseComparatorImpl::Compare(rocksdb::Slice const&, rocksdb::Slice const&) const
+               rocksdb::MemTable::KeyComparator::operator()
+               |          
+                --1.40%--rocksdb::InlineSkipList<rocksdb::MemTableRep::KeyComparator const&>::FindSpliceForLevel<true>
+                          |          
+                           --1.36%--rocksdb::InlineSkipList<rocksdb::MemTableRep::KeyComparator const&>::Insert<true>
+                                     rocksdb::InlineSkipList<rocksdb::MemTableRep::KeyComparator const&>::InsertConcurrently
+                                     rocksdb::MemTable::Add
+                                     rocksdb::(anonymous namespace)::MemTableInserter::PutCFImpl<rocksdb::(anonymous namespace)::MemTableInserter::PutCF(unsigned int, rocksdb::Slice const&, rocksdb::Slice const&)::{lambda(rocksdb::WriteBatch*, unsigned int, rocksdb::Slice const&, rocksdb::Slice const&)#1}>
+                                     rocksdb::(anonymous namespace)::MemTableInserter::PutCF
+                                     rocksdb::WriteBatchInternal::Iterate
+                                     rocksdb::WriteBatchInternal::InsertInto
+                                     rocksdb::DBImpl::WriteImpl
+
+     1.52%  rocksdb:low      lsm_system_bench     [.] rocksdb::BlockBasedTableBuilder::Add                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                -      -            
+            |
+            ---rocksdb::BlockBasedTableBuilder::Add
+               rocksdb::CompactionOutputs::AddToOutput
+               |          
+                --1.51%--rocksdb::SubcompactionState::AddToOutput
+                          rocksdb::CompactionJob::ProcessKeyValue
+                          rocksdb::CompactionJob::ProcessKeyValueCompaction
+                          |          
+                           --1.24%--rocksdb::CompactionJob::RunSubcompactions
+                                     rocksdb::CompactionJob::Run
+                                     rocksdb::DBImpl::BackgroundCompaction
+                                     rocksdb::DBImpl::BackgroundCallCompaction
+                                     0xffffffffffffffff
+
+     1.42%  rocksdb:high     libc-2.31.so         [.] __memmove_avx_unaligned_erms                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        -      -            
+            |
+            ---__memmove_avx_unaligned_erms
+               |          
+                --1.27%--rocksdb::BlockBuilder::AddWithLastKeyImpl
+                          |          
+                           --1.24%--rocksdb::BlockBuilder::AddWithLastKey
+                                     rocksdb::BlockBasedTableBuilder::Add
+                                     rocksdb::BuildTable
+                                     rocksdb::FlushJob::WriteLevel0Table
+
+     1.32%  rocksdb:high     lsm_system_bench     [.] rocksdb::MemTableIterator::key                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      -      -            
+            |
+            ---rocksdb::MemTableIterator::key
+               rocksdb::CompactionIterator::NextFromInput
+               |          
+                --1.31%--rocksdb::CompactionIterator::Next
+                          rocksdb::BuildTable
+                          rocksdb::FlushJob::WriteLevel0Table
+
+     1.18%  lsm-foreground   lsm_system_bench     [.] non-virtual thunk to rocksdb::(anonymous namespace)::BytewiseComparatorImpl::Compare(rocksdb::Slice const&, rocksdb::Slice const&) const                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            -      -            
+            |
+            ---non-virtual thunk to rocksdb::(anonymous namespace)::BytewiseComparatorImpl::Compare(rocksdb::Slice const&, rocksdb::Slice const&) const
+               rocksdb::MemTable::KeyComparator::operator()
+               |          
+                --1.13%--rocksdb::InlineSkipList<rocksdb::MemTableRep::KeyComparator const&>::FindSpliceForLevel<true>
+                          |          
+                           --1.10%--rocksdb::InlineSkipList<rocksdb::MemTableRep::KeyComparator const&>::Insert<true>
+                                     rocksdb::InlineSkipList<rocksdb::MemTableRep::KeyComparator const&>::InsertConcurrently
+                                     rocksdb::MemTable::Add
+                                     rocksdb::(anonymous namespace)::MemTableInserter::PutCFImpl<rocksdb::(anonymous namespace)::MemTableInserter::PutCF(unsigned int, rocksdb::Slice const&, rocksdb::Slice const&)::{lambda(rocksdb::WriteBatch*, unsigned int, rocksdb::Slice const&, rocksdb::Slice const&)#1}>
+                                     rocksdb::(anonymous namespace)::MemTableInserter::PutCF
+                                     rocksdb::WriteBatchInternal::Iterate
+                                     rocksdb::WriteBatchInternal::InsertInto
+                                     rocksdb::DBImpl::WriteImpl
+
+     1.07%  rocksdb:low      lsm_system_bench     [.] rocksdb::crc32c::crc32c_3way                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        -      -            
+            |
+            ---rocksdb::crc32c::crc32c_3way
+               |          
+               |--0.55%--rocksdb::ComputeBuiltinChecksum
+               |          rocksdb::VerifyBlockChecksum
+               |          rocksdb::BlockFetcher::ReadBlock
+               |          rocksdb::BlockFetcher::ReadBlockContents
+               |          |          
+               |           --0.54%--rocksdb::ReadAndParseBlockFromFile<rocksdb::Block_kData>
+               |                     rocksdb::BlockBasedTable::RetrieveBlock<rocksdb::Block_kData>
+               |                     0xffffffffffffffff
+               |          
+                --0.52%--rocksdb::ComputeBuiltinChecksumWithLastByte
+                          rocksdb::BlockBasedTableBuilder::WriteMaybeCompressedBlockImpl
+                          rocksdb::BlockBasedTableBuilder::WriteMaybeCompressedBlock
+                          |          
+                           --0.52%--rocksdb::BlockBasedTableBuilder::WriteBlock
+                                     |          
+                                      --0.52%--rocksdb::BlockBasedTableBuilder::EmitBlock
+                                                rocksdb::BlockBasedTableBuilder::Flush
+                                                rocksdb::BlockBasedTableBuilder::Add
+                                                rocksdb::CompactionOutputs::AddToOutput
+                                                rocksdb::SubcompactionState::AddToOutput
+                                                rocksdb::CompactionJob::ProcessKeyValue
+                                                rocksdb::CompactionJob::ProcessKeyValueCompaction
+
+     0.90%  lsm-foreground   lsm_system_bench     [.] rocksdb::WriteThread::AwaitState                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    -      -            
+            |
+            ---rocksdb::WriteThread::AwaitState
+
+     0.89%  rocksdb:low      lsm_system_bench     [.] std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::_M_replace                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         -      -            
+            |
+            ---std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::_M_replace
+
+     0.86%  rocksdb:low      lsm_system_bench     [.] rocksdb::(anonymous namespace)::XXPH3FilterBitsBuilder::AddKey                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      -      -            
+            |
+            ---rocksdb::(anonymous namespace)::XXPH3FilterBitsBuilder::AddKey
+               rocksdb::BlockBasedTableBuilder::Add
+               rocksdb::CompactionOutputs::AddToOutput
+               rocksdb::SubcompactionState::AddToOutput
+               rocksdb::CompactionJob::ProcessKeyValue
+               rocksdb::CompactionJob::ProcessKeyValueCompaction
+               |          
+                --0.66%--rocksdb::CompactionJob::RunSubcompactions
+                          rocksdb::CompactionJob::Run
+                          rocksdb::DBImpl::BackgroundCompaction
+                          rocksdb::DBImpl::BackgroundCallCompaction
+                          0xffffffffffffffff
+
+     0.86%  rocksdb:low      lsm_system_bench     [.] rocksdb::BlockIter<rocksdb::Slice>::ParseNextKey<rocksdb::DecodeEntry, false>                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       -      -            
+            |
+            ---rocksdb::BlockIter<rocksdb::Slice>::ParseNextKey<rocksdb::DecodeEntry, false>
+               |          
+                --0.80%--rocksdb::DataBlockIter::NextImpl
+                          |          
+                           --0.79%--rocksdb::BlockBasedTableIterator::NextAndGetResult
+                                     |          
+                                      --0.56%--rocksdb::(anonymous namespace)::LevelIterator::NextAndGetResult
+                                                rocksdb::CompactionMergingIterator::Next
+
+     0.83%  rocksdb:low      lsm_system_bench     [.] rocksdb::(anonymous namespace)::LevelIterator::NextAndGetResult                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     -      -            
+            |
+            ---rocksdb::(anonymous namespace)::LevelIterator::NextAndGetResult
+               rocksdb::CompactionMergingIterator::Next
+               |          
+                --0.55%--rocksdb::CompactionIterator::Next
+                          rocksdb::CompactionJob::ProcessKeyValue
+                          rocksdb::CompactionJob::ProcessKeyValueCompaction
+                          rocksdb::CompactionJob::RunSubcompactions
+                          rocksdb::CompactionJob::Run
+                          rocksdb::DBImpl::BackgroundCompaction
+                          rocksdb::DBImpl::BackgroundCallCompaction
+                          0xffffffffffffffff
+
+     0.82%  lsm-foreground   lsm_system_bench     [.] rocksdb::InlineSkipList<rocksdb::MemTableRep::KeyComparator const&>::Insert<true>                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   -      -            
+            |
+            ---rocksdb::InlineSkipList<rocksdb::MemTableRep::KeyComparator const&>::Insert<true>
+               rocksdb::InlineSkipList<rocksdb::MemTableRep::KeyComparator const&>::InsertConcurrently
+               rocksdb::MemTable::Add
+               rocksdb::(anonymous namespace)::MemTableInserter::PutCFImpl<rocksdb::(anonymous namespace)::MemTableInserter::PutCF(unsigned int, rocksdb::Slice const&, rocksdb::Slice const&)::{lambda(rocksdb::WriteBatch*, unsigned int, rocksdb::Slice const&, rocksdb::Slice const&)#1}>
+               rocksdb::(anonymous namespace)::MemTableInserter::PutCF
+               rocksdb::WriteBatchInternal::Iterate
+               rocksdb::WriteBatchInternal::InsertInto
+               rocksdb::DBImpl::WriteImpl
+
+     0.80%  rocksdb:low      lsm_system_bench     [.] rocksdb::BlockBasedTableIterator::NextAndGetResult                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  -      -            
+            |
+            ---rocksdb::BlockBasedTableIterator::NextAndGetResult
+               |          
+                --0.56%--rocksdb::(anonymous namespace)::LevelIterator::NextAndGetResult
+                          rocksdb::CompactionMergingIterator::Next
+
+     0.80%  rocksdb:low      lsm_system_bench     [.] rocksdb::OutputValidator::Add                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       -      -            
+            |
+            ---rocksdb::OutputValidator::Add
+               rocksdb::CompactionOutputs::AddToOutput
+               |          
+                --0.80%--rocksdb::SubcompactionState::AddToOutput
+                          rocksdb::CompactionJob::ProcessKeyValue
+                          rocksdb::CompactionJob::ProcessKeyValueCompaction
+                          |          
+                           --0.61%--rocksdb::CompactionJob::RunSubcompactions
+                                     rocksdb::CompactionJob::Run
+                                     rocksdb::DBImpl::BackgroundCompaction
+                                     rocksdb::DBImpl::BackgroundCallCompaction
+                                     0xffffffffffffffff
+
+     0.72%  rocksdb:low      lsm_system_bench     [.] non-virtual thunk to rocksdb::(anonymous namespace)::BytewiseComparatorImpl::Compare(rocksdb::Slice const&, rocksdb::Slice const&) const                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            -      -            
+            |
+            ---non-virtual thunk to rocksdb::(anonymous namespace)::BytewiseComparatorImpl::Compare(rocksdb::Slice const&, rocksdb::Slice const&) const
+               |          
+                --0.50%--rocksdb::CompactionMergingIterator::Next
+
+     0.70%  rocksdb:low      lsm_system_bench     [.] rocksdb::(anonymous namespace)::FastLocalBloomBitsBuilder::Finish                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   -      -            
+            |
+            ---rocksdb::(anonymous namespace)::FastLocalBloomBitsBuilder::Finish
+               rocksdb::FullFilterBlockBuilder::Finish
+               rocksdb::BlockBasedTableBuilder::WriteFilterBlock
+               rocksdb::BlockBasedTableBuilder::Finish
+               rocksdb::CompactionOutputs::Finish
+               rocksdb::CompactionJob::FinishCompactionOutputFile
+               std::_Function_handler<rocksdb::Status (rocksdb::Status const&, rocksdb::ParsedInternalKey const&, rocksdb::Slice const&, rocksdb::CompactionIterator const*, rocksdb::CompactionOutputs&), rocksdb::CompactionJob::CreateFileHandlers(rocksdb::SubcompactionState*, rocksdb::CompactionJob::SubcompactionKeyBoundaries&)::{lambda(rocksdb::Status const&, rocksdb::ParsedInternalKey const&, rocksdb::Slice const&, rocksdb::CompactionIterator const*, rocksdb::CompactionOutputs&)#2}>::_M_invoke
+
+     0.68%  rocksdb:low      lsm_system_bench     [.] rocksdb::CompactionJob::ProcessKeyValue                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             -      -            
+            |
+            ---rocksdb::CompactionJob::ProcessKeyValue
+               rocksdb::CompactionJob::ProcessKeyValueCompaction
+               |          
+                --0.57%--rocksdb::CompactionJob::RunSubcompactions
+                          rocksdb::CompactionJob::Run
+                          rocksdb::DBImpl::BackgroundCompaction
+                          rocksdb::DBImpl::BackgroundCallCompaction
+                          0xffffffffffffffff
+
+     0.66%  rocksdb:low      lsm_system_bench     [.] rocksdb::NotifyCollectTableCollectorsOnAdd                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          -      -            
+            |
+            ---rocksdb::NotifyCollectTableCollectorsOnAdd
+               rocksdb::BlockBasedTableBuilder::Add
+               |          
+                --0.63%--rocksdb::CompactionOutputs::AddToOutput
+                          rocksdb::SubcompactionState::AddToOutput
+                          rocksdb::CompactionJob::ProcessKeyValue
+                          rocksdb::CompactionJob::ProcessKeyValueCompaction
+                          |          
+                           --0.52%--rocksdb::CompactionJob::RunSubcompactions
+                                     rocksdb::CompactionJob::Run
+                                     rocksdb::DBImpl::BackgroundCompaction
+                                     rocksdb::DBImpl::BackgroundCallCompaction
+                                     0xffffffffffffffff
+
+     0.65%  rocksdb:low      libpthread-2.31.so   [.] __pthread_mutex_lock                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                -      -            
+            |
+            ---__GI___pthread_mutex_lock (inlined)
+               rocksdb::port::Mutex::Lock
+
+     0.65%  rocksdb:low      lsm_system_bench     [.] rocksdb::StatisticsImpl::recordTick                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 -      -            
+            |
+            ---rocksdb::StatisticsImpl::recordTick
+
+     0.62%  rocksdb:low      lsm_system_bench     [.] rocksdb::CompactionOutputs::LsmShouldStopBefore                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     -      -            
+            |
+            ---rocksdb::CompactionOutputs::LsmShouldStopBefore
+               rocksdb::CompactionOutputs::AddToOutput
+               |          
+                --0.61%--rocksdb::SubcompactionState::AddToOutput
+                          rocksdb::CompactionJob::ProcessKeyValue
+                          rocksdb::CompactionJob::ProcessKeyValueCompaction
+
+     0.61%  rocksdb:low      libc-2.31.so         [.] __memset_avx2_erms                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  -      -            
+            |
+            ---__memset_avx2_erms
+               |          
+                --0.59%--LZ4_initStream
+                          LZ4_compress_fast_extState
+                          LZ4_compress_fast
+                          0xffffffffffffffff
+
+     0.60%  rocksdb:low      lsm_system_bench     [.] rocksdb::ParseInternalKey                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           -      -            
+            |
+            ---rocksdb::ParseInternalKey
+               rocksdb::CompactionIterator::NextFromInput
+               |          
+                --0.59%--rocksdb::CompactionIterator::Next
+                          rocksdb::CompactionJob::ProcessKeyValue
+                          rocksdb::CompactionJob::ProcessKeyValueCompaction
+
+     0.60%  rocksdb:low      [vdso]               [.] __vdso_gettimeofday                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 -      -            
+            |
+            ---__vdso_gettimeofday
+               rocksdb::(anonymous namespace)::PosixClock::NowMicros
+
+     0.57%  rocksdb:low      lsm_system_bench     [.] rocksdb::CompactionMergingIterator::FindNextVisibleKey                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              -      -            
+            |
+            ---rocksdb::CompactionMergingIterator::FindNextVisibleKey
+               rocksdb::CompactionMergingIterator::Next
+
+     0.55%  rocksdb:low      [vdso]               [.] __vdso_getcpu                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       -      -            
+            |
+            ---__vdso_getcpu
+               sched_getcpu
+               rocksdb::port::PhysicalCoreID
+
+     0.54%  rocksdb:low      lsm_system_bench     [.] rocksdb::DecodeEntry::operator()                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    -      -            
+            |
+            ---rocksdb::DecodeEntry::operator()
+               rocksdb::BlockIter<rocksdb::Slice>::ParseNextKey<rocksdb::DecodeEntry, false>
+               |          
+                --0.51%--rocksdb::DataBlockIter::NextImpl
+                          rocksdb::BlockBasedTableIterator::NextAndGetResult
+
+     0.52%  rocksdb:low      lsm_system_bench     [.] rocksdb::CompactionIterator::PrepareOutput                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          -      -            
+            |
+            ---rocksdb::CompactionIterator::PrepareOutput
+               rocksdb::CompactionJob::ProcessKeyValue
+               rocksdb::CompactionJob::ProcessKeyValueCompaction
+
+     0.52%  rocksdb:low      lsm_system_bench     [.] rocksdb::BlockIter<rocksdb::Slice>::UpdateKey                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       -      -            
+            |
+            ---rocksdb::BlockIter<rocksdb::Slice>::UpdateKey
+               |          
+                --0.50%--rocksdb::BlockBasedTableIterator::NextAndGetResult
+
+
+
+#
+# (Cannot load tips.txt file, please install perf!)
+#

@@ -1,0 +1,299 @@
+# To display the perf.data header info, please use --header/--header-only options.
+#
+#
+# Total Lost Samples: 0
+#
+# Samples: 21K of event 'cpu-clock:u' (time slices: 10895534.680814,10895594.680964)
+# Event count (approx.): 216060603900
+#
+# Overhead  Command          Shared Object          Symbol                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  IPC   [IPC Coverage]
+# ........  ...............  .....................  ......................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................  ....................
+#
+    23.40%  lsm-foreground   lsm_system_bench       [.] rocksdb::InlineSkipList<rocksdb::MemTableRep::KeyComparator const&>::FindSpliceForLevel<true>                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       -      -            
+            |
+            ---rocksdb::InlineSkipList<rocksdb::MemTableRep::KeyComparator const&>::FindSpliceForLevel<true>
+               |          
+                --23.36%--rocksdb::InlineSkipList<rocksdb::MemTableRep::KeyComparator const&>::Insert<true>
+                          |          
+                           --23.26%--rocksdb::InlineSkipList<rocksdb::MemTableRep::KeyComparator const&>::InsertConcurrently
+                                     rocksdb::MemTable::Add
+                                     rocksdb::(anonymous namespace)::MemTableInserter::PutCFImpl<rocksdb::(anonymous namespace)::MemTableInserter::PutCF(unsigned int, rocksdb::Slice const&, rocksdb::Slice const&)::{lambda(rocksdb::WriteBatch*, unsigned int, rocksdb::Slice const&, rocksdb::Slice const&)#1}>
+                                     rocksdb::(anonymous namespace)::MemTableInserter::PutCF
+                                     rocksdb::WriteBatchInternal::Iterate
+                                     rocksdb::WriteBatchInternal::InsertInto
+                                     rocksdb::DBImpl::WriteImpl
+
+     7.63%  lsm-foreground   lsm_system_bench       [.] rocksdb::MemTable::KeyComparator::operator()                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        -      -            
+            |
+            ---rocksdb::MemTable::KeyComparator::operator()
+               |          
+                --7.21%--rocksdb::InlineSkipList<rocksdb::MemTableRep::KeyComparator const&>::FindSpliceForLevel<true>
+                          |          
+                           --6.76%--rocksdb::InlineSkipList<rocksdb::MemTableRep::KeyComparator const&>::Insert<true>
+                                     rocksdb::InlineSkipList<rocksdb::MemTableRep::KeyComparator const&>::InsertConcurrently
+                                     rocksdb::MemTable::Add
+                                     rocksdb::(anonymous namespace)::MemTableInserter::PutCFImpl<rocksdb::(anonymous namespace)::MemTableInserter::PutCF(unsigned int, rocksdb::Slice const&, rocksdb::Slice const&)::{lambda(rocksdb::WriteBatch*, unsigned int, rocksdb::Slice const&, rocksdb::Slice const&)#1}>
+                                     rocksdb::(anonymous namespace)::MemTableInserter::PutCF
+                                     rocksdb::WriteBatchInternal::Iterate
+                                     rocksdb::WriteBatchInternal::InsertInto
+                                     rocksdb::DBImpl::WriteImpl
+
+     7.15%  lsm-foreground   lsm_system_bench       [.] (anonymous namespace)::make_value                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   -      -            
+            |
+            ---(anonymous namespace)::make_value
+               (anonymous namespace)::run((anonymous namespace)::Config const&)::{lambda(unsigned int)#4}::operator()
+               |          
+                --7.13%--0x7f689ef37792
+                          start_thread
+                          __GI___clone (inlined)
+
+     5.46%  rocksdb:high     libc-2.31.so           [.] __memmove_avx_unaligned_erms                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        -      -            
+            |
+            ---__memmove_avx_unaligned_erms
+               |          
+                --3.97%--rocksdb::BlockBuilder::AddWithLastKeyImpl
+                          |          
+                           --3.92%--rocksdb::BlockBuilder::AddWithLastKey
+                                     rocksdb::BlockBasedTableBuilder::Add
+                                     rocksdb::BuildTable
+                                     rocksdb::FlushJob::WriteLevel0Table
+
+     4.29%  lsm-foreground   lsm_system_bench       [.] (anonymous namespace)::run((anonymous namespace)::Config const&)::{lambda(unsigned int)#4}::operator()                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              -      -            
+            |
+            ---(anonymous namespace)::run((anonymous namespace)::Config const&)::{lambda(unsigned int)#4}::operator()
+               0x7f689ef37792
+               start_thread
+               __GI___clone (inlined)
+
+     4.02%  lsm-foreground   libc-2.31.so           [.] __memcmp_avx2_movbe                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 -      -            
+            |
+            ---__memcmp_avx2_movbe
+               non-virtual thunk to rocksdb::(anonymous namespace)::BytewiseComparatorImpl::Compare(rocksdb::Slice const&, rocksdb::Slice const&) const
+               rocksdb::MemTable::KeyComparator::operator()
+               |          
+                --3.80%--rocksdb::InlineSkipList<rocksdb::MemTableRep::KeyComparator const&>::FindSpliceForLevel<true>
+                          |          
+                           --3.79%--rocksdb::InlineSkipList<rocksdb::MemTableRep::KeyComparator const&>::Insert<true>
+                                     rocksdb::InlineSkipList<rocksdb::MemTableRep::KeyComparator const&>::InsertConcurrently
+                                     rocksdb::MemTable::Add
+                                     rocksdb::(anonymous namespace)::MemTableInserter::PutCFImpl<rocksdb::(anonymous namespace)::MemTableInserter::PutCF(unsigned int, rocksdb::Slice const&, rocksdb::Slice const&)::{lambda(rocksdb::WriteBatch*, unsigned int, rocksdb::Slice const&, rocksdb::Slice const&)#1}>
+                                     rocksdb::(anonymous namespace)::MemTableInserter::PutCF
+                                     rocksdb::WriteBatchInternal::Iterate
+                                     rocksdb::WriteBatchInternal::InsertInto
+                                     rocksdb::DBImpl::WriteImpl
+
+     3.93%  rocksdb:high     lsm_system_bench       [.] rocksdb::MemTableIterator::key                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      -      -            
+            |
+            ---rocksdb::MemTableIterator::key
+               rocksdb::CompactionIterator::NextFromInput
+               |          
+                --3.91%--rocksdb::CompactionIterator::Next
+                          rocksdb::BuildTable
+                          rocksdb::FlushJob::WriteLevel0Table
+
+     2.96%  lsm-foreground   lsm_system_bench       [.] non-virtual thunk to rocksdb::(anonymous namespace)::BytewiseComparatorImpl::Compare(rocksdb::Slice const&, rocksdb::Slice const&) const                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            -      -            
+            |
+            ---non-virtual thunk to rocksdb::(anonymous namespace)::BytewiseComparatorImpl::Compare(rocksdb::Slice const&, rocksdb::Slice const&) const
+               rocksdb::MemTable::KeyComparator::operator()
+               |          
+                --2.75%--rocksdb::InlineSkipList<rocksdb::MemTableRep::KeyComparator const&>::FindSpliceForLevel<true>
+                          rocksdb::InlineSkipList<rocksdb::MemTableRep::KeyComparator const&>::Insert<true>
+                          rocksdb::InlineSkipList<rocksdb::MemTableRep::KeyComparator const&>::InsertConcurrently
+                          rocksdb::MemTable::Add
+                          rocksdb::(anonymous namespace)::MemTableInserter::PutCFImpl<rocksdb::(anonymous namespace)::MemTableInserter::PutCF(unsigned int, rocksdb::Slice const&, rocksdb::Slice const&)::{lambda(rocksdb::WriteBatch*, unsigned int, rocksdb::Slice const&, rocksdb::Slice const&)#1}>
+                          rocksdb::(anonymous namespace)::MemTableInserter::PutCF
+                          rocksdb::WriteBatchInternal::Iterate
+                          rocksdb::WriteBatchInternal::InsertInto
+                          rocksdb::DBImpl::WriteImpl
+
+     2.36%  lsm-foreground   lsm_system_bench       [.] rocksdb::WriteThread::AwaitState                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    -      -            
+            |
+            ---rocksdb::WriteThread::AwaitState
+               |          
+               |--1.30%--rocksdb::DBImpl::WriteImpl
+               |          
+                --1.05%--rocksdb::WriteThread::CompleteParallelMemTableWriter
+                          |          
+                           --1.05%--rocksdb::DBImpl::WriteImpl
+
+     2.35%  lsm-foreground   lsm_system_bench       [.] rocksdb::InlineSkipList<rocksdb::MemTableRep::KeyComparator const&>::Insert<true>                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   -      -            
+            |
+            ---rocksdb::InlineSkipList<rocksdb::MemTableRep::KeyComparator const&>::Insert<true>
+               rocksdb::InlineSkipList<rocksdb::MemTableRep::KeyComparator const&>::InsertConcurrently
+               rocksdb::MemTable::Add
+               rocksdb::(anonymous namespace)::MemTableInserter::PutCFImpl<rocksdb::(anonymous namespace)::MemTableInserter::PutCF(unsigned int, rocksdb::Slice const&, rocksdb::Slice const&)::{lambda(rocksdb::WriteBatch*, unsigned int, rocksdb::Slice const&, rocksdb::Slice const&)#1}>
+               rocksdb::(anonymous namespace)::MemTableInserter::PutCF
+               rocksdb::WriteBatchInternal::Iterate
+               rocksdb::WriteBatchInternal::InsertInto
+               rocksdb::DBImpl::WriteImpl
+
+     1.36%  rocksdb:high     lsm_system_bench       [.] rocksdb::CompactionIterator::NextFromInput                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          -      -            
+            |
+            ---rocksdb::CompactionIterator::NextFromInput
+               rocksdb::CompactionIterator::Next
+               |          
+                --1.34%--rocksdb::BuildTable
+                          rocksdb::FlushJob::WriteLevel0Table
+
+     1.31%  rocksdb:low      libc-2.31.so           [.] __memmove_avx_unaligned_erms                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        -      -            
+            |
+            ---__memmove_avx_unaligned_erms
+               |          
+                --0.64%--rocksdb::BlockBuilder::AddWithLastKeyImpl
+                          rocksdb::BlockBuilder::Add
+                          rocksdb::ShortenedIndexBuilder::AddIndexEntry
+                          rocksdb::BlockBasedTableBuilder::LsmFinishPendingIndex
+                          rocksdb::BlockBasedTableBuilder::LsmAddBuiltRun
+                          rocksdb::CompactionOutputs::LsmAddBuiltBlocks
+                          rocksdb::CompactionJob::ProcessKeyValueCompaction
+
+     1.18%  lsm-foreground   lsm_system_bench       [.] rocksdb::ConcurrentArena::AllocateAligned                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           -      -            
+            |
+            ---rocksdb::ConcurrentArena::AllocateAligned
+               rocksdb::(anonymous namespace)::SkipListRep::Allocate
+               rocksdb::MemTable::Add
+               rocksdb::(anonymous namespace)::MemTableInserter::PutCFImpl<rocksdb::(anonymous namespace)::MemTableInserter::PutCF(unsigned int, rocksdb::Slice const&, rocksdb::Slice const&)::{lambda(rocksdb::WriteBatch*, unsigned int, rocksdb::Slice const&, rocksdb::Slice const&)#1}>
+               rocksdb::(anonymous namespace)::MemTableInserter::PutCF
+               rocksdb::WriteBatchInternal::Iterate
+               rocksdb::WriteBatchInternal::InsertInto
+               rocksdb::DBImpl::WriteImpl
+
+     1.17%  lsm-foreground   libc-2.31.so           [.] __memmove_avx_unaligned_erms                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        -      -            
+            |
+            ---__memmove_avx_unaligned_erms
+               |          
+                --0.57%--rocksdb::MemTable::Add
+                          rocksdb::(anonymous namespace)::MemTableInserter::PutCFImpl<rocksdb::(anonymous namespace)::MemTableInserter::PutCF(unsigned int, rocksdb::Slice const&, rocksdb::Slice const&)::{lambda(rocksdb::WriteBatch*, unsigned int, rocksdb::Slice const&, rocksdb::Slice const&)#1}>
+                          rocksdb::(anonymous namespace)::MemTableInserter::PutCF
+                          rocksdb::WriteBatchInternal::Iterate
+                          |          
+                           --0.56%--rocksdb::WriteBatchInternal::InsertInto
+                                     rocksdb::DBImpl::WriteImpl
+
+     1.15%  rocksdb:low      lsm_system_bench       [.] lsm_lab::(anonymous namespace)::Engine::merge                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       -      -            
+            |
+            ---lsm_lab::(anonymous namespace)::Engine::merge
+               lsm_lab::(anonymous namespace)::CudaTransform::execute_merge
+               lsm_lab::BatchTransform::merge_with_stats
+               lsm_lab::BatchTransform::MergeCompactionInput
+               rocksdb::CompactionJob::ProcessKeyValueCompaction
+               |          
+                --0.94%--rocksdb::CompactionJob::RunSubcompactions
+                          rocksdb::CompactionJob::Run
+                          rocksdb::DBImpl::BackgroundCompaction
+                          rocksdb::DBImpl::BackgroundCallCompaction
+                          0xffffffffffffffff
+
+     1.11%  lsm-foreground   lsm_system_bench       [.] (anonymous namespace)::make_key                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     -      -            
+            |
+            ---(anonymous namespace)::make_key
+               (anonymous namespace)::run((anonymous namespace)::Config const&)::{lambda(unsigned int)#4}::operator()
+               |          
+                --1.10%--0x7f689ef37792
+                          start_thread
+                          __GI___clone (inlined)
+
+     1.11%  lsm-foreground   lsm_system_bench       [.] rocksdb::WriteBatch::Put                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            -      -            
+            |
+            ---rocksdb::WriteBatch::Put
+               (anonymous namespace)::run((anonymous namespace)::Config const&)::{lambda(unsigned int)#4}::operator()
+               0x7f689ef37792
+               start_thread
+               __GI___clone (inlined)
+
+     0.93%  rocksdb:high     lsm_system_bench       [.] rocksdb::BlockBuilder::AddWithLastKeyImpl                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           -      -            
+            |
+            ---rocksdb::BlockBuilder::AddWithLastKeyImpl
+               |          
+                --0.88%--rocksdb::BlockBuilder::AddWithLastKey
+                          rocksdb::BlockBasedTableBuilder::Add
+                          rocksdb::BuildTable
+                          rocksdb::FlushJob::WriteLevel0Table
+
+     0.87%  rocksdb:low      lsm_system_bench       [.] memcpy@plt                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          -      -            
+            |
+            ---memcpy@plt
+               |          
+                --0.83%--rocksdb::ShortenedIndexBuilder::FindShortestInternalKeySeparator
+                          rocksdb::ShortenedIndexBuilder::AddIndexEntry
+                          rocksdb::BlockBasedTableBuilder::LsmFinishPendingIndex
+                          rocksdb::BlockBasedTableBuilder::LsmAddBuiltRun
+                          rocksdb::CompactionOutputs::LsmAddBuiltBlocks
+                          rocksdb::CompactionJob::ProcessKeyValueCompaction
+                          |          
+                           --0.65%--rocksdb::CompactionJob::RunSubcompactions
+                                     rocksdb::CompactionJob::Run
+                                     rocksdb::DBImpl::BackgroundCompaction
+                                     rocksdb::DBImpl::BackgroundCallCompaction
+                                     0xffffffffffffffff
+
+     0.86%  rocksdb:high     lsm_system_bench       [.] rocksdb::BuildTable                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 -      -            
+            |
+            ---rocksdb::BuildTable
+               rocksdb::FlushJob::WriteLevel0Table
+
+     0.85%  rocksdb:high     libc-2.31.so           [.] malloc                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              -      -            
+            |
+            ---__GI___libc_malloc (inlined)
+               operator new
+               |          
+                --0.51%--std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::_M_replace
+                          rocksdb::BlockBasedTableBuilder::QueueCompactionOutput
+                          rocksdb::BlockBasedTableBuilder::EmitBlock
+                          rocksdb::BlockBasedTableBuilder::Flush
+                          rocksdb::BlockBasedTableBuilder::Add
+                          rocksdb::BuildTable
+                          rocksdb::FlushJob::WriteLevel0Table
+
+     0.74%  lsm-foreground   lsm_system_bench       [.] rocksdb::MemTable::Add                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              -      -            
+            |
+            ---rocksdb::MemTable::Add
+               rocksdb::(anonymous namespace)::MemTableInserter::PutCFImpl<rocksdb::(anonymous namespace)::MemTableInserter::PutCF(unsigned int, rocksdb::Slice const&, rocksdb::Slice const&)::{lambda(rocksdb::WriteBatch*, unsigned int, rocksdb::Slice const&, rocksdb::Slice const&)#1}>
+               rocksdb::(anonymous namespace)::MemTableInserter::PutCF
+               rocksdb::WriteBatchInternal::Iterate
+               rocksdb::WriteBatchInternal::InsertInto
+               rocksdb::DBImpl::WriteImpl
+
+     0.72%  rocksdb:low      lsm_system_bench       [.] rocksdb::BlockBuilder::AddWithLastKeyImpl                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           -      -            
+            |
+            ---rocksdb::BlockBuilder::AddWithLastKeyImpl
+               rocksdb::BlockBuilder::Add
+               rocksdb::ShortenedIndexBuilder::AddIndexEntry
+               rocksdb::BlockBasedTableBuilder::LsmFinishPendingIndex
+               rocksdb::BlockBasedTableBuilder::LsmAddBuiltRun
+               rocksdb::CompactionOutputs::LsmAddBuiltBlocks
+               rocksdb::CompactionJob::ProcessKeyValueCompaction
+               |          
+                --0.58%--rocksdb::CompactionJob::RunSubcompactions
+                          rocksdb::CompactionJob::Run
+                          rocksdb::DBImpl::BackgroundCompaction
+                          rocksdb::DBImpl::BackgroundCallCompaction
+                          0xffffffffffffffff
+
+     0.72%  rocksdb:high     lsm_system_bench       [.] rocksdb::BlockBasedTableBuilder::Add                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                -      -            
+            |
+            ---rocksdb::BlockBasedTableBuilder::Add
+               rocksdb::BuildTable
+               |          
+                --0.68%--rocksdb::FlushJob::WriteLevel0Table
+
+     0.61%  rocksdb:high     lsm_system_bench       [.] rocksdb::(anonymous namespace)::XXPH3FilterBitsBuilder::AddKey                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      -      -            
+            |
+            ---rocksdb::(anonymous namespace)::XXPH3FilterBitsBuilder::AddKey
+               rocksdb::BlockBasedTableBuilder::Add
+               rocksdb::BuildTable
+               rocksdb::FlushJob::WriteLevel0Table
+
+     0.51%  rocksdb:high     lsm_system_bench       [.] rocksdb::MemTableIterator::value                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    -      -            
+            |
+            ---rocksdb::MemTableIterator::value
+               rocksdb::CompactionIterator::NextFromInput
+               rocksdb::CompactionIterator::Next
+               rocksdb::BuildTable
+               rocksdb::FlushJob::WriteLevel0Table
+
+
+
+#
+# (Cannot load tips.txt file, please install perf!)
+#

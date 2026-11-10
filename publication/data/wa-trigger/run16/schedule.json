@@ -1,0 +1,82 @@
+[
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 8,
+  "writes": "batched",
+  "l0_trigger": 16,
+  "flags": {
+   "threads": 16,
+   "subcompactions": 4,
+   "pipelined-write": false,
+   "adaptive-yield": false,
+   "background-jobs": 8,
+   "batch-size": 100,
+   "disable-wal": true,
+   "allow-fallocate": false,
+   "l0-trigger": 16,
+   "max-bytes-for-level-base": 1073741824
+  },
+  "block": 0
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 8,
+  "writes": "batched",
+  "l0_trigger": 16,
+  "flags": {
+   "threads": 16,
+   "subcompactions": 8,
+   "pipelined-write": false,
+   "adaptive-yield": false,
+   "background-jobs": 8,
+   "batch-size": 100,
+   "disable-wal": true,
+   "allow-fallocate": false,
+   "l0-trigger": 16,
+   "max-bytes-for-level-base": 1073741824
+  },
+  "block": 0
+ },
+ {
+  "design": "native",
+  "mode": "native_cpu",
+  "cores": 8,
+  "writes": "batched",
+  "l0_trigger": 16,
+  "flags": {
+   "threads": 16,
+   "subcompactions": 8,
+   "pipelined-write": false,
+   "adaptive-yield": false,
+   "background-jobs": 8,
+   "batch-size": 100,
+   "disable-wal": true,
+   "allow-fallocate": false,
+   "l0-trigger": 16,
+   "max-bytes-for-level-base": 1073741824
+  },
+  "block": 1
+ },
+ {
+  "design": "full",
+  "mode": "cuda_merge",
+  "cores": 8,
+  "writes": "batched",
+  "l0_trigger": 16,
+  "flags": {
+   "threads": 16,
+   "subcompactions": 4,
+   "pipelined-write": false,
+   "adaptive-yield": false,
+   "background-jobs": 8,
+   "batch-size": 100,
+   "disable-wal": true,
+   "allow-fallocate": false,
+   "l0-trigger": 16,
+   "max-bytes-for-level-base": 1073741824
+  },
+  "block": 1
+ }
+]

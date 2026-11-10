@@ -1,0 +1,126 @@
+{
+ "_comment": "Level-0 trigger grid; PREREGISTRATION.md.",
+ "common": {
+  "records": 50000000,
+  "read-percent": 0,
+  "warmup-seconds": 30,
+  "duration-seconds": 120,
+  "verify": true
+ },
+ "trials": [
+  {
+   "design": "native",
+   "mode": "native_cpu",
+   "cores": 8,
+   "writes": "batched",
+   "flags": {
+    "threads": 16,
+    "subcompactions": 8,
+    "pipelined-write": false,
+    "adaptive-yield": false,
+    "background-jobs": 8,
+    "batch-size": 100,
+    "disable-wal": true,
+    "allow-fallocate": false,
+    "l0-trigger": 4,
+    "max-bytes-for-level-base": 268435456
+   },
+   "l0_trigger": 4
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 8,
+   "writes": "batched",
+   "flags": {
+    "threads": 16,
+    "subcompactions": 4,
+    "pipelined-write": false,
+    "adaptive-yield": false,
+    "background-jobs": 8,
+    "batch-size": 100,
+    "disable-wal": true,
+    "allow-fallocate": false,
+    "l0-trigger": 4,
+    "max-bytes-for-level-base": 268435456
+   },
+   "l0_trigger": 4
+  },
+  {
+   "design": "native",
+   "mode": "native_cpu",
+   "cores": 8,
+   "writes": "batched",
+   "flags": {
+    "threads": 16,
+    "subcompactions": 8,
+    "pipelined-write": false,
+    "adaptive-yield": false,
+    "background-jobs": 8,
+    "batch-size": 100,
+    "disable-wal": true,
+    "allow-fallocate": false,
+    "l0-trigger": 8,
+    "max-bytes-for-level-base": 536870912
+   },
+   "l0_trigger": 8
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 8,
+   "writes": "batched",
+   "flags": {
+    "threads": 16,
+    "subcompactions": 4,
+    "pipelined-write": false,
+    "adaptive-yield": false,
+    "background-jobs": 8,
+    "batch-size": 100,
+    "disable-wal": true,
+    "allow-fallocate": false,
+    "l0-trigger": 8,
+    "max-bytes-for-level-base": 536870912
+   },
+   "l0_trigger": 8
+  },
+  {
+   "design": "native",
+   "mode": "native_cpu",
+   "cores": 8,
+   "writes": "batched",
+   "flags": {
+    "threads": 16,
+    "subcompactions": 8,
+    "pipelined-write": false,
+    "adaptive-yield": false,
+    "background-jobs": 8,
+    "batch-size": 100,
+    "disable-wal": true,
+    "allow-fallocate": false,
+    "l0-trigger": 12,
+    "max-bytes-for-level-base": 805306368
+   },
+   "l0_trigger": 12
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 8,
+   "writes": "batched",
+   "flags": {
+    "threads": 16,
+    "subcompactions": 4,
+    "pipelined-write": false,
+    "adaptive-yield": false,
+    "background-jobs": 8,
+    "batch-size": 100,
+    "disable-wal": true,
+    "allow-fallocate": false,
+    "l0-trigger": 12,
+    "max-bytes-for-level-base": 805306368
+   },
+   "l0_trigger": 12
+  }
+ ]
+}
