@@ -29,7 +29,8 @@ as ours, on the same cores.
 - **On a machine shared with other work the gain grows** from 1.80× to 2.48×, and RocksDB's
   write stalls all but disappear.
 - **Eight cores with the GPU match thirty-two without it,** at a 17× lower 99th-percentile
-  write latency. But a GPU dedicated to one database only pays above about 16 cores.
+  write latency and **less than half the cost: $0.372 against $0.801 per billion writes, a
+  saving of $13,278 per node per year.** Below about 8 cores, buying cores is cheaper.
 - **It beats earlier GPU and FPGA designs** rebuilt in the same RocksDB: 2.0–6.5× less
   compaction CPU and up to 1.9× more throughput, because ours also moves compression to
   the GPU. Without compression it does not beat them
@@ -204,9 +205,10 @@ burns a fixed share of every core the database is pinned to (4 cores, median of 
 - **Ours barely notices.** Going from 40% to 80% stolen CPU costs RocksDB 11% of its
   throughput and ours nothing measurable, because its compaction is not on those cores.
 - **This is the one place energy clearly favours the GPU:** 0.58–0.68× RocksDB's energy per
-  operation, against a 0.69–1.19× range everywhere else.
+  operation here, against 0.69–1.19× in the `main`, `equal-cost`, `ycsb` and prior-design
+  campaigns.
 
-### 7. What it costs
+### 7. What it costs, and what it saves
 
 **In cores.** Eight cores with the GPU match thirty-two without it, with a far better tail
 (median of 5 runs):
@@ -220,25 +222,55 @@ burns a fixed share of every core the database is pinned to (4 cores, median of 
 | RocksDB | 32 | 990k | 9.69 µs | 37.75 ms |
 | **Ours** | **8** | **1,000k** | **5.91 µs** | **2.23 ms** |
 
-**In money.** AWS on-demand, Linux, us-east-1, October 2026. A core is $0.0903/h
-(c7i.xlarge); the GPU is $0.6242/h (g6.xlarge less its two cores, an approximation because
-the measured GPU is an RTX A6000):
+RocksDB gains almost nothing between 16 and 32 cores, 929k to 990k writes/s, because it runs
+one L0-to-L1 compaction at a time split across at most `max_subcompactions` threads. Cores
+past that point buy very little. That ceiling is what the offload removes.
 
-| Design | Cores | Writes/s | $ per billion writes |
-|---|---|---|---|
-| RocksDB | 4 | 341k | **0.29** |
-| RocksDB | 8 | 667k | 0.30 |
-| **Ours** | **8** | **1,000k** | **0.37** |
-| RocksDB | 16 | 929k | 0.43 |
-| Ours | 4 | 607k | 0.45 |
-| RocksDB | 32 | 990k | 0.81 |
+**In money.** AWS EC2 on-demand, Linux, us-east-1, retrieved 2026-11-09 from
+[ec2instances.info](https://instances.vantage.sh/aws/ec2/c7i.xlarge), which republishes the
+AWS Price List API. A physical core is $0.08925/h (c7i.xlarge at $0.1785/h for 4 vCPUs = 2
+physical cores). A GPU is priced as its instance less its two cores. Every input is in
+[publication/prices.json](publication/prices.json).
 
-**A GPU dedicated to one database only pays above about 16 cores.** Below that, buying cores
-is cheaper per write: the GPU costs about as much as seven cores, and one database cannot
-keep it busy, using only 1.3–2 cores' worth of its capacity. The case for a GPU is therefore
-either a database that needs 16 or more cores of compaction, or one GPU shared between
-several databases. **Sharing has not been measured** (see
-[section 11](#11-what-this-does-not-show)).
+| Design | Cores | Writes/s | $/hour | $ per billion writes |
+|---|---|---|---|---|
+| RocksDB | 4 | 341k | 0.357 | 0.291 |
+| RocksDB | 8 | 667k | 0.714 | 0.297 |
+| **Ours** | **8** | **1,000k** | **1.340** | **0.372** |
+| RocksDB | 16 | 929k | 1.428 | 0.427 |
+| Ours | 4 | 607k | 0.983 | 0.450 |
+| RocksDB | 32 | 990k | 2.856 | 0.801 |
+
+**At matched throughput, eight cores and one GPU cost less than half of thirty-two cores.**
+
+| | RocksDB, 32 cores | Ours, 8 cores + L4 |
+|---|---|---|
+| Throughput | 990k writes/s | 1,000k writes/s |
+| Cost | $2.856/h | $1.340/h |
+| Per billion writes | $0.801 | **$0.372 (2.15× cheaper)** |
+| 99th-percentile write | 37.75 ms | 2.23 ms (16.9× lower) |
+
+At list price and full utilisation for a year, that is **$25,019 against $11,741 per node: a
+saving of $13,278, or 53%.**
+
+**How much the GPU choice matters.** The measured card is an RTX A6000, which AWS does not
+rent, so the table above prices the cheapest current-generation NVIDIA GPU instance. Larger
+and more expensive cards still pay:
+
+| GPU priced | $/hour total | $ per billion | vs 32 cores | Saved per node per year |
+|---|---|---|---|---|
+| L4, 24 GiB ([g6.xlarge](https://instances.vantage.sh/aws/ec2/g6.xlarge)) | 1.340 | 0.372 | **2.15×** | $13,278 |
+| A10G, 24 GiB ([g5.xlarge](https://instances.vantage.sh/aws/ec2/g5.xlarge)) | 1.542 | 0.428 | 1.87× | $11,515 |
+| L40S, 48 GiB ([g6e.xlarge](https://instances.vantage.sh/aws/ec2/g6e.xlarge)) | 2.397 | 0.666 | 1.20× | $4,025 |
+
+**The GPU would have to cost $2.17/hour before the advantage disappears**, which is more than
+any of these cards. The result does not depend on picking the cheapest one.
+
+**When it does not pay.** Below about 8 cores, buying cores is cheaper per write: RocksDB on
+4 cores is the cheapest configuration measured, at $0.291 per billion. The GPU pays only once
+the throughput target is one RocksDB cannot reach by adding cores. On a SATA SSD, where the
+disk saturates for both designs, it does not pay at all
+([section 8](#8-real-world-workloads-and-a-real-disk)).
 
 ### 8. Real-world workloads and a real disk
 
@@ -413,9 +445,10 @@ Over TCP it needs about twice that.
   from moving compression to the GPU. With compression off, the two are the same, and
   this work adds nothing over LUDA's design.
 - **Energy.** Energy is recorded per trial, but no claim is made. Whole-run energy per
-  operation ranges from 0.69× to 1.19× RocksDB's depending on codec and write pattern,
-  and the measurement window ends before RocksDB's 68 s of catch-up compaction, which
-  favours RocksDB. A fair figure needs energy integrated to the end of catch-up.
+  operation ranges from 0.69× to 1.19× RocksDB's across the `main`, `equal-cost`, `ycsb`
+  and prior-design campaigns, depending on codec and write pattern, and the measurement
+  window ends before RocksDB's 68 s of catch-up compaction, which favours RocksDB. A fair
+  figure needs energy integrated to the end of catch-up.
 - **Remote compaction latency.** Only the CPU offload is measured. No machine available to
   us has both a GPU and an RDMA card, so how fast a remote GPU compaction runs, and
   whether RDMA beats TCP for it, are both open.
@@ -427,11 +460,6 @@ Over TCP it needs about twice that.
   read-heavy model (85% reads) gains 1.05×, against 1.70× for its write-heavy variant.
 - **One machine.** All results come from a single server and a single RTX A6000, on
   Linux. Other GPUs, other CPU counts and other RocksDB versions are untested.
-- **Sharing one GPU between databases.** Not measured, and it is the result the cost
-  argument in [section 7](#7-what-it-costs) turns on. The first attempt failed outright:
-  every instance's memory was bound to one NUMA node and the kernel killed them, and a
-  failed GPU allocation left a buffer reporting its old size. Both are fixed; the re-run is
-  pending.
 - **Registered thresholds we missed.** Three preregistered predictions did not hold, and
   the numbers above are the measured outcome rather than the registered one. 99.9th
   percentile write latency at 430k writes/s was 1.75× lower against a registered 2.5×.

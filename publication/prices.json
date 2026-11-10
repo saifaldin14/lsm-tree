@@ -1,7 +1,40 @@
 {
-  "source": "AWS EC2 on-demand, Linux, us-east-1, October 2026 (cloudprice.net, doit.com)",
-  "physical_core_hour": 0.0903,
-  "physical_core_hour_basis": "c7i.xlarge $0.1806/h for 4 vCPUs = 2 physical cores",
-  "gpu_hour": 0.6242,
-  "gpu_hour_basis": "g6.xlarge (NVIDIA L4) $0.8048/h minus its 2 physical cores; an approximation, since the measured GPU is an RTX A6000"
+  "source": "AWS EC2 on-demand, Linux, us-east-1, retrieved 2026-11-09 from ec2instances.info (Vantage), which republishes the AWS Price List API",
+  "source_urls": [
+    "https://instances.vantage.sh/aws/ec2/c7i.xlarge",
+    "https://instances.vantage.sh/aws/ec2/g6.xlarge",
+    "https://instances.vantage.sh/aws/ec2/g5.xlarge",
+    "https://instances.vantage.sh/aws/ec2/g6e.xlarge",
+    "https://aws.amazon.com/ec2/pricing/on-demand/"
+  ],
+  "retrieved": "2026-11-09",
+  "physical_core_hour": 0.08925,
+  "physical_core_hour_basis": "c7i.xlarge $0.1785/h for 4 vCPUs = 2 physical cores (Intel Sapphire Rapids)",
+  "gpu_hour": 0.6263,
+  "gpu_hour_basis": "g6.xlarge (NVIDIA L4, 24 GiB) $0.8048/h minus its 2 physical cores. The measured GPU is an RTX A6000, which AWS does not rent; g6.xlarge is the cheapest current-generation NVIDIA GPU instance. gpu_alternatives and break_even_gpu_hour are given so the result does not depend on this choice",
+  "gpu_alternatives": [
+    {
+      "gpu": "NVIDIA L4",
+      "instance": "g6.xlarge",
+      "vram_gib": 24,
+      "instance_hour": 0.8048,
+      "gpu_hour": 0.6263
+    },
+    {
+      "gpu": "NVIDIA A10G",
+      "instance": "g5.xlarge",
+      "vram_gib": 24,
+      "instance_hour": 1.006,
+      "gpu_hour": 0.8275
+    },
+    {
+      "gpu": "NVIDIA L40S",
+      "instance": "g6e.xlarge",
+      "vram_gib": 48,
+      "instance_hour": 1.861,
+      "gpu_hour": 1.6825
+    }
+  ],
+  "break_even_gpu_hour": 2.17,
+  "break_even_basis": "price at which 8 cores plus one GPU costs the same per write as native RocksDB on 32 cores; above every GPU listed here"
 }
