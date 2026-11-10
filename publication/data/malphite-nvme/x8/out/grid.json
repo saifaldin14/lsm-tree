@@ -1,0 +1,45 @@
+{
+ "_comment": "X8 on malphite NVMe: v3-ssd.json restricted to its 8-core trials (malphite has 10 cores).",
+ "common": {
+  "records": 50000000,
+  "verify": true,
+  "read-percent": 0,
+  "warmup-seconds": 120,
+  "duration-seconds": 300,
+  "use-direct-io": true
+ },
+ "trials": [
+  {
+   "design": "native",
+   "mode": "native_cpu",
+   "cores": 8,
+   "writes": "batched",
+   "flags": {
+    "threads": 16,
+    "subcompactions": 8,
+    "pipelined-write": false,
+    "adaptive-yield": false,
+    "background-jobs": 8,
+    "batch-size": 100,
+    "disable-wal": true,
+    "allow-fallocate": false
+   }
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 8,
+   "writes": "batched",
+   "flags": {
+    "threads": 16,
+    "subcompactions": 4,
+    "pipelined-write": false,
+    "adaptive-yield": false,
+    "background-jobs": 8,
+    "batch-size": 100,
+    "disable-wal": true,
+    "allow-fallocate": false
+   }
+  }
+ ]
+}

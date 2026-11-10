@@ -39,7 +39,9 @@ as ours, on the same cores.
   metadata, a time series, and Meta's write-heavy production model. A read-heavy Meta
   model (85% reads) runs 1.05–1.10× faster.
 - **On a SATA SSD the disk is the limit** for both, so throughput is equal, but ours uses
-  half the CPU and finishes 99.9% of writes in 84 ms against 336 ms.
+  half the CPU and finishes 99.9% of writes in 84 ms against 336 ms. **On NVMe**, measured
+  on a second machine at 8 cores, the drive is not saturated: 1.07× more writes and 1.47×
+  less CPU per write.
 - **Compaction can run on a GPU in another machine over RDMA.** The database machine then
   uses 6–11× less CPU per GiB compacted. How long such a compaction takes is not
   established: no machine available to us has both a GPU and an RDMA card.
@@ -296,6 +298,39 @@ same database on a SATA SSD. Median of 3 runs.
 - **On the SSD:** the disk sets the speed for both designs. Ours still halves the CPU,
   and with 16 cores 99.9% of writes finished within 84 ms against 336 ms.
 
+**On NVMe.** The SATA run above is on the main test server, which has no NVMe drive. The
+only machine available to us with both a GPU and NVMe is a second server: one 10-core Xeon
+Silver 4210R, an NVIDIA RTX PRO 6000 Blackwell, and a 477 GB NVMe drive. We ran the same
+SATA configuration there unchanged (direct I/O, batched writes, LZ4, 50 million keys, two
+minutes of warm-up then five measured, every key verified), at 8 cores only because the
+machine has 10. Median of 3 runs; intervals are a paired bootstrap over those 3 runs, so
+they are wide by construction.
+
+| | RocksDB | Ours | |
+|---|---|---|---|
+| Throughput | 0.909M writes/s | 0.973M | **1.07×** [1.05, 1.11] |
+| CPU per write | 5.96 µs | 4.05 µs | **1.47× less** [1.45, 1.51] |
+| 99.9th-percentile write | 25.2 ms | 22.0 ms | 1.14× lower |
+| Device utilisation | 65% | 81% | |
+| Device write bandwidth | 405 MiB/s | 516 MiB/s | |
+
+- **The disk is not the limit here.** Unlike the SATA SSD, where both designs hold the
+  disk at 100%, neither design saturates the NVMe drive. Ours drives it harder, writing
+  27% more data per second at a higher queue depth.
+- **The throughput gain is small and the CPU saving holds.** 1.07× more writes and 1.47×
+  less CPU per write.
+- **Why the throughput gain is smaller than on the main server is not established.**
+  This machine differs in CPU (10 cores against 72), GPU, and storage at once, and its
+  kernels run through the driver's just-in-time compiler because the build targets the
+  main server's older GPU. Separating the storage effect needs the same workload on this
+  machine's memory-backed storage, which has not been run.
+- **The GPU path is correct on this hardware.** Every key was verified in all six runs,
+  and a separate single-compaction check matched RocksDB in all 16 repetitions with no
+  CPU fallback.
+
+Raw data, the iostat samples and the device summary are in
+[publication/data/malphite-nvme/](publication/data/malphite-nvme/).
+
 ### 9. Compared with earlier GPU and FPGA designs
 
 Earlier GPU and FPGA compaction systems run on other databases and hardware, so their
@@ -439,8 +474,10 @@ Over TCP it needs about twice that.
 - **Fast storage.** Most results put the data in memory (`/dev/shm`), so compaction is
   CPU-bound by construction. On the one SATA SSD we tested, the disk saturates at 100%
   utilisation and 220–244 MiB/s for both designs, and the throughput gain disappears
-  (0.93× on 8 cores, 1.04× on 16). The CPU and latency gains survive. NVMe, which is an
-  order of magnitude faster than this SSD, is untested and is the regime that matters.
+  (0.93× on 8 cores, 1.04× on 16). The CPU and latency gains survive. On NVMe, measured on
+  a different machine at 8 cores only, the drive is not saturated, the throughput gain is
+  1.07× and the CPU saving is 1.47×. Whether the smaller gain there comes from the storage
+  or from that machine's smaller CPU and different GPU has not been separated.
 - **Compaction without compression.** Our advantage over the best earlier design comes
   from moving compression to the GPU. With compression off, the two are the same, and
   this work adds nothing over LUDA's design.

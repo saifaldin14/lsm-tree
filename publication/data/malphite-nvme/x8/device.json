@@ -1,0 +1,50 @@
+{
+ "0": {
+  "device": "nvme0n1",
+  "method": "iostat -dxm 1, seconds 125-415 after the trial copy (the measurement window)",
+  "utilisation": 0.817,
+  "write_mib_s": 519.614,
+  "read_mib_s": 349.909,
+  "mean_queue_depth": 54.346
+ },
+ "1": {
+  "device": "nvme0n1",
+  "method": "iostat -dxm 1, seconds 125-415 after the trial copy (the measurement window)",
+  "utilisation": 0.652,
+  "write_mib_s": 404.857,
+  "read_mib_s": 406.458,
+  "mean_queue_depth": 27.827
+ },
+ "2": {
+  "device": "nvme0n1",
+  "method": "iostat -dxm 1, seconds 125-415 after the trial copy (the measurement window)",
+  "utilisation": 0.814,
+  "write_mib_s": 515.439,
+  "read_mib_s": 346.526,
+  "mean_queue_depth": 54.888
+ },
+ "3": {
+  "device": "nvme0n1",
+  "method": "iostat -dxm 1, seconds 125-415 after the trial copy (the measurement window)",
+  "utilisation": 0.673,
+  "write_mib_s": 417.052,
+  "read_mib_s": 420.794,
+  "mean_queue_depth": 31.803
+ },
+ "4": {
+  "device": "nvme0n1",
+  "method": "iostat -dxm 1, seconds 125-415 after the trial copy (the measurement window)",
+  "utilisation": 0.647,
+  "write_mib_s": 405.151,
+  "read_mib_s": 410.473,
+  "mean_queue_depth": 28.103
+ },
+ "5": {
+  "device": "nvme0n1",
+  "method": "iostat -dxm 1, seconds 125-415 after the trial copy (the measurement window)",
+  "utilisation": 0.808,
+  "write_mib_s": 515.797,
+  "read_mib_s": 346.127,
+  "mean_queue_depth": 55.356
+ }
+}
