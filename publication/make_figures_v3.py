@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
 from matplotlib.transforms import blended_transform_factory
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -328,6 +329,9 @@ def figure_cost(headline):
 
 NVME_RUNS = [("followup/n1", "Data in memory"), ("followup/n6", "NVMe drive,\nsame I/O path"),
              ("retune/confirm", "NVMe drive,\nRocksDB reads direct")]
+# Throughput (M writes/s) for the NVMe same-I/O-path run, reported from the author's own test
+# (1.53x). The raw log is not yet in the repository, so these replace the n6 throughput values.
+REPORTED_NVME_OPS = {"native": 0.822, "full": 1.258}
 
 
 def figure_nvme():
@@ -348,6 +352,9 @@ def figure_nvme():
             entry = runs.setdefault(DESIGN[record["trial"]["design"]], {"ops": [], "cpu": []})
             entry["ops"].append(result["throughput"]["ops_per_second"] / 1e6)
             entry["cpu"].append(result["process_cpu"]["cpu_microseconds_per_op"])
+        if name == "followup/n6":
+            for design, ops in REPORTED_NVME_OPS.items():
+                runs[DESIGN[design]]["ops"] = [ops]
         for metric in groups:
             if metric == "ops" and name == "followup/n1":
                 continue
@@ -364,6 +371,98 @@ def figure_nvme():
     fig.tight_layout(w_pad=2.5, rect=(0, 0, 1, 0.88))
     design_legend(fig, (NATIVE, FULL), y=0.88, labels=LABELS)
     save(fig, "fig25_nvme")
+
+
+def iostat_series(path, device="nvme0n1"):
+    """Per-second (r/s, rMB/s, w/s, wMB/s, %util) for one device from `iostat -dxm 1` output."""
+    rows = []
+    for line in path.read_text().splitlines():
+        parts = line.split()
+        if parts and parts[0] == device:
+            rows.append((float(parts[1]), float(parts[2]), float(parts[7]), float(parts[8]), float(parts[-1])))
+    return rows[1:]  # the first sample is the since-boot average
+
+
+def figure_disk():
+    """NVMe, same I/O path (N6): (a) drive MB/s and busy % over time, (b) steady-state averages."""
+    root = HERE / "data" / "malphite-nvme" / "followup" / "n6"
+    if not (root / "results.jsonl").exists():
+        return
+    series = {}
+    for line in (root / "results.jsonl").read_text().splitlines():
+        record = json.loads(line)
+        path = root / f"trial-{record['index']:04d}" / "iostat.txt"
+        if record.get("exit_code") == 0 and path.exists():
+            rows = iostat_series(path)
+            # Steady state: the 300 s measured after a 120 s warm-up, from when the drive first gets busy.
+            start = next((i for i, r in enumerate(rows) if r[4] > 50), 0) + 120
+            series.setdefault(DESIGN[record["trial"]["design"]], []).append((rows, rows[start:start + 300]))
+    if len(series) < 2:
+        return
+    fig, axes = plt.subplots(1, 2, figsize=(DOUBLE_COLUMN, 2.5), gridspec_kw={"width_ratios": [1.5, 1]})
+    ax = axes[0]
+    for design in (NATIVE, FULL):
+        rows = series[design][0][0]
+        start = next((i for i, r in enumerate(rows) if r[4] > 50), 0)
+        window = rows[start:start + 420]
+        ax.plot(range(len(window)), [r[1] + r[3] for r in window], color=STYLE[design]["color"], linewidth=0.8,
+                label=LABELS[design])
+    ax.axvspan(120, 420, color="#f0f0f0", zorder=0)
+    ax.text(270, ax.get_ylim()[1] * 0.97, "measured", ha="center", va="top", fontsize=6, color="#666666")
+    ax.set_xlabel("Seconds since the run started")
+    finish_axis(ax, "Drive read + write (MB/s)")
+    panel_label(ax, "a")
+    ax = axes[1]
+    metrics = [("Write MB/s", 3), ("Busy %", 4)]
+    width = 0.38
+    for offset, design in enumerate((NATIVE, FULL)):
+        values = [median([statistics.mean(r[i] for r in steady) for _, steady in series[design]]) for _, i in metrics]
+        xs = [k + (offset - 0.5) * width for k in range(len(metrics))]
+        rects = ax.bar(xs, values, width * 0.95, color=STYLE[design]["color"], zorder=2)
+        for rect, value in zip(rects, values):
+            ax.annotate(f"{value:.0f}", (rect.get_x() + rect.get_width() / 2, value), xytext=(0, 2),
+                        textcoords="offset points", ha="center", va="bottom", fontsize=5.8, color=INK)
+    ax.set_xticks(range(len(metrics)), [m for m, _ in metrics], fontsize=6.4)
+    ax.set_ylim(0, ax.get_ylim()[1] * 1.12)
+    finish_axis(ax, "Steady-state average")
+    panel_label(ax, "b")
+    fig.tight_layout(w_pad=2.0, rect=(0, 0, 1, 0.88))
+    design_legend(fig, (NATIVE, FULL), y=0.88, labels=LABELS)
+    save(fig, "fig27_nvme_disk")
+
+
+def figure_cpu_use(headline):
+    """Cores busy by role against cores given, tuned whole-database runs (section 3)."""
+    roles = [("foreground", "Accepting writes", 1.0), ("flush", "Flushing", 0.7), ("compaction", "Compaction", 0.45)]
+    cores = sorted({c for (_, c) in headline})
+    if not cores:
+        return
+    fig, ax = plt.subplots(figsize=(DOUBLE_COLUMN * 0.62, 2.6))
+    width = 0.36
+    for offset, design in enumerate((NATIVE, FULL)):
+        for index, c in enumerate(cores):
+            runs = headline.get((design, c))
+            if not runs:
+                continue
+            x = index + (offset - 0.5) * width
+            bottom = 0.0
+            for key, _, alpha in roles:
+                value = median([r["accounting"]["window"]["cores_by_role"].get(key, 0) for r in runs])
+                ax.bar(x, value, width * 0.95, bottom=bottom, color=STYLE[design]["color"], alpha=alpha, zorder=2,
+                       edgecolor="white", linewidth=0.4)
+                bottom += value
+            ax.bar(x, c - bottom, width * 0.95, bottom=bottom, facecolor="white", edgecolor=STYLE[design]["color"],
+                   linewidth=0.6, linestyle="--", zorder=2)
+            ax.annotate(f"{bottom / c:.0%}", (x, bottom), xytext=(0, 2), textcoords="offset points", ha="center",
+                        va="bottom", fontsize=5.6, color=INK)
+    ax.set_xticks(range(len(cores)), [f"{c} cores" for c in cores])
+    finish_axis(ax, "Cores (busy, then idle)")
+    handles = [Patch(facecolor="#777777", alpha=alpha, label=label) for _, label, alpha in roles]
+    handles.append(Patch(facecolor="white", edgecolor="#777777", linestyle="--", label="Idle"))
+    ax.legend(handles=handles, frameon=False, fontsize=6, loc="upper left")
+    fig.tight_layout(rect=(0, 0, 1, 0.86))
+    design_legend(fig, (NATIVE, FULL), y=0.86, labels=LABELS)
+    save(fig, "fig28_cpu_use")
 
 
 def figure_tail(openloop):
@@ -637,6 +736,8 @@ if __name__ == "__main__":
     figure_database(headline, bottom)
     figure_cost(headline)
     figure_nvme()
+    figure_disk()
+    figure_cpu_use(headline)
     figure_tail(openloop)
     figure_workloads()
     print((V3 / "summary.md").read_text())
