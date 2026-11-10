@@ -671,6 +671,27 @@ repeated with the database on pyke and the GPU server on malphite over 100 Gb/s 
   4.46 µs including the GPU server's 51 s of CPU. Every run verified all 50 M keys. The
   first attempt did not start (missing `/dev/shm/sa29ali` on pyke) and produced no data.
 
+### Write amplification: when level 0 is compacted (added 2026-11-10, before these runs)
+
+On NVMe (N6) ours writes 5.5 bytes per user byte against RocksDB's 4.0, and in memory
+(N1) 6.4 against 4.05. Flush bytes are equal; the extra is compaction. N2 ruled out
+subcompactions. Hypothesis for the cause: ours finishes compactions sooner, so each level
+0 to level 1 compaction starts as soon as the trigger (4 files) is reached and takes less
+new data, and level 1 is rewritten more often per user byte.
+
+- **Run** (zyra, in memory, 8 cores, LZ4, batched writes, the paused shared-GPU chain
+  resumes after): native and full offload with their `v3-headline.json` 8-core settings,
+  each at `l0-trigger` in {4, 8, 12} with `max-bytes-for-level-base` = trigger x 64 MiB
+  (the write buffer size, so level 1 matches a full level 0); 4 is RocksDB's default.
+  30 s warm-up plus 120 s, verification on, 2 blocks, schedule seed 110.
+- **Reported:** write amplification over the window, throughput, CPU per write, stall
+  fraction, for every cell.
+- **Hypothesis H29:** some trigger brings ours' write amplification within 10% of
+  native's at the same trigger, with ours' throughput still at least native's.
+- **Selection rule, fixed now:** each design's setting is the trigger with the lowest
+  write amplification whose throughput is within 5% of that design's best trigger.
+  Both designs get the same choice of settings; the README reports both selections.
+
 ## Changes after data collection
 
 - **Shared GPU, first attempt (discarded, kept as `shared-gpu-attempt1`):** all

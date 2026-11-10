@@ -254,17 +254,16 @@ Every input is in [publication/prices.json](publication/prices.json).
 | Ours + L4 | 8 | 1,260k | 1.340 | 0.295 |
 | RocksDB | 16 | 1,262k | 1.428 | 0.314 |
 | Ours + L4 | 4 | 748k | 0.983 | 0.365 |
-| RocksDB | 32 | 1,607k | 2.856 | 0.494 |
+| RocksDB | 32 | 1,603k | 2.856 | 0.495 |
 
 - **For high throughput, the GPU halves the cost per write.** Ours on 16 cores writes
-  2.26M/s for $0.252 per billion. RocksDB's best on 32 cores is 1.61M/s for $0.494 per
+  2.26M/s for $0.252 per billion. RocksDB's best on 32 cores is 1.60M/s for $0.495 per
   billion: 1.41× fewer writes at 1.96× the cost per write.
 - **For low throughput, cores are cheaper.** At 4 and 8 cores RocksDB costs less per write
   ($0.207 and $0.237 against $0.365 and $0.295), because the GPU's fixed price is not yet
   paid back. The lines cross between 8 and 16 cores (about 12 by interpolation).
-- **RocksDB's 32-core point is the weakest number here:** it is the best of five
-  60-second tuning trials (1.52 to 1.61M), not a five-minute run. Taking the best trial
-  favours RocksDB.
+- **RocksDB on 32 cores** uses its best setting from the tuning search, run for five
+  minutes like every other point (median of 2 runs: 1.598M and 1.607M; a third is queued).
 - **Sharing one GPU closes most of the low-core gap.** Several databases, each on its own
   cores, shared one GPU through CUDA MPS, each paying its share of the GPU. With two
   databases at 8 cores each, every database kept 94% of its single-database throughput, so
@@ -283,10 +282,10 @@ more expensive cards, with ours on 16 cores against RocksDB on 32:
 | GPU priced | $/hour total | $ per billion | Cheaper per write than RocksDB on 32 cores |
 |---|---|---|---|
 | L4, 24 GiB ([g6.xlarge](https://instances.vantage.sh/aws/ec2/g6.xlarge)) | 2.054 | 0.252 | **1.96×** |
-| A10G, 24 GiB ([g5.xlarge](https://instances.vantage.sh/aws/ec2/g5.xlarge)) | 2.256 | 0.277 | 1.78× |
+| A10G, 24 GiB ([g5.xlarge](https://instances.vantage.sh/aws/ec2/g5.xlarge)) | 2.256 | 0.277 | 1.79× |
 | L40S, 48 GiB ([g6e.xlarge](https://instances.vantage.sh/aws/ec2/g6e.xlarge)) | 3.111 | 0.382 | 1.29× |
 
-**The GPU would have to cost $2.59/hour before the advantage disappears**, more than any of
+**The GPU would have to cost $2.60/hour before the advantage disappears**, more than any of
 these cards.
 
 **When it does not pay.** If 0.8M writes/s or less is enough, RocksDB on a few cores is the

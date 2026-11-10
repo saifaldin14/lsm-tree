@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from make_figures_v3 import FULL, NATIVE, load_campaign, tuning_best, window_ops  # noqa: E402
+from make_figures_v3 import FULL, NATIVE, load_campaign, native_32_runs, tuning_best, window_ops  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 PRICES = json.loads((HERE / "prices.json").read_text())
@@ -33,7 +33,7 @@ def tuned_throughput() -> dict[tuple[str, int], float]:
     runs = load_campaign("v3-headline", "v3-headline-more")
     out = {(d, c): statistics.median(window_ops(r) for r in runs[(d, c)])
            for d in (NATIVE, FULL) for c in (4, 8, 16) if runs.get((d, c))}
-    best = tuning_best("native", 32)
+    best = native_32_runs() or tuning_best("native", 32)
     if best:
         out[(NATIVE, 32)] = best
     return out

@@ -259,13 +259,24 @@ def shared_cost(points, core_hour, gpu_hour):
     return out
 
 
+def native_32_runs():
+    """Median writes/s of the 5-minute 32-core RocksDB runs (data/shared-mps/native32), or None."""
+    path = HERE / "data" / "shared-mps" / "native32" / "results.jsonl"
+    if not path.exists():
+        return None
+    ops = [window_ops(json.loads(line)["result"]) for line in path.read_text().splitlines()
+           if line.strip() and json.loads(line).get("exit_code") == 0
+           and "keys" in (json.loads(line)["result"].get("verification") or {})]
+    return median(ops) if ops else None
+
+
 def figure_cost(headline):
     """Cost: (a) writes/s and (b) $ per billion writes against cores, tuned runs, prices.json."""
     prices = json.loads((HERE / "prices.json").read_text())
     core_hour, gpu_hour = prices["physical_core_hour"], prices["gpu_hour"]
     points = {design: {c: median([window_ops(r) for r in headline[(design, c)]])
                        for c in (4, 8, 16) if headline.get((design, c))} for design in (NATIVE, FULL)}
-    native_32 = tuning_best("native", 32)
+    native_32 = native_32_runs() or tuning_best("native", 32)
     if not points[NATIVE] or not points[FULL]:
         return
     dollars = lambda design, cores, ops: (cores * core_hour + (gpu_hour if design == FULL else 0)) / (ops * 3600 / 1e9)
@@ -307,8 +318,9 @@ def figure_cost(headline):
             axes[1].annotate(f"{y:.2f} (N={shared[c][1]})", (c, y), xytext=(6, -3), textcoords="offset points",
                              ha="left", va="top", fontsize=5.4, color=INK, bbox=LABEL_BOX, zorder=4)
         axes[1].legend(handles=[line], frameon=False, fontsize=6, loc="upper left")
-    fig.text(0.5, 0.005, "Ours includes one GPU at the L4 price. Hollow point: RocksDB on 32 cores, best 60 s tuning "
-             "trial (other points: 5-min runs, median of 5).", ha="center", va="bottom", fontsize=5.8, color="#555555")
+    fig.text(0.5, 0.005, "Ours includes one GPU at the L4 price. Hollow point: RocksDB on 32 cores "
+             "(5-min runs). Other points: 5-min runs, median of 5.", ha="center", va="bottom", fontsize=5.8,
+             color="#555555")
     fig.tight_layout(w_pad=2.5, rect=(0, 0.05, 1, 0.88))
     design_legend(fig, (NATIVE, FULL), y=0.88, labels=LABELS)
     save(fig, "fig24_cost")
