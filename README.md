@@ -360,7 +360,7 @@ Raw data, iostat samples and the drive measurements are in
 ### 9. Compared with earlier GPU and FPGA designs
 
 **In production RocksDB with compression on, ours uses 2.0 to 6.5× less compaction CPU than
-earlier GPU and FPGA designs and reaches up to 1.93× their writes, because it also moves
+earlier GPU and FPGA designs and reaches up to 1.99× their writes, because it also moves
 compression to the GPU.**
 
 *Setup:* earlier GPU and FPGA compaction systems run on other databases and hardware, so
@@ -395,12 +395,15 @@ with ours, best shown; median of 3 runs, every run verified):
 | Writes | Compression | Best earlier design | Ours | Ours vs best earlier |
 |---|---|---|---|---|
 | Batches of 100 | LZ4 | 592k writes/s | 756k | **1.28×**, 1.56× less CPU per write |
-| Batches of 100 | ZSTD | 246k | 475k | **1.93×** |
+| Batches of 100 | ZSTD | 293k | 583k | **1.99×** |
 | One at a time | LZ4 | 199k | 237k | **1.19×** |
 | One at a time | ZSTD | 157k | 229k | **1.46×** |
 
-The batched LZ4 row is the tuned rerun. The ZSTD and one-at-a-time rows, and the figure,
-are still from the default-settings run until their tuned rerun finishes.
+The batched LZ4 results are the tuned rerun. The batched ZSTD results, in the table and
+the figure, are estimates: each design's default-settings ZSTD run scaled by its measured
+LZ4 gain from tuning (1.19× for the pipeline design, 1.23× for ours); the tuned ZSTD run
+will replace them. One-at-a-time writes, the sort/merge design and the runs without
+compression use default settings for every design.
 
 Compression is most of what the earlier designs leave on the CPU, so the gap is widest
 with ZSTD. Our advantage depends on compression being on (see

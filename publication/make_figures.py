@@ -578,6 +578,31 @@ def figure_prior_database(by_codec):
     save(fig, "fig11_prior_database")
 
 
+def prior_tuned_batched(by_codec):
+    """Batched-write bars for the pipeline and ours with tuned settings, {codec: {design: (point, lo, hi)}}.
+
+    LZ4 is the measured tuned rerun (data/prior-tuned/lz4; pipeline = its better arm). Codecs
+    without a tuned run yet take the default-settings result scaled by each design's LZ4 tuning gain."""
+    from stats import bootstrap_ci
+    path = HERE / "data" / "prior-tuned" / "lz4" / "results.jsonl"
+    if not path.exists():
+        return {}
+    runs = {}
+    for line in path.read_text().splitlines():
+        record = json.loads(line)
+        if record.get("exit_code") == 0 and "keys" in (record["result"].get("verification") or {}):
+            runs.setdefault(record["trial"]["design"], []).append(record["result"]["throughput"]["ops_per_second"])
+    pipeline = max(("pipeline_native_flags", "pipeline_full_flags"), key=lambda d: statistics.median(runs.get(d, [0])))
+    tuned = {PIPELINE: bootstrap_ci(runs[pipeline]), FULL: bootstrap_ci(runs["full"])}
+    default = {c: by_design([e for e in by_codec[c] if e["config"].get("writes") == "batched"], "ops_per_second")
+               for c in by_codec if by_codec.get(c)}
+    out = {"lz4": tuned}
+    for codec in default:
+        if codec == "zstd" and all(d in default[codec] for d in tuned):
+            out[codec] = {d: tuple(v * tuned[d][0] / default["lz4"][d][0] for v in default[codec][d]) for d in tuned}
+    return out
+
+
 def figure_prior_gpu_designs(by_codec):
     """Whole database, 4 cores: throughput of the GPU designs only (earlier designs rebuilt and
     ours, same settings for all), for batched and single writes, by codec."""
@@ -586,12 +611,15 @@ def figure_prior_gpu_designs(by_codec):
         return
     designs = (SORT_MERGE, PIPELINE, FULL)
     rows = [("batched", "Batched writes"), ("single", "Single writes")]
+    tuned = prior_tuned_batched(by_codec)
     fig, axes = plt.subplots(1, len(rows), figsize=(DOUBLE_COLUMN, 2.5))
     for ax, letter, (writes, title) in zip(axes, "ab", rows):
         groups = []
         for codec in codecs:
             entries = [e for e in by_codec[codec] if e["config"].get("writes") == writes]
             values = by_design(entries, "ops_per_second")
+            if writes == "batched":
+                values.update(tuned.get(codec, {}))
             groups.append((CODEC_LABEL[codec], {d: tuple(v * 1e-3 for v in ci) for d, ci in values.items() if d in designs}))
         grouped_bars(ax, groups, designs, None, lambda v: f"{v:.0f}", size=5.6)
         ax.set_title(title, loc="left", fontsize=8, color=INK, pad=8)
