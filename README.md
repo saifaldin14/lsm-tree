@@ -516,10 +516,9 @@ it.** Running the whole database this way, with every compaction sent to the rem
 replicated database can compact once for all its copies
 ([docs/remote-compaction.md](docs/remote-compaction.md)).
 
-![RDMA transport](publication/figures/fig14_rdma_transport.png)
-
-**Moving the data.** Our RDMA transport reaches 92 Gb/s, the network's full speed. It uses
-0.012 CPU-seconds per GiB moved, about 80× less than TCP, which manages 6–7 Gb/s.
+**Moving the data.** Our RDMA transport reaches 92 Gb/s on large transfers, the same as the
+network card vendor's own test, and the sending machine spends only 0.012 CPU-seconds per
+GiB moved.
 
 **Compacting on a GPU in another machine.** The database runs on one machine (pyke, 96
 cores) and sends each compaction over 100 Gb/s RDMA to a GPU server on another (malphite,
