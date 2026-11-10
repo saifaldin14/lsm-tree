@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -31,6 +32,12 @@ namespace lsm_lab
         std::uint32_t levels = 7;
         // 0 keeps RocksDB's default.
         std::uint32_t l0_trigger = 0;
+        std::uint32_t l0_slowdown = 0;
+        std::uint32_t l0_stop = 0;
+        // "level" (RocksDB's default) or "universal".
+        std::string compaction_style = "level";
+        // Full statistics, including mutex wait timers (costs some CPU; for profiling runs).
+        bool stats_all = false;
         double level_multiplier = 0;
         bool use_direct_io = false;
         bool adaptive_yield = true;
@@ -58,10 +65,14 @@ namespace lsm_lab
                                                     use_direct_io, adaptive_yield, compression, block_bytes,
                                                     block_cache_bytes, blob_min_bytes, pipelined_write,
                                                     concurrent_memtable, flush_jobs, allow_fallocate,
-                                                    bottommost_compression)
+                                                    bottommost_compression, l0_slowdown, l0_stop, compaction_style,
+                                                    stats_all)
 
     inline rocksdb::Options make_db_options(const DbShape &shape, const std::shared_ptr<BatchTransform> &transform)
     {
+        constexpr auto max_l0_threshold = static_cast<std::uint64_t>(std::numeric_limits<int>::max());
+        if (shape.l0_trigger > max_l0_threshold || shape.l0_slowdown > max_l0_threshold || shape.l0_stop > max_l0_threshold)
+            throw std::invalid_argument("L0 thresholds must fit in int");
         rocksdb::Options options;
         options.write_buffer_size = shape.write_buffer_bytes;
         options.max_write_buffer_number = static_cast<int>(shape.max_write_buffer_number);
@@ -82,6 +93,17 @@ namespace lsm_lab
         options.paranoid_checks = true;
         if (shape.l0_trigger > 0)
             options.level0_file_num_compaction_trigger = static_cast<int>(shape.l0_trigger);
+        if (shape.l0_slowdown > 0)
+            options.level0_slowdown_writes_trigger = static_cast<int>(shape.l0_slowdown);
+        if (shape.l0_stop > 0)
+            options.level0_stop_writes_trigger = static_cast<int>(shape.l0_stop);
+        if (options.level0_file_num_compaction_trigger > options.level0_slowdown_writes_trigger ||
+            options.level0_slowdown_writes_trigger > options.level0_stop_writes_trigger)
+            throw std::invalid_argument("L0 thresholds must satisfy compaction <= slowdown <= stop");
+        if (shape.compaction_style == "universal")
+            options.compaction_style = rocksdb::kCompactionStyleUniversal;
+        else if (shape.compaction_style != "level")
+            throw std::invalid_argument("compaction style must be level or universal");
         if (shape.level_multiplier > 0)
             options.max_bytes_for_level_multiplier = shape.level_multiplier;
         options.use_direct_reads = shape.use_direct_io;
@@ -95,7 +117,8 @@ namespace lsm_lab
         // With more writers than cores, adaptive yield spins waiting writers and burns the CPU budget.
         options.enable_write_thread_adaptive_yield = shape.adaptive_yield;
         options.statistics = rocksdb::CreateDBStatistics();
-        options.statistics->set_stats_level(rocksdb::StatsLevel::kExceptDetailedTimers);
+        options.statistics->set_stats_level(shape.stats_all ? rocksdb::StatsLevel::kAll
+                                                            : rocksdb::StatsLevel::kExceptDetailedTimers);
         if (shape.compression == "lz4")
             options.compression = rocksdb::kLZ4Compression;
         else if (shape.compression == "zstd")
