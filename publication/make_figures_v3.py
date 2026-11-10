@@ -361,7 +361,7 @@ def figure_nvme():
             groups[metric].append((label, {d: bootstrap_ci(v[metric]) for d, v in runs.items()}))
     if not groups["ops"]:
         return
-    fig, axes = plt.subplots(1, 2, figsize=(DOUBLE_COLUMN, 2.7), gridspec_kw={"width_ratios": [2, 3]})
+    fig, axes = plt.subplots(1, 2, figsize=(DOUBLE_COLUMN, 3.0), gridspec_kw={"width_ratios": [1, 1.25]})
     for ax, letter, (metric, ylabel, fmt) in zip(axes, "ab", [("ops", "Throughput (M writes/s)", lambda v: f"{v:.3f}"),
                                                             ("cpu", "CPU per write (µs)", lambda v: f"{v:.1f}")]):
         top = grouped_bars(ax, groups[metric], (NATIVE, FULL), None, fmt, size=6.4)
