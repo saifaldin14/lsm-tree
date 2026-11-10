@@ -21,7 +21,7 @@ from matplotlib.transforms import blended_transform_factory
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from make_figures import (DISPLAY, DOUBLE_COLUMN, FULL, INK, LABEL_BOX, NATIVE, STYLE, bar,  # noqa: E402
-                          design_legend, finish_axis, panel_label, plain_log_axis, save)
+                          design_legend, finish_axis, grouped_bars, panel_label, plain_log_axis, save)
 
 HERE = Path(__file__).resolve().parent
 V3 = HERE / "data" / "v3"
@@ -314,6 +314,44 @@ def figure_cost(headline):
     save(fig, "fig24_cost")
 
 
+NVME_RUNS = [("followup/n1", "Data in memory"), ("followup/n6", "NVMe drive,\nsame I/O path"),
+             ("retune/confirm", "NVMe drive,\nRocksDB reads direct")]
+
+
+def figure_nvme():
+    """Second server (8 of 10 cores, NVMe): (a) writes/s and (b) CPU per write, in memory and on the drive."""
+    from stats import bootstrap_ci
+    root = HERE / "data" / "malphite-nvme"
+    groups = {"ops": [], "cpu": []}
+    for name, label in NVME_RUNS:
+        path = root / name / "results.jsonl"
+        if not path.exists():
+            continue
+        runs = {}
+        for line in path.read_text().splitlines():
+            record = json.loads(line) if line.strip() else None
+            if not record or record.get("exit_code") != 0 or "keys" not in (record["result"].get("verification") or {}):
+                continue
+            result = record["result"]
+            entry = runs.setdefault(DESIGN[record["trial"]["design"]], {"ops": [], "cpu": []})
+            entry["ops"].append(result["throughput"]["ops_per_second"] / 1e6)
+            entry["cpu"].append(result["process_cpu"]["cpu_microseconds_per_op"])
+        for metric in groups:
+            groups[metric].append((label, {d: bootstrap_ci(v[metric]) for d, v in runs.items()}))
+    if not groups["ops"]:
+        return
+    fig, axes = plt.subplots(1, 2, figsize=(DOUBLE_COLUMN, 2.5))
+    for ax, letter, (metric, ylabel, fmt) in zip(axes, "ab", [("ops", "Throughput (M writes/s)", lambda v: f"{v:.2f}"),
+                                                            ("cpu", "CPU per write (µs)", lambda v: f"{v:.1f}")]):
+        grouped_bars(ax, groups[metric], (NATIVE, FULL), None, fmt, size=5.8)
+        ax.tick_params(axis="x", labelsize=6.4)
+        finish_axis(ax, ylabel)
+        panel_label(ax, letter)
+    fig.tight_layout(w_pad=2.5, rect=(0, 0, 1, 0.88))
+    design_legend(fig, (NATIVE, FULL), y=0.88, labels=LABELS)
+    save(fig, "fig25_nvme")
+
+
 def figure_tail(openloop):
     """Write latency percentiles at fixed offered rates (open loop, 8 cores)."""
     rates = sorted({rate for (_, rate) in openloop})
@@ -584,6 +622,7 @@ if __name__ == "__main__":
     figure_cores(isolated)
     figure_database(headline, bottom)
     figure_cost(headline)
+    figure_nvme()
     figure_tail(openloop)
     figure_workloads()
     print((V3 / "summary.md").read_text())
