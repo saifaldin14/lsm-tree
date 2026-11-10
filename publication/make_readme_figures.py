@@ -8,6 +8,9 @@ fig32_workload_gains  Gain over RocksDB per workload: the v3 workload campaigns 
                       campaign.
 fig33_storage         Writes/s and CPU per write with data in memory and on an NVMe drive (second
                       server) and on a SATA SSD (first server), from archived runs only.
+fig35_cost_cheaper    The tuned cost comparisons in which ours is cheaper than RocksDB: the same write
+                      rate (1.26M writes/s), and the highest rate each reaches. AWS prices from
+                      prices.json; ours includes one GPU.
 """
 
 from __future__ import annotations
@@ -25,7 +28,8 @@ sys.path.insert(0, str(HERE))
 import campaigns  # noqa: E402
 from make_figures import (DOUBLE_COLUMN, FULL, INK, NATIVE, STYLE, bar, design_legend,  # noqa: E402
                           finish_axis, panel_label, save)
-from make_figures_v3 import LABELS, cpu_us, load_campaign, window_ops, workload_ratios  # noqa: E402
+from make_figures_v3 import (LABELS, cpu_us, load_campaign, native_32_runs, window_ops,  # noqa: E402
+                             workload_ratios)
 
 
 def median(values):
@@ -164,9 +168,65 @@ def figure_storage():
     save(fig, "fig33_storage_v2")
 
 
+def cost_cases():
+    """[(title, [(design, label, writes/s, $ per hour), ...])] for the comparisons where ours is cheaper."""
+    prices = json.loads((HERE / "prices.json").read_text())
+    core, gpu = prices["physical_core_hour"], prices["gpu_hour"]
+    headline = load_campaign("v3-headline", "v3-headline-more")
+    rate = {(design, cores): median([window_ops(r) for r in headline[(design, cores)]])
+            for design in (NATIVE, FULL) for cores in (8, 16) if headline.get((design, cores))}
+    native_32 = native_32_runs()
+    if len(rate) < 4 or not native_32:
+        return []
+    return [("Same write rate", [(NATIVE, "RocksDB\n16 cores", rate[(NATIVE, 16)], 16 * core),
+                                 (FULL, "Ours\n8 cores + GPU", rate[(FULL, 8)], 8 * core + gpu)]),
+            ("Highest rate each reaches", [(NATIVE, "RocksDB\n32 cores", native_32, 32 * core),
+                                           (FULL, "Ours\n16 cores + GPU", rate[(FULL, 16)], 16 * core + gpu)])]
+
+
+def figure_cost_cheaper():
+    cases = cost_cases()
+    if not cases:
+        return
+    fig, axes = plt.subplots(1, 2, figsize=(DOUBLE_COLUMN, 2.7))
+    panels = [("Throughput (M writes/s)", lambda ops, hour: ops / 1e6, "{:.2f}M"),
+              ("$ per billion writes", lambda ops, hour: hour / (ops * 3600 / 1e9), "${:.2f}")]
+    for ax, letter, (ylabel, value, fmt) in zip(axes, "ab", panels):
+        ticks, labels, top = [], [], 0.0
+        for group, (title, bars) in enumerate(cases):
+            base = group * 2.6
+            values = []
+            for offset, (design, label, ops, hour) in enumerate(bars):
+                x = base + offset
+                y = value(ops, hour)
+                values.append(y)
+                bar(ax, [x], [y], 0.8, design)
+                ax.annotate(fmt.format(y), (x, y), xytext=(0, 1.5), textcoords="offset points", ha="center",
+                            va="bottom", fontsize=6.4, color=INK)
+                ticks.append(x)
+                labels.append(label)
+                top = max(top, y)
+            native, ours = values
+            text = (f"{ours / native:.2f}× more writes" if letter == "a" and ours / native > 1.05 else
+                    "same rate" if letter == "a" else
+                    f"{100 * (1 - ours / native):.0f}% cheaper" if ours / native > 0.75 else
+                    f"{native / ours:.1f}× cheaper")
+            ax.annotate(text, (base + 0.5, max(values)), xytext=(0, 13), textcoords="offset points", ha="center",
+                        va="bottom", fontsize=7.2, fontweight="bold", color=INK)
+            ax.text(base + 0.5, -0.21, title, transform=blended_transform_factory(ax.transData, ax.transAxes),
+                    ha="center", va="top", fontsize=7, color=INK)
+        ax.set_xticks(ticks, labels, fontsize=6.4)
+        ax.set_ylim(0, top * 1.35)
+        finish_axis(ax, ylabel)
+        panel_label(ax, letter)
+    fig.tight_layout(w_pad=2.5, rect=(0, 0.04, 1, 1))
+    save(fig, "fig35_cost_cheaper")
+
+
 def main() -> int:
     figure_workload_gains()
     figure_storage()
+    figure_cost_cheaper()
     return 0
 
 
