@@ -413,10 +413,99 @@ def experiment_r8(cluster: Cluster, out: Path, repetitions: int, records: int, s
                   f"verified {record['result'].get('verification', {}).get('keys')} keys", flush=True)
 
 
+# r9: tuned 4-core settings (configs/system/v3-headline.json) for every database.
+R9_FLAGS = {
+    "native": {"threads": 4, "subcompactions": 4, "pipelined-write": False, "adaptive-yield": True,
+               "background-jobs": 4, "batch-size": 100, "disable-wal": True, "allow-fallocate": False},
+    "service": {"threads": 8, "subcompactions": 4, "pipelined-write": False, "adaptive-yield": False,
+                "background-jobs": 4, "batch-size": 100, "disable-wal": True, "allow-fallocate": False},
+}
+
+
+def experiment_r9(cluster: Cluster, out: Path, repetitions: int, records: int, seconds: tuple[int, int],
+                  counts: list[int], engines: int, policies: list[str]) -> None:
+    """Several databases on the client machine sharing one remote GPU compaction server over RDMA
+    (PREREGISTRATION.md, GPU multiplexing, M2). The client's "db_slots" lists [cores, node] for
+    each database in order; the server is restarted for every trial."""
+    c, g = cluster.config["client"], cluster.config["gpu"]
+    gpu_build = g.get("build", cluster.build)
+    scratch = cluster.config["scratch"]
+    golden = f"{scratch}/rdma-golden-{records}"
+    if "done" not in cluster.run(c["host"], f"test -f {golden}.done && echo done || true"):
+        cluster.run(c["host"], f"rm -rf {golden} && {cluster.build}/lsm_system_bench --phase preload --dir {golden} "
+                               f"--records {records} --threads 8 > {golden}.json 2>&1 && touch {golden}.done")
+    results = out / "r9-sharing.jsonl"
+    done = {(r["repetition"], r["design"], r["instances"]) for r in map(json.loads, results.open())} \
+        if results.exists() else set()
+    for repetition in range(1, repetitions + 1):
+        order = [(f"service-{policy}", n) for n in counts for policy in policies]
+        order += [("native", n) for n in sorted({counts[0], counts[-1]})]
+        random.Random(900 + repetition).shuffle(order)
+        for design, n in order:
+            if (repetition, design, n) in done:
+                continue
+            record = {"experiment": "r9", "repetition": repetition, "design": design, "instances": n,
+                      "engines": engines if design != "native" else None,
+                      "load_before": {"client": cluster.load(c["host"]), "gpu": cluster.load(g["host"])}}
+            server = None
+            log = "/tmp/lsm-r9-server.log"
+            try:
+                env, mode, flags = "", "native_cpu", R9_FLAGS["native"]
+                if design != "native":
+                    policy = design.split("-", 1)[1]
+                    server = cluster.start(g["host"], f"{GPU_SERVER_ENV} LSM_SCHEDULER_LOG=1 {pin(g)} {gpu_build}/"
+                                                      f"lsm_compaction_server --listen rdma://{g['rdma_address']}:0 "
+                                                      f"--backend cuda_merge --engines {engines} --scheduler {policy}", log)
+                    env = f"LSM_RDMA_PUSH=1 LSM_REMOTE_ENDPOINT={server[1]} LSM_REMOTE_CONNECTIONS=4"
+                    mode, flags = "remote_merge", R9_FLAGS["service"]
+                    record["server_cpu_before"] = cluster.cpu_seconds(g["host"], server[0])
+                options = " ".join(f"--{k} {str(v).lower() if isinstance(v, bool) else v}" for k, v in flags.items())
+                lines = [f"set -u; D={scratch}/r9; rm -rf $D; mkdir -p $D"]
+                for index in range(n):
+                    cores, node = c["db_slots"][index]
+                    lines.append(f"cp -a {golden} $D/db{index}")
+                for index in range(n):
+                    cores, node = c["db_slots"][index]
+                    lines.append(f"(LSM_TENANT=db{index} {env} numactl --physcpubind={cores} --preferred={node} "
+                                 f"{cluster.build}/lsm_system_bench --phase run --mode {mode} --dir $D/db{index} "
+                                 f"--records {records} --warmup-seconds {seconds[0]} --duration-seconds {seconds[1]} "
+                                 f"{options} > $D/db{index}.json 2> $D/db{index}.err; echo $? > $D/db{index}.rc) &")
+                lines.append("wait")
+                lines.append("for f in $D/db*.rc; do echo rc $(basename $f .rc) $(cat $f); done")
+                lines.append("for f in $D/db*.json; do printf 'json %s %s\\n' \"$(basename $f .json)\" \"$(tr -d '\\n' < $f)\"; done")
+                lines.append("for f in $D/db*.err; do printf 'err %s %s\\n' \"$(basename $f .err)\" \"$(tail -c 300 $f | tr '\\n' ' ')\"; done")
+                lines.append("rm -rf $D")
+                text = cluster.run(c["host"], "bash -c " + shlex.quote("\n".join(lines)))
+                if server:
+                    after = cluster.cpu_seconds(g["host"], server[0])
+                    before = record.pop("server_cpu_before")
+                    record["server_cpu_seconds"] = after - before if None not in (after, before) else None
+                record["results"], record["exit_codes"], record["errors"] = {}, {}, {}
+                for line in text.splitlines():
+                    kind, _, rest = line.partition(" ")
+                    name, _, value = rest.partition(" ")
+                    if kind == "rc":
+                        record["exit_codes"][name] = int(value or -1)
+                    elif kind == "json" and value.startswith("{"):
+                        result = json.loads(value)
+                        result.pop("timeline", None)
+                        record["results"][name] = result
+                    elif kind == "err" and value.strip():
+                        record["errors"][name] = value
+            finally:
+                if server:
+                    cluster.stop(g["host"], server[0])
+                    record["server_statistics"] = cluster.statistics(g["host"], log)
+            append(results, record)
+            ops = [r["throughput"]["ops_per_second"] for r in record["results"].values()]
+            print(f"r9 repetition {repetition} {design} N={n}: per-database "
+                  f"{[round(o / 1e3) for o in ops]} k ops/s, exits {record['exit_codes']}", flush=True)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--hosts", type=Path, required=True)
-    parser.add_argument("--experiment", choices=["r1", "r2", "r6", "r7", "r8"], required=True)
+    parser.add_argument("--experiment", choices=["r1", "r2", "r6", "r7", "r8", "r9"], required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--repetitions", type=int, default=None)
     parser.add_argument("--records", type=int, default=50_000_000)
@@ -424,6 +513,9 @@ def main() -> int:
     parser.add_argument("--duration-seconds", type=int, default=120)
     parser.add_argument("--variants", help="r7 and r8: comma-separated subset of variants or designs to run")
     parser.add_argument("--subcompactions", type=int, help="r8: max_subcompactions for every design")
+    parser.add_argument("--counts", default="1,2,4,8", help="r9: databases sharing the GPU")
+    parser.add_argument("--engines", type=int, default=4, help="r9: engines of the compaction server")
+    parser.add_argument("--policies", default="fifo,fair", help="r9: scheduler policies")
     arguments = parser.parse_args()
     cluster = Cluster(json.loads(arguments.hosts.read_text()))
     arguments.out.mkdir(parents=True, exist_ok=True)
@@ -433,6 +525,10 @@ def main() -> int:
         experiment_r2(cluster, arguments.out)
     elif arguments.experiment == "r7":
         experiment_r7(cluster, arguments.out, arguments.variants.split(",") if arguments.variants else None)
+    elif arguments.experiment == "r9":
+        experiment_r9(cluster, arguments.out, arguments.repetitions or 3, arguments.records,
+                      (arguments.warmup_seconds, arguments.duration_seconds),
+                      [int(n) for n in arguments.counts.split(",")], arguments.engines, arguments.policies.split(","))
     elif arguments.experiment == "r8":
         experiment_r8(cluster, arguments.out, arguments.repetitions or 3, arguments.records,
                       (arguments.warmup_seconds, arguments.duration_seconds),

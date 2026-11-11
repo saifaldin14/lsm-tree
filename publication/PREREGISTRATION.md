@@ -806,6 +806,61 @@ ours writes fewer bytes.
   profile artifacts and raw samples remain. The original failed cohort is retained and
   is not mixed into the retry medians.
 
+### GPU multiplexing (registered 2026-11-10, before M1 to M4)
+
+One database uses 23 to 41% of the GPU, and every CPU fallback in the earlier sharing runs
+(separate processes and MPS) was a GPU memory allocation failure while the GPU was 51 to 69%
+busy. Each database process holds its own CUDA context and engines, and each engine keeps
+device buffers sized for the largest job it has run: 11 to 17 times the job's compressed
+input (`data/multiplex/memory`). The shared service (`lsm_compaction_server --backend
+cuda_merge`, docs/remote-compaction.md, "Sharing one GPU") holds one context and K engines
+for every database, schedules jobs (`fifo`, `fair`, `stall`), and re-queues a job that runs
+out of device memory instead of falling back.
+
+- **M0 (capacity, before M1, not a hypothesis test):** 138 compaction requests recorded from
+  an 8-core whole-database run (median 96 MiB, largest 697 MiB) replayed by 16 concurrent
+  clients for 60 s against the service with K in {1, 2, 3, 4, 6, 8}, 3 repetitions each.
+  **Rule for K:** M1 to M4 use the smallest K whose median input GiB/s is at least 95% of
+  the best K's.
+- **M1 (local, zyra):** N databases of 4 cores (N in {1, 2, 4, 6}) and 8 cores (N in {1, 2,
+  4}); each database on whole cores within one NUMA node, the same cores in every arm, with
+  4 cores of the GPU's node reserved in every arm for the server. Arms: separate processes,
+  MPS, service-fifo and service-fair with K engines; RocksDB at the smallest and largest N.
+  Tuned settings of `configs/system/v3-headline.json` per core count; 50 M keys per
+  database, 30 s warm-up plus 120 s, every key verified, 3 blocks, schedule seed 110
+  (`publication/multiplex/grids.py`). N = 8 at 4 cores is not run: eight databases do not
+  fit in zyra's 94 GB `/dev/shm`.
+- **M2 (remote):** N databases of 4 cores on pyke (N in {1, 2, 4, 8}, alternating its two
+  NUMA nodes) sharing one service on malphite over 100 Gb/s RDMA (4 server cores, K
+  engines), fifo and fair; RocksDB on pyke at N = 1 and 8. Same settings and protocol as M1,
+  3 repetitions in shuffled order (`rdma_campaign.py r9`). All databases share pyke's one
+  network card.
+- **M3 (isolation, zyra):** through the service with K = 1 (deliberately contended), one
+  heavy tenant (closed loop) and three light tenants (open loop at 50% of the 4-core
+  service-fair N = 1 median from M1), 4 cores each, with each policy, and each light tenant
+  alone at the same rate. 3 blocks.
+- **M4 (burst, zyra):** as M3 under fair and fifo, with the heavy tenant starting 60 s after
+  the light tenants and running for 60 s plus its 30 s warm-up; light tenants run 30 s plus
+  180 s. Reported per second from the benchmark timeline. Descriptive.
+- **Reported:** per-database writes/s and its share of the same arm's N = 1, aggregate
+  writes/s, CPU fallbacks, out-of-memory re-queues, GPU utilisation, database CPU per write
+  and server CPU, queue wait per tenant, p99 and p99.9 write latency, and cost per database
+  write with the GPU and the server's 4 cores divided by N (`prices.json`).
+
+Hypotheses (medians over blocks or repetitions):
+
+- **X1 (memory):** every service run in M1 and M2 has zero CPU fallbacks.
+- **X2 (local capacity):** service-fair, 8 cores, N = 4: each database keeps at least 81% of
+  service-fair's N = 1 writes/s; and service-fair is above MPS at N = 4 (MPS kept 62% in the
+  quick pass).
+- **X3 (remote capacity; H15):** pyke to malphite, 4 cores, N = 4: each database keeps at
+  least 80% of the N = 1 remote writes/s.
+- **X4 (isolation):** in M3 the light tenants' p99.9 write latency is within 1.5 times
+  their solo value under fair and under stall, and not within 1.5 times under fifo.
+- **X5 (cost):** service-fair, 8 cores, N = 4 costs no more per write than RocksDB on the
+  same cores: each database at least 1,125k writes/s (RocksDB tuned 837k; the GPU and 4
+  server cores divided by 4), which is 89% of ours' tuned single-database 1,260k.
+
 ## Changes after data collection
 
 - **Shared GPU, first attempt (discarded, kept as `shared-gpu-attempt1`):** all

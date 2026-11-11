@@ -12,7 +12,17 @@ Usage:
   system_campaign.py OUT --golden DIR --grid grid.json [--blocks N] [--seed S]
 
 grid.json: {"common": {bench flags...}, "trials": [{"mode": ..., "cores": 4,
-"burn_percent": 0, "flags": {...}}, ...]}. Results go to OUT/results.jsonl.
+"burn_percent": 0, "flags": {...}}, ...]}. Results go to OUT/results.jsonl. A trial with
+"instance_flags": [{...}, ...] overrides flags per database, and "instance_start_delay":
+[seconds, ...] delays each database's start.
+
+Several databases sharing one GPU ("instances": N, each on its own cores) can share it in
+three ways ("sharing"):
+  separate  each database process has its own CUDA context and engines (default)
+  mps       the same processes through a CUDA MPS daemon started for the trial
+  service   one lsm_compaction_server (cuda_merge) on "server_cores" cores of the GPU's node
+            serves every database over unix:// shared memory, with "engines" engines and the
+            "scheduler" policy; the databases run with --mode remote_merge, one tenant each
 """
 
 from __future__ import annotations
@@ -32,6 +42,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BUILD = Path(os.environ.get("LSM_BUILD_DIR", ROOT / "build" / "dev"))
 BENCH = BUILD / "lsm_system_bench"
 BURN = BUILD / "lsm_burn"
+SERVER = BUILD / "lsm_compaction_server"
 GPU_ENV = {"LSM_DISABLE_GPU_INPUT": "1", "LSM_CUDA_SYNC": "blocking", "LSM_GPU_OUTPUT_MIN_BLOCK_BYTES": "1024",
            "LSM_MERGE_READ_THREADS": "4", "LSM_GPU_MERGE_STREAMS": "2",
            # Pin GPU host buffers when the database opens (AUDIT item 31).
@@ -68,6 +79,33 @@ def physical_cores(node: int, count: int) -> tuple[list[int], list[int]]:
             if len(cpus) == count:
                 return cpus, used
     raise ValueError(f"only {len(cpus)} physical cores available, {count} requested")
+
+
+def per_node_placement(node: int, cores: int, instances: int, reserved: int) -> tuple[list[int], list[list[int]], list[int]]:
+    """"placement": "per_node": `reserved` physical cores of `node` for the compaction server
+    (reserved in every arm, so databases sit on the same cores whatever the arm), then each
+    database on `cores` physical cores within one NUMA node, starting on `node`.
+    Returns (server cpus, cpus per database, NUMA node per database)."""
+    nodes = sorted(int(path.name[4:]) for path in Path("/sys/devices/system/node").glob("node[0-9]*"))
+    order = [node] + [other for other in nodes if other != node]
+    server, databases, homes = [], [], []
+    for current in order:
+        free, seen = [], set()
+        for cpu in node_cpus(current):
+            topology = Path(f"/sys/devices/system/cpu/cpu{cpu}/topology")
+            core = (topology / "core_id").read_text().strip(), (topology / "physical_package_id").read_text().strip()
+            if core not in seen:
+                seen.add(core)
+                free.append(cpu)
+        if current == node:
+            server, free = free[:reserved], free[reserved:]
+        while len(free) >= cores and len(databases) < instances:
+            databases.append(free[:cores])
+            homes.append(current)
+            free = free[cores:]
+    if len(databases) < instances:
+        raise ValueError(f"only {len(databases)} databases of {cores} cores fit")
+    return server, databases, homes
 
 
 def integrate(samples: list[tuple[float, float]], start: float, end: float) -> float:
@@ -153,6 +191,83 @@ def foreign_load() -> dict:
     return {"other_users_cpu_percent": total, "loadavg_1m": os.getloadavg()[0]}
 
 
+def process_cpu_seconds(pid: int) -> float | None:
+    try:
+        fields = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
+        return (int(fields[11]) + int(fields[12])) / os.sysconf("SC_CLK_TCK")
+    except (OSError, IndexError, ValueError):
+        return None
+
+
+class SharedGpu:
+    """Starts and stops what a "sharing" mode needs around the databases of one trial."""
+
+    def __init__(self, trial: dict, trial_dir: Path, scratch: Path, cpus: list[int], node: int):
+        self.mode = trial.get("sharing", "separate")
+        self.trial, self.dir, self.scratch, self.cpus, self.node = trial, trial_dir, scratch, cpus, node
+        self.server = None
+        self.endpoint = None
+        self.cpu_before = None
+        self.environment: dict[str, str] = {}
+
+    def start(self) -> None:
+        if self.mode == "mps":
+            pipe, log = self.scratch / "mps-pipe", self.scratch / "mps-log"
+            pipe.mkdir(parents=True, exist_ok=True)
+            log.mkdir(parents=True, exist_ok=True)
+            self.environment = {"CUDA_MPS_PIPE_DIRECTORY": str(pipe), "CUDA_MPS_LOG_DIRECTORY": str(log)}
+            subprocess.run(["nvidia-cuda-mps-control", "-d"], env={**os.environ, **self.environment}, check=True)
+            time.sleep(2)
+        elif self.mode == "service":
+            socket = self.scratch / f"service-{os.getpid()}.sock"
+            # Preferred, not bound: the engines' pinned buffers and request regions may not fit
+            # in the GPU node's memory next to the databases.
+            command = ["numactl", f"--physcpubind={','.join(map(str, self.cpus))}", f"--preferred={self.node}",
+                       str(SERVER), "--listen", f"unix://{socket}", "--backend", "cuda_merge",
+                       "--engines", str(self.trial.get("engines", 2)), "--scheduler", self.trial.get("scheduler", "fifo")]
+            log = self.dir / "server.out"
+            self.server = subprocess.Popen(command, stdout=log.open("w"), stderr=subprocess.STDOUT,
+                                           env={**os.environ, **GPU_ENV, "LSM_SCHEDULER_LOG": "1",
+                                                **self.trial.get("server_env", {})})
+            for _ in range(600):
+                lines = log.read_text().splitlines() if log.exists() else []
+                if lines and lines[0].startswith("listening "):
+                    self.endpoint = lines[0].split()[1]
+                    break
+                if self.server.poll() is not None:
+                    raise RuntimeError(f"compaction server exited: {log.read_text()[-500:]}")
+                time.sleep(0.1)
+            else:
+                raise RuntimeError("compaction server did not start")
+            self.cpu_before = process_cpu_seconds(self.server.pid)
+
+    def database_environment(self, instance: int) -> dict[str, str]:
+        if self.mode == "service":
+            return {"LSM_REMOTE_ENDPOINT": self.endpoint, "LSM_TENANT": f"db{instance}",
+                    "LSM_REMOTE_CONNECTIONS": str(self.trial.get("connections", 4))}
+        return dict(self.environment)
+
+    def stop(self) -> dict:
+        record: dict = {"sharing": self.mode}
+        if self.mode == "mps":
+            subprocess.run(["nvidia-cuda-mps-control"], input="quit\n", text=True, env={**os.environ, **self.environment})
+            log = self.scratch / "mps-log" / "control.log"
+            record["mps_clients"] = log.read_text().count("New client") if log.exists() else None
+        elif self.mode == "service" and self.server is not None:
+            after = process_cpu_seconds(self.server.pid)
+            record["server_cpu_seconds"] = (after - self.cpu_before) if None not in (after, self.cpu_before) else None
+            record["server_cores"] = len(self.cpus)
+            self.server.send_signal(signal.SIGTERM)
+            try:
+                self.server.wait(timeout=60)
+            except subprocess.TimeoutExpired:
+                self.server.kill()
+                self.server.wait()
+            lines = [line for line in (self.dir / "server.out").read_text().splitlines() if line.startswith("{")]
+            record["server_statistics"] = json.loads(lines[-1]) if lines else None
+        return record
+
+
 def run_trial(out: Path, golden: Path, scratch: Path, trial: dict, common: dict, index: int, idle_seconds: int) -> dict:
     """One trial. With "instances": N, N independent databases run at once, each on its own
     `cores` physical cores and its own copy of the golden database, sharing the GPU."""
@@ -163,7 +278,19 @@ def run_trial(out: Path, golden: Path, scratch: Path, trial: dict, common: dict,
     load_before = foreign_load()
     idle = idle_power(idle_seconds) if idle_seconds > 0 else None
     instances = trial.get("instances", 1)
-    all_cpus, nodes = physical_cores(trial.get("node", 0), trial["cores"] * instances)
+    # A shared compaction server gets its own cores first, on the GPU's node.
+    server_cores = trial.get("server_cores", 4) if trial.get("sharing") == "service" else 0
+    homes = None
+    if trial.get("placement") == "per_node":
+        server_cpus, per_database, homes = per_node_placement(trial.get("node", 0), trial["cores"], instances,
+                                                              trial.get("reserved_cores", server_cores))
+        server_cpus = server_cpus[:server_cores]
+        all_cpus = [cpu for cpus in per_database for cpu in cpus]
+        nodes = sorted(set(homes))
+    else:
+        reserved, nodes = physical_cores(trial.get("node", 0), server_cores + trial["cores"] * instances)
+        server_cpus, all_cpus = reserved[:server_cores], reserved[server_cores:]
+    shared = SharedGpu(trial, trial_dir, Path(trial.get("scratch", scratch)), server_cpus, trial.get("node", 0))
     flags = {**common, **trial.get("flags", {})}
     # A trial may add environment settings, e.g. LSM_DISABLE_GPU_BUILD=1 for the merge-only design.
     environment = {**os.environ, **GPU_ENV, **trial.get("env", {})}
@@ -180,10 +307,19 @@ def run_trial(out: Path, golden: Path, scratch: Path, trial: dict, common: dict,
         # prefer the GPU's node but allow spilling.
         memory = (f"--preferred={trial.get('node', 0)}" if instances > 1 or trial.get("memory") == "preferred"
                   else f"--membind={','.join(map(str, nodes))}")
+        if homes is not None:
+            memory = f"--preferred={homes[instance]}"
         command = ["numactl", f"--physcpubind={','.join(map(str, cpus))}", memory,
                    str(BENCH), "--phase", "run", "--mode", trial["mode"], "--dir", str(database)]
-        for name, value in flags.items():
+        # "instance_flags": per-database overrides (e.g. an open-loop rate for some tenants).
+        overrides = trial.get("instance_flags", [])
+        instance_flags = {**flags, **(overrides[instance] if instance < len(overrides) else {})}
+        for name, value in instance_flags.items():
             command += [f"--{name}", str(value).lower() if isinstance(value, bool) else str(value)]
+        # "instance_start_delay": seconds before each database starts (e.g. a burst tenant).
+        delays = trial.get("instance_start_delay", [])
+        if instance < len(delays) and delays[instance]:
+            command = ["bash", "-c", f'sleep {float(delays[instance])}; exec "$@"', "delayed"] + command
         databases.append(database)
         commands.append(command)
     copy_seconds = time.time() - copy_started
@@ -205,14 +341,21 @@ def run_trial(out: Path, golden: Path, scratch: Path, trial: dict, common: dict,
         burner = subprocess.Popen([str(BURN), "--cpus", cpu_list, "--percent", str(trial["burn_percent"])],
                                   stdout=(trial_dir / "burn.json").open("w"), stderr=subprocess.STDOUT)
     processes = []
+    shared_record: dict = {}
     # The monitors are stopped even if the driver is interrupted, so none outlive the trial.
     try:
+        shared.start()
         for instance, command in enumerate(commands):
             suffix = "" if instances == 1 else f"-{instance}"
             processes.append(subprocess.Popen(command, stdout=(trial_dir / f"bench{suffix}.json").open("w"),
-                                              stderr=(trial_dir / f"bench{suffix}.err").open("w"), env=environment))
+                                              stderr=(trial_dir / f"bench{suffix}.err").open("w"),
+                                              env={**environment, **shared.database_environment(instance)}))
         codes = [process.wait() for process in processes]
     finally:
+        try:
+            shared_record = shared.stop()
+        except Exception as error:  # noqa: BLE001 - keep stopping the monitors
+            shared_record = {"sharing": shared.mode, "stop_error": str(error)}
         for process in processes:
             if process.poll() is None:
                 process.kill()
@@ -255,7 +398,8 @@ def run_trial(out: Path, golden: Path, scratch: Path, trial: dict, common: dict,
               "copy_seconds": copy_seconds, "started_unix": started, "command": commands[0],
               "environment": {**GPU_ENV, **trial.get("env", {})}, "idle_power": idle, "numa_nodes": nodes,
               "foreign_load": {"before": load_before, "after": foreign_load()},
-              "gpu_utilization_mean": sum(utilization) / len(utilization) if utilization else None}
+              "gpu_utilization_mean": sum(utilization) / len(utilization) if utilization else None,
+              "gpu_utilization_samples": utilization, **shared_record}
     if code != 0:
         errors = [(trial_dir / f"bench{'' if instances == 1 else f'-{i}'}.err").read_text()[-1000:] for i in range(instances)]
         record["error"] = "\n".join(errors)

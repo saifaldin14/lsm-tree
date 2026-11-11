@@ -1,13 +1,16 @@
 #include "lsm_lab/remote_merge.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
 #include <stdexcept>
 #include <type_traits>
+#include <unistd.h>
 #include <vector>
 
 namespace lsm_lab
@@ -221,6 +224,7 @@ namespace lsm_lab
                     return status;
                 }
                 const auto read_ns = elapsed_ns(read_started);
+                record_request(buffer, total);
 
                 const auto call_started = std::chrono::steady_clock::now();
                 std::shared_ptr<const char> reply;
@@ -255,6 +259,30 @@ namespace lsm_lab
             }
 
         private:
+            // LSM_REMOTE_RECORD_DIR: the first LSM_REMOTE_RECORD_LIMIT (default 64) requests are
+            // written there as complete frames, for replay by lsm_rpc_bench --replay.
+            static void record_request(const char *frame, std::size_t bytes)
+            {
+                static const char *directory = std::getenv("LSM_REMOTE_RECORD_DIR");
+                if (directory == nullptr)
+                    return;
+                static const unsigned long limit = [] {
+                    const char *configured = std::getenv("LSM_REMOTE_RECORD_LIMIT");
+                    return configured == nullptr ? 64UL : std::strtoul(configured, nullptr, 10);
+                }();
+                static std::atomic<unsigned long> count{0};
+                const auto number = count.fetch_add(1);
+                if (number >= limit)
+                    return;
+                const auto path = std::string(directory) + "/" + std::to_string(::getpid()) + "-" +
+                                  std::to_string(number) + ".req";
+                if (std::FILE *file = std::fopen(path.c_str(), "wb"))
+                {
+                    std::fwrite(frame, 1, bytes, file);
+                    std::fclose(file);
+                }
+            }
+
             std::unique_ptr<RpcClient> acquire()
             {
                 std::unique_lock lock(mutex_);
