@@ -168,6 +168,14 @@ namespace ROCKSDB_NAMESPACE
         bool drop_hidden = false;
         std::vector<std::uint64_t> snapshots;
         CompactionOutputSpec output;
+        // Scheduling hints for a shared accelerator; they do not change the result. tenant
+        // identifies the database (LSM_TENANT, else its path); the rest describe how urgently
+        // writers need the job when it was built.
+        std::string tenant;
+        std::int32_t output_level = -1;
+        std::int32_t level0_files = 0;
+        std::int32_t level0_slowdown_trigger = 0;
+        bool write_stalled = false;
     };
 
     // Packed layout: the internal key starts at offset, the value follows it.

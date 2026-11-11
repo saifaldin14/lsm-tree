@@ -48,6 +48,8 @@ namespace lsm_lab
         }
         nlohmann::json statistics() const;
         virtual std::string name() const = 0;
+        // Backend-specific statistics added to statistics() (e.g. the GPU scheduler's).
+        virtual nlohmann::json extra_statistics() const { return nlohmann::json::object(); }
         virtual std::string device() const { return "host_cpu"; }
 
     protected:

@@ -24,7 +24,11 @@ namespace lsm_lab
         std::string scheme;
         std::string host;
         std::uint16_t port = 0;
-        std::string text() const { return scheme + "://" + host + ":" + std::to_string(port); }
+        // unix://<socket path> has no port.
+        std::string text() const
+        {
+            return scheme == "unix" ? scheme + "://" + host : scheme + "://" + host + ":" + std::to_string(port);
+        }
     };
     Endpoint parse_endpoint(const std::string &text);
     bool rdma_supported();

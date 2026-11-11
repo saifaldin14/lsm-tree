@@ -5,7 +5,8 @@
 # process) exactly and must not fall back to local compaction.
 #
 # Usage: remote_compaction_test.sh SERVER BENCH [ENDPOINT_PREFIX] [BACKEND]
-#   ENDPOINT_PREFIX defaults to tcp://127.0.0.1 (use rdma://<RoCE address> on RDMA hosts).
+#   ENDPOINT_PREFIX defaults to tcp://127.0.0.1 (use rdma://<RoCE address> on RDMA hosts, or
+#   unix:// for the shared-memory transport, with sockets in a temporary directory).
 set -euo pipefail
 server=${1:?server binary}
 bench=${2:?bench binary}
@@ -13,9 +14,16 @@ prefix=${3:-tcp://127.0.0.1}
 backend=${4:-cpu_merge}
 work=$(mktemp -d)
 relay=
+# A listen address for the server named $1: port 0 for TCP/RDMA, a socket file for unix.
+listen_on() {
+  case "$prefix" in
+    unix://*) echo "unix://$work/$1.sock" ;;
+    *) echo "$prefix:0" ;;
+  esac
+}
 trap 'kill $pid $relay 2>/dev/null || true; wait 2>/dev/null || true; rm -rf "$work"' EXIT
 
-"$server" --listen "$prefix:0" --backend "$backend" > "$work/server.out" 2> "$work/server.err" &
+"$server" --listen "$(listen_on server)" --backend "$backend" > "$work/server.out" 2> "$work/server.err" &
 pid=$!
 for _ in $(seq 1 100); do
   grep -q '^listening ' "$work/server.out" 2>/dev/null && break
@@ -26,6 +34,16 @@ endpoint=$(awk '/^listening /{print $2; exit}' "$work/server.out")
 export LSM_REMOTE_ENDPOINT=$endpoint
 
 failures=0
+cat > "$work/check_shared.py" <<'PY'
+import json, sys
+runs = [json.loads(line) for line in open(sys.argv[1])]
+remote = runs[-1]
+t = remote.get("transform") or {}
+ok = remote["matches_reference"] and t.get("merge_fallbacks") == 0 and t.get("merge_jobs", 0) > 0
+print(f"shared client {sys.argv[2]}: match={remote['matches_reference']} jobs={t.get('merge_jobs')} "
+      f"fallbacks={t.get('merge_fallbacks')}")
+sys.exit(0 if ok else 1)
+PY
 run_case() {
   rm -rf "$work/db"
   # shellcheck disable=SC2086
@@ -58,7 +76,7 @@ for args in "--delete-fraction 0" "--delete-fraction 0.05 --snapshots 3" \
 done
 
 # Relay: a second server forwards every job to the first one.
-LSM_REMOTE_ENDPOINT=$endpoint "$server" --listen "$prefix:0" --backend remote_merge > "$work/relay.out" 2> "$work/relay.err" &
+LSM_REMOTE_ENDPOINT=$endpoint "$server" --listen "$(listen_on relay)" --backend remote_merge > "$work/relay.out" 2> "$work/relay.err" &
 relay=$!
 for _ in $(seq 1 100); do
   grep -q '^listening ' "$work/relay.out" 2>/dev/null && break
@@ -70,14 +88,31 @@ for args in "--delete-fraction 0.05 --snapshots 2 --subcompactions 4" "--delete-
   run_case "$args"
 done
 export LSM_REMOTE_ENDPOINT=$endpoint
+
+# Several databases sharing the server at once, each its own tenant: every one must match
+# native RocksDB (the server interleaves their jobs on its engines).
+clients=()
+for client in 1 2 3; do
+  (rm -rf "$work/db$client"
+   LSM_TENANT="tenant-$client" "$bench" --dir "$work/db$client" --modes native_cpu,remote_merge --records 50000 \
+     --l0-files 4 --target-file-bytes 1048576 --delete-fraction 0.05 --subcompactions 4 --seed "$client" \
+     > "$work/shared$client.json" 2> "$work/shared$client.err") &
+  clients+=($!)
+done
+for job in "${clients[@]}"; do
+  wait "$job" || failures=$((failures + 1))
+done
+for client in 1 2 3; do
+  python3 "$work/check_shared.py" "$work/shared$client.json" "$client" || failures=$((failures + 1))
+done
 [ "$failures" -eq 0 ] || { echo "$failures remote compaction case(s) failed"; exit 1; }
-echo "remote compaction: all cases (direct and relayed) match native RocksDB"
+echo "remote compaction: all cases (direct, relayed and 3 clients at once) match native RocksDB"
 
 # Fault injection: the server dies on its second request. Compaction must fall back to the
 # local path for that job and every later one, and still match native RocksDB.
 kill "$pid" 2>/dev/null || true
 wait "$pid" 2>/dev/null || true
-"$server" --listen "$prefix:0" --backend "$backend" --crash-after 1 > "$work/server.out" 2> "$work/server.err" &
+"$server" --listen "$(listen_on crash)" --backend "$backend" --crash-after 1 > "$work/server.out" 2> "$work/server.err" &
 pid=$!
 for _ in $(seq 1 100); do
   grep -q '^listening ' "$work/server.out" 2>/dev/null && break

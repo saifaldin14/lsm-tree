@@ -21,6 +21,9 @@ struct LsmBuildContext
     SequenceNumber zero_limit = 0;
     // CompactionIterator's earliest_snapshot_ (kMaxSequenceNumber without snapshots).
     SequenceNumber earliest_snapshot = kMaxSequenceNumber;
+    // Scheduling hints (CompactionMergeRequest::tenant and write_stalled).
+    const std::string *tenant = nullptr;
+    bool write_stalled = false;
 };
 
 // User-key ranges of every file below the output level, merged into sorted
@@ -197,6 +200,14 @@ static Status LsmMaybeCreateMergedInput(const Compaction *compaction, ColumnFami
         return fallback(Status::NotSupported("per-key placement"));
 
     CompactionMergeRequest request;
+    if (const char *tenant = std::getenv("LSM_TENANT"))
+        request.tenant = tenant;
+    else if (build != nullptr && build->tenant != nullptr)
+        request.tenant = *build->tenant;
+    request.output_level = compaction->output_level();
+    request.level0_files = compaction->input_version()->storage_info()->NumLevelFiles(0);
+    request.level0_slowdown_trigger = mutable_options.level0_slowdown_writes_trigger;
+    request.write_stalled = build != nullptr && build->write_stalled;
     if (start.has_value())
     {
         request.has_start = true;

@@ -48,6 +48,7 @@ Properties:
 |---|---|
 | `tcp://host:port` | Length-prefixed messages over one socket per connection. |
 | `rdma://host:port` | RC queue pairs set up with librdmacm. Requests and replies move with one-sided RDMA operations between pre-registered buffers that are reused across jobs. |
+| `unix://<socket path>` | Same machine. Control messages over a Unix-domain socket; requests and replies stay in shared memory (memfd) that the client owns and passes to the server once, so data is not copied through the kernel. |
 
 RDMA protocol for one call:
 
@@ -78,6 +79,32 @@ over RDMA, against about 0.7 over TCP.
 | `LSM_RDMA_PUSH` | `1` (default) pushes requests with RDMA WRITE; `0` lets the server pull them with RDMA READ. |
 | `LSM_RDMA_POLL` | `1` busy-polls completions instead of blocking. |
 | `LSM_REMOTE_TIMEOUT_MS` | Client timeout without progress (default 120000). |
+| `LSM_TENANT` | Name of this database in a shared server's scheduler and statistics (default: the database path). |
+
+### Sharing one GPU
+
+One `lsm_compaction_server --backend cuda_merge` serves any number of databases from one CUDA
+context and one set of engines, instead of each database process holding its own:
+
+- `--engines K` (`LSM_GPU_MERGE_STREAMS`): jobs that run at once, each on its own engine
+  (stream and buffers).
+- `--scheduler fifo|fair|stall` (`LSM_GPU_SCHEDULER`): which waiting job gets the next free
+  engine. `fifo` is arrival order. `fair` is start-time fair queuing over tenants, charged by
+  input bytes. `stall` runs jobs that unblock writers first (writes stalled when the job was
+  built, or a level-0 job with level 0 at or above its slowdown trigger), then fair order.
+  Requests carry the tenant and these hints (metadata version 3).
+- `LSM_GPU_MEMORY_BUDGET_MB` and `LSM_GPU_MEMORY_PER_INPUT`: a job starts only if the summed
+  estimates (input bytes times the factor) of running jobs fit the budget; a job always starts
+  when none is running. Measured device memory per job is 11–17 times its compressed input
+  (6.4 times uncompressed); data in `publication/data/multiplex/memory`.
+- Out of device memory: idle engines free their cached buffers and the job runs again once
+  another job has finished (up to 8 times) instead of falling back to the CPU.
+- Statistics (printed on exit, and in `transform` statistics in process): per tenant jobs,
+  input bytes, queue wait, service time and re-queues; device memory per engine;
+  `LSM_SCHEDULER_LOG=1` adds every completed job's start and end time.
+- `LSM_GPU_FAIL_ALLOC_EVERY=N` (testing) makes every Nth engine allocation fail.
+
+The same scheduler orders jobs when several databases share one process (`--shards`).
 
 The transform's statistics add `merge_remote_ns` (the client's call), `merge_server_ns`
 (the server's handler), `merge_sent_bytes` and `merge_received_bytes`. Through a relay they
