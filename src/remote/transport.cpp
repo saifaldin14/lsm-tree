@@ -17,6 +17,8 @@ namespace lsm_lab
     {
         if (endpoint.scheme == "tcp")
             return detail::connect_tcp(endpoint);
+        if (endpoint.scheme == "unix")
+            return detail::connect_unix(endpoint);
 #ifdef LSM_HAVE_RDMA
         if (endpoint.scheme == "rdma")
             return detail::connect_rdma(endpoint);
@@ -28,6 +30,8 @@ namespace lsm_lab
     {
         if (endpoint.scheme == "tcp")
             return detail::listen_tcp(endpoint, std::move(handler));
+        if (endpoint.scheme == "unix")
+            return detail::listen_unix(endpoint, std::move(handler));
 #ifdef LSM_HAVE_RDMA
         if (endpoint.scheme == "rdma")
             return detail::listen_rdma(endpoint, std::move(handler));

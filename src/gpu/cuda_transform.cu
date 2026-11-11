@@ -1,5 +1,6 @@
 #include "lsm_lab/block_transform.hpp"
 #include "lsm_lab/cuda_merge.hpp"
+#include "lsm_lab/merge_scheduler.hpp"
 
 #include <algorithm>
 #include <array>
@@ -576,12 +577,54 @@ namespace lsm_lab
                 if (bytes == 0)
                     return;
                 const std::lock_guard lock(merge_engine_mutex_);
-                while (merge_engines_.size() < merge_stream_limit())
+                for (auto &engine : merge_engines_)
+                    if (!engine)
+                    {
+                        engine = make_cuda_merge_engine();
+                        engine->preallocate(bytes);
+                    }
+            }
+
+            // LSM_GPU_SCHEDULER (fifo, fair, stall; default fifo) orders jobs waiting for an
+            // engine; LSM_GPU_MEMORY_BUDGET_MB limits the summed device-memory estimates of
+            // running jobs (0: no limit), each estimated as LSM_GPU_MEMORY_PER_INPUT (default 0)
+            // times its input bytes.
+            static SchedulePolicy schedule_policy()
+            {
+                const char *configured = std::getenv("LSM_GPU_SCHEDULER");
+                return parse_schedule_policy(configured == nullptr ? "fifo" : configured);
+            }
+            static std::uint64_t memory_budget()
+            {
+                const char *configured = std::getenv("LSM_GPU_MEMORY_BUDGET_MB");
+                return configured == nullptr ? 0 : std::strtoull(configured, nullptr, 10) << 20;
+            }
+            static double memory_per_input()
+            {
+                const char *configured = std::getenv("LSM_GPU_MEMORY_PER_INPUT");
+                return configured == nullptr ? 0.0 : std::strtod(configured, nullptr);
+            }
+
+            nlohmann::json extra_statistics() const override
+            {
+                static const bool log = std::getenv("LSM_SCHEDULER_LOG") != nullptr;
+                const auto memory = cuda_device_memory();
+                nlohmann::json engines = nlohmann::json::array();
                 {
-                    merge_engines_.push_back(make_cuda_merge_engine());
-                    merge_engines_.back()->preallocate(bytes);
-                    merge_engines_idle_.push_back(merge_engines_.back().get());
+                    const std::lock_guard lock(merge_engine_mutex_);
+                    for (const auto &engine : merge_engines_)
+                        if (engine)
+                            engines.push_back({{"device_bytes", engine->device_bytes()},
+                                               {"device_peak_bytes", engine->device_peak_bytes()}});
                 }
+                return {{"scheduler", scheduler_.statistics(log)},
+                        {"gpu_memory", {{"engine_bytes", memory.engine_bytes},
+                                        {"engine_peak_bytes", memory.engine_peak_bytes},
+                                        {"free_bytes", memory.free_bytes},
+                                        {"total_bytes", memory.total_bytes},
+                                        {"engines", engines}}},
+                        {"merge_oom_retries", merge_oom_retries_.load()},
+                        {"merge_oom_failures", merge_oom_failures_.load()}};
             }
 
             std::string name() const override { return hybrid_ ? "cuda_hybrid" : "cuda_batched"; }
@@ -613,40 +656,61 @@ namespace lsm_lab
                                           std::unique_ptr<rocksdb::CompactionMergedInput> *output,
                                           MergeRunStats *stats) override
             {
-                // A pool of engines, each with its own stream and buffers, lets several
-                // background compactions use the GPU at once (LSM_GPU_MERGE_STREAMS, default 2).
-                const std::size_t limit = merge_stream_limit();
-                CudaMergeEngine *engine = nullptr;
+                // One engine per scheduler slot (LSM_GPU_MERGE_STREAMS, default 2), each with its
+                // own stream and buffers, so several compactions use the GPU at once. The
+                // scheduler decides which waiting job gets the next free engine.
+                MergeJobInfo job;
+                job.tenant = request.tenant.empty() ? "default" : request.tenant;
+                job.input_bytes = merge_serialized_bytes(request);
+                job.device_bytes = static_cast<std::uint64_t>(memory_per_input() * static_cast<double>(job.input_bytes));
+                const bool reads_level0 = std::any_of(request.files.begin(), request.files.end(),
+                                                      [](const auto &file) { return file.level == 0; });
+                job.urgent = merge_job_urgent(request.write_stalled, reads_level0, request.level0_files,
+                                              request.level0_slowdown_trigger);
+                auto grant = scheduler_.acquire(job);
+                for (int attempt = 0;; ++attempt)
                 {
-                    std::unique_lock lock(merge_engine_mutex_);
-                    merge_engine_ready_.wait(lock, [&] {
-                        return !merge_engines_idle_.empty() || merge_engines_.size() < limit;
-                    });
-                    if (!merge_engines_idle_.empty())
+                    CudaMergeEngine *engine = nullptr;
                     {
-                        engine = merge_engines_idle_.back();
-                        merge_engines_idle_.pop_back();
-                    }
-                    else
-                    {
-                        merge_engines_.push_back(make_cuda_merge_engine());
-                        engine = merge_engines_.back().get();
-                    }
-                }
-                struct Release
-                {
-                    CudaTransform *self;
-                    CudaMergeEngine *engine;
-                    ~Release()
-                    {
+                        const std::lock_guard lock(merge_engine_mutex_);
+                        auto &slot = merge_engines_[grant.slot()];
+                        if (!slot)
                         {
-                            const std::lock_guard guard(self->merge_engine_mutex_);
-                            self->merge_engines_idle_.push_back(engine);
+                            slot = make_cuda_merge_engine();
+                            slot->preallocate(pinned_prealloc_bytes());
                         }
-                        self->merge_engine_ready_.notify_one();
+                        engine = slot.get();
                     }
-                } release{this, engine};
-                return engine->merge(request, output, stats);
+                    rocksdb::Status status;
+                    try
+                    {
+                        status = engine->merge(request, output, stats);
+                    }
+                    catch (const std::exception &error)
+                    {
+                        status = rocksdb::Status::Aborted(error.what());
+                    }
+                    const bool out_of_memory = status.IsAborted() && status.ToString().find("out of memory") != std::string::npos;
+                    if (!out_of_memory || attempt >= 8)
+                    {
+                        if (out_of_memory)
+                            ++merge_oom_failures_;
+                        return status;
+                    }
+                    // Out of device memory: free the cached buffers of every idle engine (and
+                    // this one), then run again once another job has finished, or at once if
+                    // none is running.
+                    ++merge_oom_retries_;
+                    output->reset();
+                    *stats = {};
+                    {
+                        const std::lock_guard lock(merge_engine_mutex_);
+                        for (auto &other : merge_engines_)
+                            if (other)
+                                other->release_device_memory();
+                    }
+                    grant.requeue();
+                }
             }
 
             rocksdb::Status submit_output(
@@ -1049,10 +1113,12 @@ namespace lsm_lab
             std::array<Slot, 2> slots_;
             std::mutex slots_mutex_;
             std::condition_variable slots_ready_;
-            std::mutex merge_engine_mutex_;
-            std::condition_variable merge_engine_ready_;
-            std::vector<std::unique_ptr<CudaMergeEngine>> merge_engines_;
-            std::vector<CudaMergeEngine *> merge_engines_idle_;
+            mutable std::mutex merge_engine_mutex_;
+            std::vector<std::unique_ptr<CudaMergeEngine>> merge_engines_ =
+                std::vector<std::unique_ptr<CudaMergeEngine>>(merge_stream_limit());
+            MergeScheduler scheduler_{schedule_policy(), merge_stream_limit(), memory_budget()};
+            std::atomic<std::uint64_t> merge_oom_retries_{0};
+            std::atomic<std::uint64_t> merge_oom_failures_{0};
         };
     }
 

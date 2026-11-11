@@ -19,7 +19,7 @@ namespace lsm_lab
 
     namespace
     {
-        constexpr std::uint32_t kMetaVersion = 2; // 2: TTL filter fields
+        constexpr std::uint32_t kMetaVersion = 3; // 2: TTL filter fields; 3: scheduling hints
         constexpr std::size_t kAlign = 64;
 
         std::size_t align_up(std::size_t value) { return (value + kAlign - 1) / kAlign * kAlign; }
@@ -403,6 +403,15 @@ namespace lsm_lab
 
     Endpoint parse_endpoint(const std::string &text)
     {
+        if (text.rfind("unix://", 0) == 0)
+        {
+            Endpoint endpoint;
+            endpoint.scheme = "unix";
+            endpoint.host = text.substr(7);
+            if (endpoint.host.empty())
+                throw std::invalid_argument("endpoint must be unix://<socket path>: " + text);
+            return endpoint;
+        }
         const auto scheme_end = text.find("://");
         const auto port_start = text.rfind(':');
         if (scheme_end == std::string::npos || port_start == std::string::npos || port_start <= scheme_end + 3)
@@ -467,6 +476,11 @@ namespace lsm_lab
         w.put<std::uint32_t>(o.ttl_offset);
         w.put<std::uint64_t>(o.ttl_duration);
         w.put<std::uint64_t>(o.ttl_now);
+        w.put_string(request.tenant);
+        w.put<std::int32_t>(request.output_level);
+        w.put<std::int32_t>(request.level0_files);
+        w.put<std::int32_t>(request.level0_slowdown_trigger);
+        w.put<std::uint8_t>(request.write_stalled);
         return w.take();
     }
 
@@ -523,6 +537,11 @@ namespace lsm_lab
             o.ttl_offset = r.get<std::uint32_t>();
             o.ttl_duration = r.get<std::uint64_t>();
             o.ttl_now = r.get<std::uint64_t>();
+            request->tenant = r.get_string();
+            request->output_level = r.get<std::int32_t>();
+            request->level0_files = r.get<std::int32_t>();
+            request->level0_slowdown_trigger = r.get<std::int32_t>();
+            request->write_stalled = r.get<std::uint8_t>() != 0;
             return rocksdb::Status::OK();
         }
         catch (const std::exception &error)

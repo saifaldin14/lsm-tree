@@ -19,9 +19,23 @@ namespace lsm_lab
         // memory (pinning holds the process's memory-map lock and stalls every thread that
         // page-faults meanwhile).
         virtual void preallocate(std::size_t /*bytes*/) {}
+        // Device memory this engine holds now, and the most it has held.
+        virtual std::size_t device_bytes() const { return 0; }
+        virtual std::size_t device_peak_bytes() const { return 0; }
+        // Frees the engine's cached device buffers if it is idle (false if it is merging).
+        virtual bool release_device_memory() { return false; }
     };
 
     std::unique_ptr<CudaMergeEngine> make_cuda_merge_engine();
+
+    struct DeviceMemory
+    {
+        std::size_t engine_bytes = 0;      // held by merge engines and filter contexts now
+        std::size_t engine_peak_bytes = 0; // most held at once
+        std::size_t free_bytes = 0;        // cudaMemGetInfo
+        std::size_t total_bytes = 0;
+    };
+    DeviceMemory cuda_device_memory();
 
     // LSM_GPU_PINNED_PREALLOC_MB in bytes (0 when unset): pinned host memory each merge engine
     // reserves when it is created.

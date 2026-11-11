@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -61,15 +62,96 @@ namespace lsm_lab
                 throw std::runtime_error(std::string(what) + ": " + nvcompGetStatusString(status));
         }
 
-        template <typename T>
-        class DeviceArray
+        // Device memory accounting: each DeviceArray charges the account that was current on its
+        // thread when it allocated (an engine's, while the engine runs) and the process total.
+        struct DeviceAccount
+        {
+            std::atomic<std::size_t> bytes{0};
+            std::atomic<std::size_t> peak{0};
+            void add(std::size_t amount)
+            {
+                const auto now = bytes.fetch_add(amount) + amount;
+                auto seen = peak.load();
+                while (now > seen && !peak.compare_exchange_weak(seen, now))
+                {
+                }
+            }
+            void remove(std::size_t amount) { bytes.fetch_sub(amount); }
+        };
+        DeviceAccount g_device_account;
+        thread_local DeviceAccount *t_device_account = nullptr;
+
+        class DeviceAccountScope
         {
         public:
-            DeviceArray() = default;
-            ~DeviceArray()
+            explicit DeviceAccountScope(DeviceAccount *account) : previous_(t_device_account)
             {
-                if (data_ != nullptr)
-                    cudaFree(data_);
+                t_device_account = account;
+            }
+            ~DeviceAccountScope() { t_device_account = previous_; }
+            DeviceAccountScope(const DeviceAccountScope &) = delete;
+            DeviceAccountScope &operator=(const DeviceAccountScope &) = delete;
+
+        private:
+            DeviceAccount *previous_;
+        };
+
+        // LSM_GPU_FAIL_ALLOC_EVERY=N (testing): every Nth device allocation of a merge engine
+        // fails as if the GPU were out of memory.
+        void inject_allocation_failure()
+        {
+            static const unsigned long every = [] {
+                const char *configured = std::getenv("LSM_GPU_FAIL_ALLOC_EVERY");
+                return configured == nullptr ? 0UL : std::strtoul(configured, nullptr, 10);
+            }();
+            static std::atomic<unsigned long> count{0};
+            if (every != 0 && count.fetch_add(1) % every == every - 1)
+                throw std::runtime_error("cudaMalloc: out of memory (injected)");
+        }
+
+        class DeviceArrayBase
+        {
+        public:
+            virtual ~DeviceArrayBase() = default;
+            virtual void release() = 0;
+        };
+        // While an engine constructs its members, every DeviceArray registers here so the engine
+        // can free them all (release_device_memory).
+        thread_local std::vector<DeviceArrayBase *> *t_array_registry = nullptr;
+
+        class ArrayRegistryScope
+        {
+        public:
+            explicit ArrayRegistryScope(std::vector<DeviceArrayBase *> *registry) { t_array_registry = registry; }
+        };
+        class ArrayRegistryEnd
+        {
+        public:
+            ArrayRegistryEnd() { t_array_registry = nullptr; }
+        };
+
+        template <typename T>
+        class DeviceArray final : public DeviceArrayBase
+        {
+        public:
+            DeviceArray()
+            {
+                if (t_array_registry != nullptr)
+                    t_array_registry->push_back(this);
+            }
+            ~DeviceArray() override { release(); }
+            void release() override
+            {
+                if (data_ == nullptr)
+                    return;
+                cudaFree(data_);
+                const auto bytes = capacity_ * sizeof(T);
+                g_device_account.remove(bytes);
+                if (account_ != nullptr)
+                    account_->remove(bytes);
+                data_ = nullptr;
+                capacity_ = 0;
+                account_ = nullptr;
             }
             DeviceArray(const DeviceArray &) = delete;
             DeviceArray &operator=(const DeviceArray &) = delete;
@@ -79,14 +161,16 @@ namespace lsm_lab
                 if (count > capacity_)
                 {
                     const auto grown = std::max(count, capacity_ + capacity_ / 2);
-                    if (data_ != nullptr)
-                        cuda_ok(cudaFree(data_), "cudaFree");
                     // Forget the old size before allocating: if the allocation fails, a later
                     // smaller request must allocate again rather than return a null pointer.
-                    data_ = nullptr;
-                    capacity_ = 0;
+                    release();
+                    inject_allocation_failure();
                     cuda_ok(cudaMalloc(reinterpret_cast<void **>(&data_), grown * sizeof(T)), "cudaMalloc");
                     capacity_ = grown;
+                    account_ = t_device_account;
+                    g_device_account.add(grown * sizeof(T));
+                    if (account_ != nullptr)
+                        account_->add(grown * sizeof(T));
                 }
                 return data_;
             }
@@ -95,6 +179,7 @@ namespace lsm_lab
         private:
             T *data_ = nullptr;
             std::size_t capacity_ = 0;
+            DeviceAccount *account_ = nullptr;
         };
 
         // LSM_TRACE_PINNED: report every pinned host allocation (time, bytes, duration) on stderr.
@@ -1385,6 +1470,7 @@ namespace lsm_lab
         public:
             Engine() : pool_(std::make_shared<PinnedPool>())
             {
+                const DeviceAccountScope account(&account_);
                 cuda_ok(cudaSetDevice(0), "cudaSetDevice");
                 cuda_ok(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking), "cudaStreamCreate");
                 const auto tables = crc32c_tables();
@@ -1415,6 +1501,22 @@ namespace lsm_lab
                     cudaStreamDestroy(stream_);
             }
 
+            std::size_t device_bytes() const override { return account_.bytes.load(); }
+            std::size_t device_peak_bytes() const override { return account_.peak.load(); }
+
+            bool release_device_memory() override
+            {
+                // Only an idle engine frees its buffers; one that is merging keeps them.
+                const std::unique_lock lock(mutex_, std::try_to_lock);
+                if (!lock.owns_lock())
+                    return false;
+                cudaSetDevice(0);
+                for (auto *array : arrays_)
+                    if (array != &tables_)
+                        array->release();
+                return true;
+            }
+
             void preallocate(std::size_t bytes) override
             {
                 if (bytes == 0)
@@ -1435,6 +1537,7 @@ namespace lsm_lab
                                   MergeRunStats *stats) override
             {
                 const std::lock_guard guard(mutex_);
+                const DeviceAccountScope account(&account_);
                 cuda_ok(cudaSetDevice(0), "cudaSetDevice");
                 const auto read_started = std::chrono::steady_clock::now();
                 static const bool trace = std::getenv("LSM_MERGE_TRACE") != nullptr;
@@ -2464,6 +2567,11 @@ namespace lsm_lab
                 return rocksdb::Status::OK();
             }
 
+            // Declared before every DeviceArray, so they outlive them; arrays_ lists the
+            // DeviceArrays declared between registry_begin_ and registry_end_.
+            DeviceAccount account_;
+            std::vector<DeviceArrayBase *> arrays_;
+            ArrayRegistryScope registry_begin_{&arrays_};
             std::mutex mutex_;
             cudaStream_t stream_ = nullptr;
             std::shared_ptr<PinnedPool> pool_;
@@ -2530,10 +2638,25 @@ namespace lsm_lab
             HostArray<unsigned long long> h_deletion_counters_;
             HostArray<std::uint32_t> h_sentinel_;
             HostArray<std::uint64_t> h_totals_;
+            ArrayRegistryEnd registry_end_;
         };
     }
 
     std::unique_ptr<CudaMergeEngine> make_cuda_merge_engine() { return std::make_unique<Engine>(); }
+
+    DeviceMemory cuda_device_memory()
+    {
+        DeviceMemory memory;
+        memory.engine_bytes = g_device_account.bytes.load();
+        memory.engine_peak_bytes = g_device_account.peak.load();
+        std::size_t free_bytes = 0, total_bytes = 0;
+        if (cudaMemGetInfo(&free_bytes, &total_bytes) == cudaSuccess)
+        {
+            memory.free_bytes = free_bytes;
+            memory.total_bytes = total_bytes;
+        }
+        return memory;
+    }
 
     std::size_t pinned_prealloc_bytes()
     {

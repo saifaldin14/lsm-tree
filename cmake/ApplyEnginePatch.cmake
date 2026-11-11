@@ -13,6 +13,18 @@ function(lsm_replace relative before after)
   file(WRITE "${path}" "${content}")
 endfunction()
 
+# lsm_replace for a block that later steps edit: skipped once marker is present, so re-running
+# the patch does not insert the block again after a later step has changed its text.
+function(lsm_replace_once relative marker before after)
+  set(path "${rocksdb_SOURCE_DIR}/${relative}")
+  file(READ "${path}" content)
+  string(FIND "${content}" "${marker}" present)
+  if(NOT present EQUAL -1)
+    return()
+  endif()
+  lsm_replace("${relative}" "${before}" "${after}")
+endfunction()
+
 lsm_replace("include/rocksdb/table.h"
   "#include \"rocksdb/cache.h\""
   "#include \"rocksdb/cache.h\"\n#include \"rocksdb/compaction_block_transform.h\"")
@@ -285,7 +297,8 @@ string(REPLACE [=[
 if(NOT compaction_job_content STREQUAL migrated_compaction_job)
   file(WRITE "${compaction_job_path}" "${migrated_compaction_job}")
 endif()
-lsm_replace("db/compaction/compaction_job.cc"
+lsm_replace_once("db/compaction/compaction_job.cc"
+  "  std::unique_ptr<InternalIterator> lsm_merged_input;\n"
   "  InternalIterator* input_iter = CreateInputIterator(\n      sub_compact, cfd, iterators, boundaries, read_options);\n\n  assert(input_iter);\n"
   [=[  InternalIterator* input_iter = CreateInputIterator(
       sub_compact, cfd, iterators, boundaries, read_options);
@@ -635,6 +648,12 @@ lsm_replace("table/block_based/filter_policy.cc"
   // Target allocation per added key, in thousandths of a bit.
   int millibits_per_key_;
 };]=])
+
+# Scheduling hints for a shared accelerator: the database name as tenant, and whether writes
+# are delayed or stopped when the job starts (thread-safe atomics of the write controller).
+lsm_replace("db/compaction/compaction_job.cc"
+  "    lsm_build.earliest_snapshot = earliest_snapshot_;\n"
+  "    lsm_build.earliest_snapshot = earliest_snapshot_;\n    lsm_build.tenant = &dbname_;\n    {\n      WriteController* lsm_controller = versions_->GetColumnFamilySet()->write_controller();\n      lsm_build.write_stalled = lsm_controller != nullptr && (lsm_controller->IsStopped() || lsm_controller->NeedsDelay());\n    }\n")
 
 # The TTL compaction filter is recognised by the merged-input offload
 # (include/rocksdb/lsm_ttl_compaction_filter.h).

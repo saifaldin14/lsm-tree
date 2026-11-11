@@ -7,6 +7,10 @@
 // statistics as JSON on SIGINT/SIGTERM. --crash-after N (fault injection) terminates the
 // process abruptly when request N+1 arrives. --backend remote_merge relays each request to
 // the server at LSM_REMOTE_ENDPOINT (e.g. from an RDMA network to a GPU host on another one).
+// With --backend cuda_merge, one process serves every client from one set of GPU engines:
+// --engines K jobs run at once (LSM_GPU_MERGE_STREAMS) and --scheduler fifo|fair|stall decides
+// which waiting job runs next (LSM_GPU_SCHEDULER). unix://<path> serves clients on the same
+// machine through shared memory.
 
 #include "lsm_lab/remote_merge.hpp"
 
@@ -25,6 +29,7 @@ int main(int argc, char **argv)
         std::string listen = "tcp://0.0.0.0:7471";
         std::string backend = "cpu_merge";
         long long crash_after = -1;
+        std::string scheduler, engines;
         for (int index = 1; index < argc; ++index)
         {
             const std::string name = argv[index];
@@ -37,6 +42,10 @@ int main(int argc, char **argv)
                 backend = value;
             else if (name == "--crash-after")
                 crash_after = std::stoll(value);
+            else if (name == "--scheduler")
+                scheduler = value;
+            else if (name == "--engines")
+                engines = value;
             else
                 throw std::invalid_argument("unknown argument: " + name);
         }
@@ -48,6 +57,10 @@ int main(int argc, char **argv)
         sigaddset(&signals, SIGINT);
         sigaddset(&signals, SIGTERM);
         pthread_sigmask(SIG_BLOCK, &signals, nullptr);
+        if (!scheduler.empty())
+            setenv("LSM_GPU_SCHEDULER", scheduler.c_str(), 1);
+        if (!engines.empty())
+            setenv("LSM_GPU_MERGE_STREAMS", engines.c_str(), 1);
         auto transform = lsm_lab::make_transform(backend);
         auto endpoint = lsm_lab::parse_endpoint(listen);
         auto handler = lsm_lab::make_merge_handler(transform);

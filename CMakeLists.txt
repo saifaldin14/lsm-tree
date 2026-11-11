@@ -62,8 +62,9 @@ find_package(Protobuf CONFIG REQUIRED)
 find_package(gRPC CONFIG REQUIRED)
 find_package(hdr_histogram CONFIG REQUIRED)
 
-add_library(lsm_blocks src/gpu/block_transform.cpp src/gpu/merge_cpu.cpp
-  src/remote/remote_merge.cpp src/remote/replication.cpp src/remote/transport.cpp src/remote/transport_tcp.cpp)
+add_library(lsm_blocks src/gpu/block_transform.cpp src/gpu/merge_cpu.cpp src/gpu/merge_scheduler.cpp
+  src/remote/remote_merge.cpp src/remote/replication.cpp src/remote/transport.cpp src/remote/transport_tcp.cpp
+  src/remote/transport_unix.cpp)
 target_include_directories(lsm_blocks PUBLIC include)
 target_include_directories(lsm_blocks SYSTEM PRIVATE "${rocksdb_SOURCE_DIR}" "${rocksdb_BINARY_DIR}")
 target_link_libraries(lsm_blocks PUBLIC rocksdb nlohmann_json::nlohmann_json PRIVATE lz4::lz4 zstd::zstd)
@@ -209,6 +210,10 @@ add_test(NAME remote.compaction
   COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/remote_compaction_test.sh"
           "$<TARGET_FILE:lsm_compaction_server>" "$<TARGET_FILE:lsm_compaction_bench>")
 set_tests_properties(remote.compaction PROPERTIES TIMEOUT 300 LABELS "remote;integration")
+add_test(NAME remote.compaction.unix
+  COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/remote_compaction_test.sh"
+          "$<TARGET_FILE:lsm_compaction_server>" "$<TARGET_FILE:lsm_compaction_bench>" "unix://")
+set_tests_properties(remote.compaction.unix PROPERTIES TIMEOUT 300 LABELS "remote;integration")
 add_test(NAME remote.replication
   COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/replication_test.sh"
           "$<TARGET_FILE:lsm_system_bench>" "$<TARGET_FILE:lsm_replica_server>")
@@ -278,6 +283,11 @@ target_include_directories(lsm_block_tests SYSTEM PRIVATE "${rocksdb_SOURCE_DIR}
 target_compile_options(lsm_block_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
 target_compile_definitions(lsm_block_tests PRIVATE $<TARGET_PROPERTY:rocksdb,COMPILE_DEFINITIONS>)
 add_test(NAME blocks.transforms COMMAND lsm_block_tests)
+add_executable(lsm_scheduler_tests tests/merge_scheduler_test.cpp)
+target_link_libraries(lsm_scheduler_tests PRIVATE lsm_blocks GTest::gtest_main)
+target_compile_options(lsm_scheduler_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+add_test(NAME blocks.scheduler COMMAND lsm_scheduler_tests)
+set_tests_properties(blocks.scheduler PROPERTIES LABELS "unit" TIMEOUT 60)
 set_tests_properties(blocks.transforms PROPERTIES TIMEOUT 90 LABELS "blocks;unit")
 add_test(NAME engine.persistence COMMAND lsm_engine_check)
 set_tests_properties(engine.persistence PROPERTIES TIMEOUT 90 LABELS "engine;integration")
