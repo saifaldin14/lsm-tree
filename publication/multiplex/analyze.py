@@ -240,7 +240,9 @@ def m2() -> dict[tuple, list[dict]]:
             "fallbacks": sum(fallbacks(r) for r in results),
             "verified": all(r["verification"]["keys"] == r["config"]["records"] for r in results),
             "oom_retries": server.get("merge_oom_retries"), "gpu": None,
-            "p999_ms": [r["write_latency"]["p999_ns"] / 1e6 for r in results]})
+            "p999_ms": [r["write_latency"]["p999_ns"] / 1e6 for r in results],
+            "server_cores_busy": (record["server_cpu_seconds"] / max(r["ingest_and_compact"]["seconds"] for r in results)
+                                  if record.get("server_cpu_seconds") else None)})
     return runs
 
 
@@ -249,16 +251,29 @@ def print_m2(runs) -> dict:
         return {}
     print("\n## M2: databases on pyke sharing malphite's GPU over RDMA (medians of 3 repetitions)\n")
     print("| Arm | N | Writes/s per database | Share of N = 1 | Slowest / fastest | All databases | CPU fallbacks | "
-          "Worst p99.9 (ms) |")
-    print("|---|---|---|---|---|---|---|---|")
+          "Worst p99.9 (ms) | Server cores busy (of 4) | $ per billion writes |")
+    print("|---|---|---|---|---|---|---|---|---|---|")
     table = {}
     for design in ("native", "service-fifo", "service-fair"):
         for n in sorted(n for d, n in runs if d == design):
             r = row(runs[(design, n)])
             r["share"] = r["per_db"] / row(runs[(design, 1)])["per_db"] if (design, 1) in runs else float("nan")
+            r["cost"] = cost_per_billion(r["per_db"], 4, n, design != "native", design != "native")
+            busy = median([t["server_cores_busy"] for t in runs[(design, n)]])
             table[(design, n)] = r
             print(f"| {ARMS[design][0]} | {n} | {r['per_db'] / 1e3:,.0f}k | {r['share']:.2f} | {r['slowest_share']:.2f} | "
-                  f"{r['aggregate'] / 1e6:.2f}M | {r['fallbacks']} | {r['p999_ms']:.1f} |")
+                  f"{r['aggregate'] / 1e6:.2f}M | {r['fallbacks']} | {r['p999_ms']:.1f} | "
+                  f"{'' if busy != busy else f'{busy:.1f}'} | {r['cost']:.3f} |")
+    most = max(n for d, n in table if d == "native")
+    for n in sorted(n for d, n in table if d == "service-fair"):
+        if n == 1:
+            continue
+        # GPU price per hour at which the service costs the same per write as RocksDB with `most` databases.
+        allowed = table[("native", most)]["cost"] * table[("service-fair", n)]["per_db"] * 3600 / 1e9
+        gpu_hour = (allowed - 4 * CORE_HOUR - SERVER_CORES * CORE_HOUR / n) * n
+        print(f"\nBreak-even GPU price, service-fair N = {n} against RocksDB N = {most}: ${gpu_hour:.2f} per hour "
+              f"(priced at ${GPU_HOUR:.2f})", end="")
+    print()
     return table
 
 
@@ -272,14 +287,14 @@ def figure_remote(table) -> None:
         points = [(n, table[(design, n)]["per_db"] / 1e3) for n in counts if (design, n) in table]
         xs, ys = zip(*points)
         ax.plot(xs, ys, "--" if design == "native" else "-", color=colour, marker=marker, markersize=4, linewidth=1.3,
-                label=label.replace("Shared GPU service", "GPU service on malphite"), zorder=3)
+                label=label.replace("Shared GPU service", "GPU service on another machine"), zorder=3)
     for n in counts:
         if ("native", n) in table and ("service-fair", n) in table:
             gain = table[("service-fair", n)]["per_db"] / table[("native", n)]["per_db"]
             ax.annotate(f"{gain:.2f}×", (n, table[("service-fair", n)]["per_db"] / 1e3), xytext=(0, 5),
                         textcoords="offset points", ha="center", va="bottom", fontsize=7, fontweight="bold", color=INK)
     ax.set_xticks(counts)
-    ax.set_xlabel("Databases on pyke (4 cores each)")
+    ax.set_xlabel("Databases on one machine (4 cores each)")
     ax.set_ylim(0, None)
     finish_axis(ax, "Writes/s per database (thousands)")
     ax.legend(fontsize=6.8, loc="lower left", frameon=False)
@@ -290,34 +305,51 @@ def figure_remote(table) -> None:
 # ---------------------------------------------------------------------------------------------
 # M3 and M4: one heavy tenant and three light tenants through one engine.
 
+ISOLATION = {"solo": "Light tenant alone", "fifo": "Service, 1 engine, FIFO", "fair": "Service, 1 engine, fair",
+             "stall": "Service, 1 engine, stalls first", "service-fair-k4": "Service, 4 engines, fair",
+             "separate": "GPU used by each process"}
+
+
 def m3() -> dict[str, list[dict]]:
+    """M3 (registered) and E2 (exploratory controls with the same tenants and placement). Tenant 0
+    is the heavy one; tenants 1 and 2 share its NUMA node (and the service's), tenant 3 is on
+    another node."""
     runs = defaultdict(list)
-    for record in jsonl(DATA / "m3" / "results.jsonl"):
-        trial = record["trial"]
-        if record["exit_code"] != 0:
-            raise SystemExit(f"M3 trial {record['index']} failed")
-        results = databases(record)
-        key = "solo" if trial["role"] == "light-solo" else trial["scheduler"]
-        light = results if key == "solo" else results[1:]
-        runs[key].append({"heavy": None if key == "solo" else results[0]["throughput"]["ops_per_second"],
-                          "light_p999_ms": [r["write_latency"]["p999_ns"] / 1e6 for r in light],
-                          "light_p99_ms": [r["write_latency"]["p99_ns"] / 1e6 for r in light],
-                          "light_ops": [r["throughput"]["ops_per_second"] for r in light],
-                          "lag_ms": [r["open_loop"]["max_schedule_lag_ms"] for r in light],
-                          "tenants": (record.get("server_statistics") or {}).get("scheduler", {}).get("tenants", {})})
+    for campaign in ("m3", "e2"):
+        for record in jsonl(DATA / campaign / "results.jsonl"):
+            trial = record["trial"]
+            if record["exit_code"] != 0:
+                raise SystemExit(f"{campaign} trial {record['index']} failed")
+            results = databases(record)
+            if trial["role"] == "light-solo":
+                key = "solo"
+            elif campaign == "m3":
+                key = trial["scheduler"]
+            else:
+                key = trial["design"]
+            p999 = [r["write_latency"]["p999_ns"] / 1e6 for r in results]
+            runs[key].append({"heavy": None if key == "solo" else results[0]["throughput"]["ops_per_second"],
+                              "light_p999_ms": p999 if key == "solo" else p999[1:],
+                              "same_node_ms": p999[0] if key == "solo" else max(p999[1:3]),
+                              "other_node_ms": p999[0] if key == "solo" else p999[3],
+                              "light_ops": [r["throughput"]["ops_per_second"] for r in (results if key == "solo"
+                                                                                       else results[1:])],
+                              "lag_ms": [r["open_loop"]["max_schedule_lag_ms"] for r in results if r.get("open_loop")],
+                              "tenants": (record.get("server_statistics") or {}).get("scheduler", {}).get("tenants", {})})
     return runs
 
 
 def print_m3(runs) -> dict:
     if not runs:
         return {}
-    print("\n## M3: one heavy and three light tenants through one engine (medians of 3 blocks)\n")
-    print("| Policy | Light p99.9 (ms, worst of 3) | × solo | Light p99 (ms) | Light writes/s | Heavy writes/s | "
-          "Light mean wait per job (ms) | Heavy mean wait per job (ms) |")
-    print("|---|---|---|---|---|---|---|---|")
+    print("\n## M3 (and E2): one heavy and three light tenants, 4 cores each (medians of 3 blocks)\n")
+    print("| Setting | Light p99.9, worst of 3 (ms) | × alone | Light tenants on the heavy tenant's node (ms) | "
+          "Light tenant on another node (ms) | Light writes/s | Heavy writes/s | Light wait per job (ms) | "
+          "Heavy wait per job (ms) |")
+    print("|---|---|---|---|---|---|---|---|---|")
     solo = median([max(r["light_p999_ms"]) for r in runs.get("solo", [])])
     table = {}
-    for key in ("solo", "fifo", "fair", "stall"):
+    for key in ISOLATION:
         if key not in runs:
             continue
         rs = runs[key]
@@ -326,31 +358,44 @@ def print_m3(runs) -> dict:
         for r in rs:
             for tenant, v in r["tenants"].items():
                 waits["heavy" if tenant == "db0" and key != "solo" else "light"].append(v["wait_ns"] / max(v["jobs"], 1) / 1e6)
-        table[key] = {"p999": p999, "ratio": p999 / solo, "heavy": median([r["heavy"] for r in rs])}
-        heavy = table[key]["heavy"]
-        print(f"| {key} | {p999:.1f} | {p999 / solo:.2f} | {median([max(r['light_p99_ms']) for r in rs]):.1f} | "
-              f"{median([statistics.mean(r['light_ops']) for r in rs]) / 1e3:,.0f}k | "
-              f"{'' if heavy != heavy else f'{heavy / 1e3:,.0f}k'} | {median(waits['light']):.0f} | "
-              f"{median(waits['heavy']) if waits['heavy'] else float('nan'):.0f} |")
+        table[key] = {"p999": p999, "ratio": p999 / solo, "heavy": median([r["heavy"] for r in rs]),
+                      "same_node": median([r["same_node_ms"] for r in rs]),
+                      "other_node": median([r["other_node_ms"] for r in rs]),
+                      "lag_ms": max(max(r["lag_ms"]) for r in rs)}
+        t = table[key]
+        heavy = "" if t["heavy"] != t["heavy"] else f"{t['heavy'] / 1e3:,.0f}k"
+        light_wait = f"{median(waits['light']):.0f}" if waits["light"] else ""
+        heavy_wait = f"{median(waits['heavy']):.0f}" if waits["heavy"] else ""
+        print(f"| {ISOLATION[key]} | {p999:.1f} | {p999 / solo:.2f} | {t['same_node']:.1f} | {t['other_node']:.1f} | "
+              f"{median([statistics.mean(r['light_ops']) for r in rs]) / 1e3:,.0f}k | {heavy} | {light_wait} | "
+              f"{heavy_wait} |")
+    print(f"\nLargest open-loop schedule lag of any light tenant: {max(t['lag_ms'] for t in table.values()):.1f} ms")
     return table
 
 
 def figure_isolation(table) -> None:
     if not table:
         return
-    keys = [k for k in ("solo", "fifo", "fair", "stall") if k in table]
-    labels = {"solo": "Light tenant\nalone", "fifo": "FIFO", "fair": "Fair", "stall": "Stalls first"}
-    colours = {"solo": "#4d4d4d", "fifo": ARMS["service-fifo"][1], "fair": ARMS["service-fair"][1], "stall": "#CC79A7"}
-    fig, ax = plt.subplots(figsize=(DOUBLE_COLUMN * 0.55, 2.5))
-    for x, key in enumerate(keys):
-        value = table[key]["p999"]
-        ax.bar(x, value, 0.7, color=colours[key], edgecolor="white", linewidth=0.4, zorder=2)
-        text = f"{value:.0f} ms" if key == "solo" else f"{value:.0f} ms\n{table[key]['ratio']:.1f}× alone"
-        ax.annotate(text, (x, value), xytext=(0, 1.5), textcoords="offset points", ha="center", va="bottom",
-                    fontsize=6.4, color=INK)
-    ax.set_xticks(range(len(keys)), [labels[k] for k in keys], fontsize=7)
-    ax.set_ylim(0, max(t["p999"] for t in table.values()) * 1.35)
-    finish_axis(ax, "Light tenants: slowest 0.1% of writes (ms)")
+    keys = [k for k in ISOLATION if k in table and k != "solo"]
+    solo = table["solo"]["p999"]
+    fig, ax = plt.subplots(figsize=(DOUBLE_COLUMN * 0.75, 2.7))
+    width = 0.38
+    groups = (("same_node", "Light tenants on the heavy tenant's NUMA node", "#D55E00"),
+              ("other_node", "Light tenant on another NUMA node", "#0072B2"))
+    for offset, (field, label, colour) in zip((-width / 2, width / 2), groups):
+        values = [table[k][field] for k in keys]
+        ax.bar([x + offset for x in range(len(keys))], values, width * 0.95, color=colour, edgecolor="white",
+               linewidth=0.4, zorder=2, label=label)
+        for x, value in enumerate(values):
+            ax.annotate(f"{value / solo:.1f}×", (x + offset, value), xytext=(0, 1.5), textcoords="offset points",
+                        ha="center", va="bottom", fontsize=6.4, color=INK)
+    ax.axhline(solo, color="#4d4d4d", linewidth=1.0, linestyle="--", zorder=3)
+    ax.annotate(f"Light tenant alone: {solo:.0f} ms", (len(keys) - 0.5, solo), xytext=(0, 2), textcoords="offset points",
+                ha="right", va="bottom", fontsize=6.6, color="#4d4d4d")
+    ax.set_xticks(range(len(keys)), [ISOLATION[k].replace(", ", ",\n", 1) for k in keys], fontsize=6.6)
+    ax.set_ylim(0, max(max(table[k]["same_node"], table[k]["other_node"]) for k in keys) * 1.25)
+    finish_axis(ax, "Light tenants: slowest 0.1%\nof writes (ms)")
+    ax.legend(fontsize=6.6, frameon=False, loc="upper right")
     fig.tight_layout()
     save(fig, "fig45_isolation")
 
@@ -364,45 +409,67 @@ def m4() -> dict[str, list[dict]]:
     return runs
 
 
-def per_second(result: dict, origin: float) -> list[tuple[float, float]]:
+def per_second(result: dict, origin: float, field: str = "ops") -> list[tuple[float, float]]:
     start = result["ingest_and_compact"]["start_unix"]
-    return [(start - origin + point["second"], point["ops"]) for point in result["timeline"]]
+    return [(start - origin + point["second"], point[field]) for point in result["timeline"]]
 
 
 def figure_burst(runs) -> None:
+    """M4: the light tenants start at 0 s (30 s warm-up), the heavy tenant at 60 s for 90 s."""
     if not runs:
         return
     policies = [p for p in ("fifo", "fair") if p in runs]
-    fig, axes = plt.subplots(1, len(policies), figsize=(DOUBLE_COLUMN, 2.4), sharey=True)
-    axes = axes if len(policies) > 1 else [axes]
-    print("\n## M4: light tenants' writes/s before, during and after the heavy tenant (median of blocks)\n")
-    print("| Policy | Light writes/s before | during | after |")
-    print("|---|---|---|---|")
-    for ax, policy in zip(axes, policies):
+    fig, axes = plt.subplots(2, len(policies), figsize=(DOUBLE_COLUMN, 3.6), sharex=True, sharey="row", squeeze=False)
+    print("\n## M4: heavy tenant arriving at 60 s (median of 3 blocks)\n")
+    print("| Policy | Light writes/s, 30-60 s | during the heavy tenant | after | Pending compaction of the 3 light "
+          "tenants (GiB), 30-60 s | during | after | Light p99.9 whole run (ms, worst of 3) |")
+    print("|---|---|---|---|---|---|---|---|")
+    for col, policy in enumerate(policies):
         blocks = runs[policy]
         results = blocks[0]
         origin = min(r["ingest_and_compact"]["start_unix"] for r in results)
-        heavy = per_second(results[0], origin)
-        light = [per_second(r, origin) for r in results[1:]]
-        ax.plot(*zip(*heavy), color=INK, linewidth=1.0, label="Heavy tenant")
-        for index, series in enumerate(light):
-            ax.plot(*zip(*series), color=ARMS[f"service-{policy}"][1], linewidth=0.8, alpha=0.85,
-                    label="Light tenants" if index == 0 else None)
-        ax.set_title("FIFO" if policy == "fifo" else "Fair", fontsize=8, color=INK)
-        ax.set_xlabel("Seconds")
-        finish_axis(ax, "Writes/s" if ax is axes[0] else "")
-        phases = {"before": [], "during": [], "after": []}
+        top, bottom = axes[0][col], axes[1][col]
+        top.plot(*zip(*[(t, v / 1e3) for t, v in per_second(results[0], origin)]), color=INK, linewidth=1.0,
+                 label="Heavy tenant")
+        colour = ARMS[f"service-{policy}"][1]
+        total = defaultdict(float)
+        for index, r in enumerate(results[1:]):
+            top.plot(*zip(*[(t, v / 1e3) for t, v in per_second(r, origin)]), color=colour,
+                     linewidth=0.8, alpha=0.85, label="Light tenants" if index == 0 else None)
+            for t, v in per_second(r, origin, "pending_compaction_bytes"):
+                total[round(t)] += v / 2**30
+        seconds = sorted(total)
+        rolling = [(t, statistics.mean(total[u] for u in seconds if t - 10 < u <= t)) for t in seconds if t >= 10]
+        bottom.plot(*zip(*rolling), color=colour, linewidth=1.3)
+        top.set_title("Service, 1 engine, " + ("FIFO" if policy == "fifo" else "fair"), fontsize=8, color=INK)
+        bottom.set_xlabel("Seconds")
+        finish_axis(top, "Writes/s (thousands)" if col == 0 else "")
+        finish_axis(bottom, "3 light tenants: pending\ncompaction (GiB, 10 s mean)" if col == 0 else "")
+        phases = {name: {"ops": [], "pending": []} for name in ("before", "during", "after")}
+        p999 = []
         for results in blocks:
             origin = min(r["ingest_and_compact"]["start_unix"] for r in results)
             h_start = results[0]["ingest_and_compact"]["start_unix"] - origin
             h_end = results[0]["ingest_and_compact"]["end_unix"] - origin
+            combined = defaultdict(float)
             for r in results[1:]:
-                for t, ops in per_second(r, origin):
+                for (t, ops), (_, pending) in zip(per_second(r, origin), per_second(r, origin, "pending_compaction_bytes")):
+                    if t <= 30:
+                        continue
                     phase = "before" if t < h_start else "during" if t < h_end else "after"
-                    phases[phase].append(ops)
-        print(f"| {policy} | {median(phases['before']) / 1e3:,.0f}k | {median(phases['during']) / 1e3:,.0f}k | "
-              f"{median(phases['after']) / 1e3:,.0f}k |")
-    axes[0].legend(fontsize=6.8, frameon=False, loc="upper right")
+                    phases[phase]["ops"].append(ops)
+                    combined[(phase, round(t))] += pending / 2**30
+            for (phase, _), value in combined.items():
+                phases[phase]["pending"].append(value)
+            p999.append(max(r["write_latency"]["p999_ns"] / 1e6 for r in results[1:]))
+        print(f"| {policy} | " + " | ".join(f"{median(phases[n]['ops']) / 1e3:,.0f}k" for n in phases) + " | "
+              + " | ".join(f"{median(phases[n]['pending']):.2f}" for n in phases) + f" | {median(p999):.1f} |")
+        shown = blocks[0]
+        shown_origin = min(r["ingest_and_compact"]["start_unix"] for r in shown)
+        for ax in (top, bottom):
+            ax.axvspan(shown[0]["ingest_and_compact"]["start_unix"] - shown_origin,
+                       shown[0]["ingest_and_compact"]["end_unix"] - shown_origin, color="#eeeeee", zorder=0)
+    axes[0][0].legend(fontsize=6.8, frameon=False, loc="upper left")
     fig.tight_layout()
     save(fig, "fig46_burst")
 
@@ -420,6 +487,39 @@ def figure_capacity(summary) -> None:
     finish_axis(ax, "Compaction input (GiB/s)")
     fig.tight_layout()
     save(fig, "fig47_service_capacity")
+
+
+# ---------------------------------------------------------------------------------------------
+# E1 (exploratory): engines in the service at the largest local configurations.
+
+def e1() -> dict:
+    runs = defaultdict(list)
+    for record in jsonl(DATA / "e1" / "results.jsonl"):
+        trial = record["trial"]
+        if record["exit_code"] != 0:
+            raise SystemExit(f"E1 trial {record['index']} failed")
+        runs[(trial["cores"], trial["instances"], trial["design"])].append(trial_summary(record))
+    if not runs:
+        return {}
+    print("\n## E1 (exploratory): engines in the service (medians of 3 blocks)\n")
+    print("| Databases × cores | Setting | Writes/s per database | Slowest / fastest | CPU fallbacks | Out-of-memory "
+          "re-queues | Worst p99.9 (ms) | Wait per job (ms) | GPU busy |")
+    print("|---|---|---|---|---|---|---|---|---|")
+    table = {}
+    for (cores, n, design), trials in sorted(runs.items(), key=lambda item: (-item[0][0], item[0][2])):
+        r = row(trials)
+        waits = []
+        for t in trials:
+            count = sum(v["jobs"] for v in t["tenants"].values())
+            if count:
+                waits.append(sum(v["wait_ns"] for v in t["tenants"].values()) / count / 1e6)
+        r["wait_ms"] = median(waits)
+        table[(cores, n, design)] = r
+        label = ARMS["mps"][0] if design == "mps" else f"Service, fair, {design.rsplit('k', 1)[1]} engines"
+        wait = "" if r["wait_ms"] != r["wait_ms"] else f"{r['wait_ms']:.0f}"
+        print(f"| {n} × {cores} | {label} | {r['per_db'] / 1e3:,.0f}k | {r['slowest_share']:.2f} | {r['fallbacks']} | "
+              f"{r['oom']} | {r['p999_ms']:.1f} | {wait} | {r['gpu']:.0f}% |")
+    return table
 
 
 # ---------------------------------------------------------------------------------------------
@@ -441,7 +541,7 @@ def hypotheses(local: dict, remote: dict, isolation: dict, local_runs, remote_ru
         print(f"- X3: remote 4 cores N = 4 keeps {share:.2f} of N = 1 (threshold 0.80: "
               f"{'supported' if share >= 0.80 else 'not supported'}).")
     if isolation:
-        ok = {k: isolation[k]["ratio"] <= 1.5 for k in ("fifo", "fair", "stall") if k in isolation}
+        ok = {k: isolation[k]["ratio"] <= 1.5 for k in ("fifo", "fair", "stall") if k in isolation}  # registered: worst of 3
         print(f"- X4: light p99.9 / solo: " + ", ".join(f"{k} {isolation[k]['ratio']:.2f}" for k in ok)
               + f" ({'supported' if ok.get('fair') and ok.get('stall') and not ok.get('fifo') else 'not supported'}).")
     print(f"- X5: service-fair 8 cores N = 4 per database {fair['per_db'] / 1e3:,.0f}k against the registered "
@@ -472,6 +572,7 @@ def main() -> int:
     isolation = print_m3(m3())
     figure_isolation(isolation)
     figure_burst(m4())
+    e1()
     hypotheses(local, remote, isolation, local_runs, remote_runs)
     return 0
 
