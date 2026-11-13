@@ -19,6 +19,15 @@ one light tenant alone at the same rate.
 
 M4 (burst, zyra): as M3 under fair and fifo, the heavy tenant starting 60 s after the light
 tenants and running 30 s plus 60 s; the light tenants run 30 s plus 180 s.
+
+E1 (exploratory, added after M1, not registered): service-fair with 4, 6 and 8 engines and MPS
+at 8 cores x 4 databases and 4 cores x 6 databases, in the same blocks. In M1 the service's
+jobs waited 550 to 750 ms for one of its 4 engines while the GPU was 64 to 69% busy.
+
+E2 (exploratory, added after the first M3 trials, not registered): the M3 tenants with the same
+placement and rates, (a) as separate processes, each with its own engines and no shared queue,
+and (b) through the service with 4 engines (fair). In M3 the light tenant on the heavy tenant's
+NUMA node was slowed more than the one on another node, so part of the slowdown is not the queue.
 """
 
 from __future__ import annotations
@@ -105,6 +114,33 @@ def m4(light_rate: int) -> dict:
             "light_rate": light_rate}
 
 
+def e1() -> dict:
+    settings = tuned()
+    trials = []
+    for cores, n in ((8, 4), (4, 6)):
+        for engines in (4, 6, 8):
+            trial = service(cores, n, engines, "fair", settings)
+            trial["design"] = f"service-fair-k{engines}"
+            trials.append(trial)
+        trials.append(arm("mps", cores, n, 4, settings))
+    return {"_comment": "E1 exploratory engine count; PREREGISTRATION.md, Changes after data collection.",
+            "common": COMMON, "trials": trials}
+
+
+def e2(light_rate: int) -> dict:
+    settings = tuned()
+    light = {"rate": light_rate}
+    trials = []
+    for name, engines in (("separate", 4), ("service-fair", 4)):
+        trial = arm(name, 4, 4, engines, settings)
+        trial["design"] = name if name == "separate" else f"service-fair-k{engines}"
+        trial["instance_flags"] = [{}, light, light, light]
+        trial["role"] = "heavy+3light"
+        trials.append(trial)
+    return {"_comment": "E2 exploratory isolation controls; PREREGISTRATION.md, Changes after data collection.",
+            "common": COMMON, "trials": trials, "light_rate": light_rate}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("out", type=Path)
@@ -115,8 +151,11 @@ def main() -> int:
     grid = m1(arguments.engines)
     (arguments.out / "m1-grid.json").write_text(json.dumps(grid, indent=1))
     print(f"m1: {len(grid['trials'])} trials")
+    grid = e1()
+    (arguments.out / "e1-grid.json").write_text(json.dumps(grid, indent=1))
+    print(f"e1: {len(grid['trials'])} trials")
     if arguments.light_rate:
-        for name, make in (("m3", m3), ("m4", m4)):
+        for name, make in (("m3", m3), ("m4", m4), ("e2", e2)):
             grid = make(arguments.light_rate)
             (arguments.out / f"{name}-grid.json").write_text(json.dumps(grid, indent=1))
             print(f"{name}: {len(grid['trials'])} trials")

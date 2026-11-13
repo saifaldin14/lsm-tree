@@ -1,0 +1,437 @@
+[
+ {
+  "design": "service-fifo",
+  "cores": 4,
+  "instances": 4,
+  "writes": "batched",
+  "flags": {
+   "threads": 8,
+   "subcompactions": 4,
+   "pipelined-write": false,
+   "adaptive-yield": false,
+   "background-jobs": 4,
+   "batch-size": 100,
+   "disable-wal": true,
+   "allow-fallocate": false
+  },
+  "placement": "per_node",
+  "reserved_cores": 4,
+  "mode": "remote_merge",
+  "sharing": "service",
+  "scheduler": "fifo",
+  "engines": 1,
+  "server_cores": 4,
+  "connections": 4,
+  "instance_flags": [
+   {},
+   {
+    "rate": 362608
+   },
+   {
+    "rate": 362608
+   },
+   {
+    "rate": 362608
+   }
+  ],
+  "role": "heavy+3light",
+  "block": 0
+ },
+ {
+  "design": "service-stall",
+  "cores": 4,
+  "instances": 4,
+  "writes": "batched",
+  "flags": {
+   "threads": 8,
+   "subcompactions": 4,
+   "pipelined-write": false,
+   "adaptive-yield": false,
+   "background-jobs": 4,
+   "batch-size": 100,
+   "disable-wal": true,
+   "allow-fallocate": false
+  },
+  "placement": "per_node",
+  "reserved_cores": 4,
+  "mode": "remote_merge",
+  "sharing": "service",
+  "scheduler": "stall",
+  "engines": 1,
+  "server_cores": 4,
+  "connections": 4,
+  "instance_flags": [
+   {},
+   {
+    "rate": 362608
+   },
+   {
+    "rate": 362608
+   },
+   {
+    "rate": 362608
+   }
+  ],
+  "role": "heavy+3light",
+  "block": 0
+ },
+ {
+  "design": "service-fair",
+  "cores": 4,
+  "instances": 1,
+  "writes": "batched",
+  "flags": {
+   "threads": 8,
+   "subcompactions": 4,
+   "pipelined-write": false,
+   "adaptive-yield": false,
+   "background-jobs": 4,
+   "batch-size": 100,
+   "disable-wal": true,
+   "allow-fallocate": false
+  },
+  "placement": "per_node",
+  "reserved_cores": 4,
+  "mode": "remote_merge",
+  "sharing": "service",
+  "scheduler": "fair",
+  "engines": 1,
+  "server_cores": 4,
+  "connections": 4,
+  "instance_flags": [
+   {
+    "rate": 362608
+   }
+  ],
+  "role": "light-solo",
+  "block": 0
+ },
+ {
+  "design": "service-fair",
+  "cores": 4,
+  "instances": 4,
+  "writes": "batched",
+  "flags": {
+   "threads": 8,
+   "subcompactions": 4,
+   "pipelined-write": false,
+   "adaptive-yield": false,
+   "background-jobs": 4,
+   "batch-size": 100,
+   "disable-wal": true,
+   "allow-fallocate": false
+  },
+  "placement": "per_node",
+  "reserved_cores": 4,
+  "mode": "remote_merge",
+  "sharing": "service",
+  "scheduler": "fair",
+  "engines": 1,
+  "server_cores": 4,
+  "connections": 4,
+  "instance_flags": [
+   {},
+   {
+    "rate": 362608
+   },
+   {
+    "rate": 362608
+   },
+   {
+    "rate": 362608
+   }
+  ],
+  "role": "heavy+3light",
+  "block": 0
+ },
+ {
+  "design": "service-fifo",
+  "cores": 4,
+  "instances": 4,
+  "writes": "batched",
+  "flags": {
+   "threads": 8,
+   "subcompactions": 4,
+   "pipelined-write": false,
+   "adaptive-yield": false,
+   "background-jobs": 4,
+   "batch-size": 100,
+   "disable-wal": true,
+   "allow-fallocate": false
+  },
+  "placement": "per_node",
+  "reserved_cores": 4,
+  "mode": "remote_merge",
+  "sharing": "service",
+  "scheduler": "fifo",
+  "engines": 1,
+  "server_cores": 4,
+  "connections": 4,
+  "instance_flags": [
+   {},
+   {
+    "rate": 362608
+   },
+   {
+    "rate": 362608
+   },
+   {
+    "rate": 362608
+   }
+  ],
+  "role": "heavy+3light",
+  "block": 1
+ },
+ {
+  "design": "service-stall",
+  "cores": 4,
+  "instances": 4,
+  "writes": "batched",
+  "flags": {
+   "threads": 8,
+   "subcompactions": 4,
+   "pipelined-write": false,
+   "adaptive-yield": false,
+   "background-jobs": 4,
+   "batch-size": 100,
+   "disable-wal": true,
+   "allow-fallocate": false
+  },
+  "placement": "per_node",
+  "reserved_cores": 4,
+  "mode": "remote_merge",
+  "sharing": "service",
+  "scheduler": "stall",
+  "engines": 1,
+  "server_cores": 4,
+  "connections": 4,
+  "instance_flags": [
+   {},
+   {
+    "rate": 362608
+   },
+   {
+    "rate": 362608
+   },
+   {
+    "rate": 362608
+   }
+  ],
+  "role": "heavy+3light",
+  "block": 1
+ },
+ {
+  "design": "service-fair",
+  "cores": 4,
+  "instances": 1,
+  "writes": "batched",
+  "flags": {
+   "threads": 8,
+   "subcompactions": 4,
+   "pipelined-write": false,
+   "adaptive-yield": false,
+   "background-jobs": 4,
+   "batch-size": 100,
+   "disable-wal": true,
+   "allow-fallocate": false
+  },
+  "placement": "per_node",
+  "reserved_cores": 4,
+  "mode": "remote_merge",
+  "sharing": "service",
+  "scheduler": "fair",
+  "engines": 1,
+  "server_cores": 4,
+  "connections": 4,
+  "instance_flags": [
+   {
+    "rate": 362608
+   }
+  ],
+  "role": "light-solo",
+  "block": 1
+ },
+ {
+  "design": "service-fair",
+  "cores": 4,
+  "instances": 4,
+  "writes": "batched",
+  "flags": {
+   "threads": 8,
+   "subcompactions": 4,
+   "pipelined-write": false,
+   "adaptive-yield": false,
+   "background-jobs": 4,
+   "batch-size": 100,
+   "disable-wal": true,
+   "allow-fallocate": false
+  },
+  "placement": "per_node",
+  "reserved_cores": 4,
+  "mode": "remote_merge",
+  "sharing": "service",
+  "scheduler": "fair",
+  "engines": 1,
+  "server_cores": 4,
+  "connections": 4,
+  "instance_flags": [
+   {},
+   {
+    "rate": 362608
+   },
+   {
+    "rate": 362608
+   },
+   {
+    "rate": 362608
+   }
+  ],
+  "role": "heavy+3light",
+  "block": 1
+ },
+ {
+  "design": "service-fair",
+  "cores": 4,
+  "instances": 1,
+  "writes": "batched",
+  "flags": {
+   "threads": 8,
+   "subcompactions": 4,
+   "pipelined-write": false,
+   "adaptive-yield": false,
+   "background-jobs": 4,
+   "batch-size": 100,
+   "disable-wal": true,
+   "allow-fallocate": false
+  },
+  "placement": "per_node",
+  "reserved_cores": 4,
+  "mode": "remote_merge",
+  "sharing": "service",
+  "scheduler": "fair",
+  "engines": 1,
+  "server_cores": 4,
+  "connections": 4,
+  "instance_flags": [
+   {
+    "rate": 362608
+   }
+  ],
+  "role": "light-solo",
+  "block": 2
+ },
+ {
+  "design": "service-fifo",
+  "cores": 4,
+  "instances": 4,
+  "writes": "batched",
+  "flags": {
+   "threads": 8,
+   "subcompactions": 4,
+   "pipelined-write": false,
+   "adaptive-yield": false,
+   "background-jobs": 4,
+   "batch-size": 100,
+   "disable-wal": true,
+   "allow-fallocate": false
+  },
+  "placement": "per_node",
+  "reserved_cores": 4,
+  "mode": "remote_merge",
+  "sharing": "service",
+  "scheduler": "fifo",
+  "engines": 1,
+  "server_cores": 4,
+  "connections": 4,
+  "instance_flags": [
+   {},
+   {
+    "rate": 362608
+   },
+   {
+    "rate": 362608
+   },
+   {
+    "rate": 362608
+   }
+  ],
+  "role": "heavy+3light",
+  "block": 2
+ },
+ {
+  "design": "service-stall",
+  "cores": 4,
+  "instances": 4,
+  "writes": "batched",
+  "flags": {
+   "threads": 8,
+   "subcompactions": 4,
+   "pipelined-write": false,
+   "adaptive-yield": false,
+   "background-jobs": 4,
+   "batch-size": 100,
+   "disable-wal": true,
+   "allow-fallocate": false
+  },
+  "placement": "per_node",
+  "reserved_cores": 4,
+  "mode": "remote_merge",
+  "sharing": "service",
+  "scheduler": "stall",
+  "engines": 1,
+  "server_cores": 4,
+  "connections": 4,
+  "instance_flags": [
+   {},
+   {
+    "rate": 362608
+   },
+   {
+    "rate": 362608
+   },
+   {
+    "rate": 362608
+   }
+  ],
+  "role": "heavy+3light",
+  "block": 2
+ },
+ {
+  "design": "service-fair",
+  "cores": 4,
+  "instances": 4,
+  "writes": "batched",
+  "flags": {
+   "threads": 8,
+   "subcompactions": 4,
+   "pipelined-write": false,
+   "adaptive-yield": false,
+   "background-jobs": 4,
+   "batch-size": 100,
+   "disable-wal": true,
+   "allow-fallocate": false
+  },
+  "placement": "per_node",
+  "reserved_cores": 4,
+  "mode": "remote_merge",
+  "sharing": "service",
+  "scheduler": "fair",
+  "engines": 1,
+  "server_cores": 4,
+  "connections": 4,
+  "instance_flags": [
+   {},
+   {
+    "rate": 362608
+   },
+   {
+    "rate": 362608
+   },
+   {
+    "rate": 362608
+   }
+  ],
+  "role": "heavy+3light",
+  "block": 2
+ }
+]
