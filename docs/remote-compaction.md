@@ -106,6 +106,11 @@ context and one set of engines, instead of each database process holding its own
 
 The same scheduler orders jobs when several databases share one process (`--shards`).
 
+Results with up to 8 databases, locally and over RDMA, against separate processes and CUDA
+MPS: [publication/FULL-RESULTS.md, section 11](../publication/FULL-RESULTS.md#11-several-databases-on-one-gpu).
+`lsm_rpc_bench --replay DIR --clients C` replays compaction requests recorded with
+`LSM_REMOTE_RECORD_DIR` to measure the service alone.
+
 The transform's statistics add `merge_remote_ns` (the client's call), `merge_server_ns`
 (the server's handler), `merge_sent_bytes` and `merge_received_bytes`. Through a relay they
 also add `merge_upstream_remote_ns` (the relay's call to the next server) and

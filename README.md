@@ -14,6 +14,9 @@ against unmodified RocksDB.
   offloaded.
 - Earlier GPU and FPGA designs, rebuilt in the same RocksDB, leave compression on the CPU.
   With compression on, this design uses 2.0–6.5× less compaction CPU than the best of them.
+- One GPU can serve several databases. Eight databases on one machine, sharing a GPU on
+  another machine over RDMA, each handle 2.1× more writes than RocksDB on the same cores, at
+  36% lower cost per write including the GPU.
 - Gains are small for read-heavy workloads and for data stored without compression.
 
 ## Key results
@@ -30,6 +33,7 @@ unless stated otherwise. The GPU is in addition to those cores.
 | Write latency, 99.9th percentile | 3.8× lower at 70% of RocksDB's maximum load, 9.6× lower at 90% (1.75× at 50%) |
 | NVMe drive | 1.60× more writes, 1.70× less CPU per write; 99th-percentile write latency 29× lower at 630k writes/s |
 | Remote GPU over RDMA | Each compaction 4.0–6.5× faster; whole database 1.75× more writes, 2.04× less CPU per write |
+| Several databases on one GPU | 8 databases sharing a remote GPU: 2.1× more writes each, 36% lower cost per write; 4 databases sharing a local GPU: 1.36–1.42× more writes each |
 | Earlier GPU and FPGA designs | 2.0–6.5× less compaction CPU than the best; whole-database gain over RocksDB 1.75×, against 1.14–1.41× for earlier designs |
 | Cost (AWS prices) | 2.26M writes/s on 16 cores and a GPU at half RocksDB's cost per write; RocksDB reaches at most 1.60M on 32 cores |
 
@@ -229,7 +233,60 @@ runs; every compaction matched RocksDB.
 
 Details: [docs/remote-compaction.md](docs/remote-compaction.md).
 
-### 7. Cost
+### 7. Several databases on one GPU
+
+One database keeps the GPU 20–40% busy, so several databases can share it. Three ways were
+compared:
+
+- each database process uses the GPU directly;
+- the same through CUDA MPS, NVIDIA's daemon for sharing a GPU between processes;
+- a shared compaction service: one process owns the GPU and runs the compactions of every
+  database, over shared memory on the same machine or over RDMA from another. It queues
+  jobs and re-queues a job when GPU memory is short, instead of failing it.
+
+Each database has its own cores, its own copy of the 50-million-key database and the tuned
+settings for its core count. 30 s warm-up plus 120 s, median of 3 runs, every key checked.
+The service has 4 GPU engines and 4 cores of its own, counted in its cost. Registered in
+advance ([publication/PREREGISTRATION.md](publication/PREREGISTRATION.md), "GPU
+multiplexing").
+
+**GPU on another machine.** Up to 8 databases of 4 cores each on the 96-core machine send
+their compactions over RDMA to one service on the GPU server.
+
+![Writes/s per database with 1 to 8 databases sharing a remote GPU](publication/figures/fig44_sharing_remote.png)
+
+- With 8 databases, each handles 842k writes/s against 401k for RocksDB on the same cores
+  (2.10×): 6.7M writes/s in total against 3.2M. Each database keeps 89% of the throughput it
+  has alone (94% with 4 databases).
+- Cost per billion writes, with the GPU and the service's cores divided among the 8
+  databases: $0.158 against $0.247 for RocksDB, 36% less. The two cost the same at a GPU
+  price of $2.79 an hour, against the $0.63 used.
+- No compaction fell back to the database machine's CPU. The service used 1.9 of its 4 cores.
+
+**GPU on the same machine.**
+
+![Writes/s per database with 1 to 6 databases sharing the local GPU](publication/figures/fig42_sharing_local.png)
+
+- 4 databases of 8 cores: 1.11–1.15M writes/s each against 811k for RocksDB (1.36–1.42×),
+  4.4–4.6M in total against 3.2M.
+- 6 databases of 4 cores: 490–593k writes/s each against 441k (1.11–1.34×).
+- Throughput through MPS and through the service is within run-to-run variation. MPS was
+  up to 21% ahead in the main runs (6 databases of 4 cores), and the service 3–5% ahead in a
+  repeat of the largest cases. More engines did not help: 6 gave the same throughput, and 8
+  ran short of GPU memory and was slower.
+- Without the service, 4 databases of 8 cores or 6 of 4 cores run the GPU out of memory, and
+  compactions fall back to the CPU: up to 158 in 3 runs separately, up to 124 through MPS. The service had none in
+  105 runs, local and remote. With 4 databases of 8 cores, its slowest database reached
+  0.87–0.91 of the fastest (MPS 0.65–0.73), and its 99.9th-percentile write latency was
+  19 ms (MPS 28–29 ms).
+- Cost: with 4 databases of 8 cores, MPS costs 14% less per write than RocksDB and the
+  service 3–5% less. With 6 databases of 4 cores, MPS costs 4% less and the service 29–31%
+  more than RocksDB, because its own 4 cores are a larger share of the total.
+
+Isolation between databases, burst arrivals and the engine count:
+[publication/FULL-RESULTS.md](publication/FULL-RESULTS.md#11-several-databases-on-one-gpu).
+
+### 8. Cost
 
 Both designs tuned for each core count; median of 5 runs (RocksDB on 32 cores: 3). AWS
 on-demand prices: $0.089 per CPU core-hour and, for the GPU version, $0.63 per hour for one
@@ -243,23 +300,29 @@ NVIDIA L4. The figure shows the two cases where the GPU version is cheaper.
 - Same throughput: 1.26M writes/s takes 16 cores with RocksDB and 8 cores and a GPU with the
   GPU version, which costs 6% less.
 
-Below about 1.3M writes/s, RocksDB costs less per write, because the GPU costs more than the
-cores it replaces. All prices and configurations:
+With one database per GPU, RocksDB costs less per write below about 1.3M writes/s, because
+the GPU costs more than the cores it replaces. Shared by several databases, the GPU costs
+less per write at lower rates too: 36% less with 8 databases of 4 cores sharing a remote GPU
+(section 7). All prices and configurations:
 [publication/FULL-RESULTS.md](publication/FULL-RESULTS.md#7-what-it-costs-and-what-it-saves).
 
 ## Limitations
 
 - Read-heavy workloads: 1.02–1.10× at 85–95% reads.
 - No compression: the same CPU as the best earlier design.
-- Low write rates: below about 1.3M writes/s, RocksDB costs less per write.
+- Low write rates: with one database per GPU, RocksDB costs less per write below about 1.3M
+  writes/s.
 - Write amplification: about 1.4× higher (5.5 against 4.0 bytes written per user byte on
   NVMe). The likely cause is that faster compactions start earlier with less data each.
-- Shared GPU: four databases on one GPU kept 77% of their single-database throughput,
-  below the 80% registered in advance.
+- Shared GPU: the shared service does not isolate databases from each other. With one heavy
+  and three light databases, the light databases on the service's NUMA node had 4.2–5.8×
+  their solo 99.9th-percentile write latency under every scheduling policy (1.7× without
+  the service). On the same machine, the service is no faster than CUDA MPS; it avoids CPU
+  fallbacks.
 - Energy: lower per write on a shared machine (1.3–1.5×). In the other whole-database runs it
   ranges from 0.69× to 1.19× RocksDB's per write, so no general energy saving is claimed.
-- Coverage: two GPU models and RocksDB 11.8; the remote-GPU whole-database run used one pair
-  of machines and one configuration.
+- Coverage: two GPU models and RocksDB 11.8; the remote-GPU runs used one pair of machines
+  and 4-core databases.
 
 ## Methodology
 
@@ -269,8 +332,8 @@ cores it replaces. All prices and configurations:
 - Tuning: both designs use the best settings from the same search
   ([configs/system/tuned.json](configs/system/tuned.json)). Runs have a fixed duration and
   are run in random order.
-- Registration: hypotheses and thresholds were committed before the runs. Three were not
-  met and are reported as measured ([publication/PREREGISTRATION.md](publication/PREREGISTRATION.md)).
+- Registration: hypotheses and thresholds were committed before the runs. Those not
+  met are reported as measured ([publication/PREREGISTRATION.md](publication/PREREGISTRATION.md)).
 - Measurement problems found during the project, and their fixes, are listed in
   [publication/AUDIT.md](publication/AUDIT.md).
 
@@ -316,6 +379,7 @@ python3 publication/make_figures.py                          # figures 10-16 and
 python3 publication/make_readme_figures.py                   # figures 32, 33, 35-37 (README summaries)
 python3 publication/make_readme_figures_more.py              # figures 38-41 (README summaries)
 python3 publication/rdma/analyze_r7.py                       # figures 23 and 31 (remote GPU over RDMA)
+python3 publication/multiplex/analyze.py                     # figures 42-47 (several databases on one GPU)
 ```
 
 ## Documentation

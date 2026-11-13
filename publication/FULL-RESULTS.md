@@ -515,7 +515,133 @@ link removes that hop. Those results, with a figure of both testbeds, are in
   because every log write is shipped to the backups inside RocksDB's write path, one
   write group at a time.
 
-## 11. What this does not show
+## 11. Several databases on one GPU
+
+**One GPU on another machine, shared by 8 databases of 4 cores each over RDMA, gives each
+database 2.1× RocksDB's writes at 36% lower cost per write. On the same machine, 4
+databases of 8 cores get 1.36–1.42× each. A shared compaction service has no CPU fallbacks
+in 105 runs, but does not isolate light databases from a heavy one.**
+
+*Setup:* each database has its own physical cores within one NUMA node, its own copy of the
+50-million-key database (128-byte values, LZ4) and the tuned settings of its core count
+(`configs/system/v3-headline.json`); 30 s warm-up plus 120 s, batched writes, WAL off;
+medians of 3 runs in shuffled blocks; every key checked after every run. Three ways to
+share the GPU:
+
+- **Separate:** each database process uses the GPU with its own CUDA context and engines.
+- **MPS:** the same through NVIDIA's MPS daemon, which lets kernels of different processes
+  run together.
+- **Service:** one `lsm_compaction_server` owns the GPU with K engines and runs the
+  compactions of every database, received over shared memory (same machine) or RDMA. It
+  schedules jobs FIFO or fairly by tenant, and on GPU out-of-memory it frees idle engines'
+  buffers and re-queues the job ([docs/remote-compaction.md](../docs/remote-compaction.md),
+  "Sharing one GPU"). It has 4 cores of its own; on the same machine those 4 cores are
+  left idle in every arm, so the databases use the same cores in every arm.
+
+Cost per billion writes: the database's cores plus its share of the GPU ($0.63 an hour) and,
+for the service, of the service's 4 cores (`prices.json`). The hypotheses and their outcomes
+are in [PREREGISTRATION.md](PREREGISTRATION.md), "GPU multiplexing"; the analysis is
+`multiplex/analyze.py`.
+
+**Engines in the service.** Replaying 138 recorded compaction requests from 16 clients:
+
+| Engines | Compaction input (GiB/s) | GPU memory (GiB) | Out-of-memory re-queues |
+|---|---|---|---|
+| 1 | 1.44 | 7.7 | 0 |
+| 2 | 2.15 | 17.3 | 0 |
+| 4 | 2.42 | 30.7 | 0 |
+| 6 | 2.48 | 44.5 | 0 |
+| 8 | 2.13 | 47.4 | 14 |
+
+The rule registered in advance chose 4 engines (the fewest within 95% of the best). Each job
+needs 11–17 times its compressed input in GPU memory, so 8 engines exceed the 48 GB GPU.
+
+![Service capacity against engines](figures/fig47_service_capacity.png)
+
+**GPU on another machine** (database machine 96 cores, GPU server with an RTX PRO 6000
+Blackwell, 100 Gb/s RDMA):
+
+| Databases | RocksDB, writes/s each | Service, writes/s each | Gain | Share of 1 database | Total | $ per billion writes, RocksDB → service |
+|---|---|---|---|---|---|---|
+| 1 | 465k | 947k | 2.04× | 1.00 | 0.95M | 0.213 → 0.393 |
+| 2 | | 957k | | 1.01 | 1.91M | → 0.246 |
+| 4 | | 894k | | 0.94 | 3.57M | → 0.187 |
+| 8 | 401k | 842k | 2.10× | 0.89 | 6.74M | 0.247 → **0.158** |
+
+Fair scheduling; FIFO was within 0.5%. The slowest database reached 0.95 of the fastest at
+8 databases, and the 99.9th-percentile write latency was 7.3 ms (RocksDB 11.5 ms). The
+service used 1.9 of its 4 cores. With 8 databases the service costs the same per write as
+RocksDB at a GPU price of $2.79 an hour; an NVIDIA L40S rents for about $1.68.
+
+**GPU on the same machine** (RTX A6000; main runs):
+
+| Databases × cores | Arm | Writes/s each | Share of 1 database | Slowest / fastest | CPU fallbacks (3 runs) | p99.9 (ms) | $ per billion writes |
+|---|---|---|---|---|---|---|---|
+| 4 × 8 | RocksDB | 811k | 0.96 | 0.94 | 0 | 28.3 | 0.245 |
+| 4 × 8 | Separate | 1,107k | 0.86 | 0.78 | 38 | 30.4 | 0.218 |
+| 4 × 8 | MPS | 1,149k | 0.89 | 0.73 | 1 | 28.3 | 0.210 |
+| 4 × 8 | Service, fair | 1,121k | 0.91 | 0.87 | 0 | 18.9 | 0.238 |
+| 4 × 8 | Service, FIFO | 1,144k | 0.93 | 0.85 | 0 | 18.9 | 0.233 |
+| 6 × 4 | RocksDB | 441k | 0.91 | 0.81 | 0 | 19.9 | 0.225 |
+| 6 × 4 | Separate | 517k | 0.68 | 0.71 | 158 | 25.2 | 0.248 |
+| 6 × 4 | MPS | 593k | 0.78 | 0.78 | 107 | 24.1 | 0.216 |
+| 6 × 4 | Service, fair | 490k | 0.68 | 0.97 | 0 | 24.1 | 0.295 |
+| 6 × 4 | Service, FIFO | 498k | 0.69 | 0.95 | 0 | 24.1 | 0.290 |
+
+![The largest local cases: throughput, slowest database, CPU fallbacks and tail latency](figures/fig43_sharing_most.png)
+
+- At 6 databases of 4 cores the service's jobs waited 550 ms on average for one of its 4
+  engines, while the GPU was 64% busy. A repeat of the largest cases with 4, 6 and 8 engines
+  (exploratory, added after the main runs) gave the service 1,210k (4 × 8) and 578k (6 × 4)
+  writes/s per database with 4 engines, against 1,156k and 560k for MPS in the same blocks.
+  6 engines gave 1,204k and 514k; 8 engines ran short of GPU memory (10–14 re-queues per run)
+  and gave 1,080k and 473k. MPS fell back to the CPU 17 and 124 times. The difference
+  between MPS and the service is within the variation between runs.
+- The first MPS runs (one block, an earlier build) kept 62% at 4 × 8 with 13–139
+  fallbacks per database. Two things changed: on GPU out-of-memory each process now frees
+  idle buffers and retries before falling back, and each database stays within one NUMA
+  node.
+
+**Isolation.** One heavy database (unlimited writes) and three light ones (363k writes/s
+each, half of a 4-core database's throughput through the service), 4 cores each, with a
+light database alone at the same rate. Two light databases share NUMA node 0 with the
+heavy database and the service; one is on another node. Latency is measured from each
+write's scheduled time.
+
+| Setting | Light p99.9, node 0 (ms) | Light p99.9, other node (ms) | × alone (worst) | Heavy writes/s | Light wait per job (ms) |
+|---|---|---|---|---|---|
+| Light database alone | 13.6 | | 1.00 | | 63 |
+| Service, 1 engine, FIFO | 58.7 | 16.3 | 4.31 | 592k | 475 |
+| Service, 1 engine, fair | 60.8 | 17.8 | 4.46 | 592k | 356 |
+| Service, 1 engine, stalls first | 56.6 | 15.2 | 4.15 | 595k | 367 |
+| Service, 4 engines, fair | 79.7 | 15.2 | 5.85 | 587k | 51 |
+| Separate, no service | 23.1 | 17.8 | 1.69 | 702k | |
+
+![Light databases' tail latency with a heavy database](figures/fig45_isolation.png)
+
+- The registered prediction, that fair or stalls-first scheduling keeps the light
+  databases within 1.5× of alone, was not met. No database stalled, so stalls-first never
+  ran a job early.
+- The last two rows were added after the main runs. With 4 engines the light databases
+  waited 51 ms per job, yet their latency was the worst. Without the service, with the same
+  placement, it was 1.7×. So the slowdown comes from the service's work on node 0 rather
+  than from the GPU queue; which resource (memory bandwidth or CPU) is not measured.
+- Every light database kept its 363k writes/s; the open-loop schedule never fell more than
+  0.6 ms behind.
+
+**A heavy database arriving.** As above under FIFO and fair, with the heavy database
+starting after 60 s and writing for 90 s.
+
+![Writes/s and pending compaction when a heavy database arrives](figures/fig46_burst.png)
+
+| Policy | Pending compaction of the 3 light databases (GiB): before | during | after | Light p99.9 (ms) |
+|---|---|---|---|---|
+| FIFO | 1.43 | 2.13 | 1.31 | 44.0 |
+| Fair | 1.32 | 1.90 | 1.43 | 44.0 |
+
+The light databases kept their 363k writes/s throughout under both policies.
+
+## 12. What this does not show
 
 - **Storage-bound systems.** Most results put the data in memory (`/dev/shm`). On a SATA
   SSD, where the drive is the limit, throughput is equal (0.93× on 8 cores, 1.04× on 16).
@@ -523,9 +649,11 @@ link removes that hop. Those results, with a figure of both testbeds, are in
   The CPU saving remains (1.70 to 2.0×).
 - **Costs.** Higher write amplification, including 3.79 against 2.65 in H31's trigger
   comparison (section 8); 1 GiB of
-  pinned host memory per GPU engine plus GPU memory; and four databases sharing one GPU
-  kept 77.1% of their throughput at 4 cores each (62% at 8 cores each, under MPS), below our
-  registered 80% target.
+  pinned host memory per GPU engine plus GPU memory.
+- **Isolation on a shared GPU.** Through the shared service, light databases on the
+  service's NUMA node had 4.2–5.8× their solo 99.9th-percentile write latency next to a
+  heavy database, whatever the scheduling policy (section 11). On the same machine the
+  service is no faster than CUDA MPS.
 - **Compaction without compression.** Our advantage over earlier designs comes from moving
   compression to the GPU. With compression off, which production RocksDB rarely runs,
   ours and the best earlier design use the same CPU.
@@ -535,9 +663,8 @@ link removes that hop. Those results, with a figure of both testbeds, are in
   window ends before RocksDB's 68 s of catch-up compaction, which favours RocksDB. A fair
   figure needs energy integrated to the end of catch-up.
 - **Remote compaction, one pair of machines.** The whole database over direct RDMA was run
-  on one pair of machines with one setting (4 cores' worth of threads, LZ4). Sharing one
-  remote GPU among several databases, and RDMA against TCP on the direct link, are
-  untested.
+  on one pair of machines with 4-core databases and LZ4. RDMA against TCP on the direct
+  link is untested.
 - **Key-value separation.** Designs that keep values outside the sorted files, such as
   gParaKV, move far fewer bytes through compaction. They are not part of production
   RocksDB's default path, and combining value separation with our offload is untested.
@@ -547,12 +674,15 @@ link removes that hop. Those results, with a figure of both testbeds, are in
   follow-ups also use an RTX PRO 6000 Blackwell. The servers differ in CPU and storage,
   so this is not a controlled GPU-only comparison. Other GPU classes and RocksDB versions
   remain untested.
-- **Registered thresholds we missed.** Three preregistered predictions did not hold, and
+- **Registered thresholds we missed.** These preregistered predictions did not hold, and
   the numbers above are the measured outcome rather than the registered one. 99.9th
   percentile write latency at 430k writes/s was 1.75× lower against a registered 2.5×.
   Compact-once replication cut cluster CPU 1.8× for single writes against a registered 2×.
-  Parallel broadcast replication did not change throughput at all. All three are recorded
-  with their reasons in [publication/PREREGISTRATION.md](PREREGISTRATION.md).
+  Parallel broadcast replication did not change throughput at all. On a shared GPU, fair
+  scheduling did not keep light databases within 1.5× of their solo tail latency; 4
+  databases of 8 cores through the service reached 1,121k writes/s each against a
+  registered 1,125k; and the service was not faster than MPS. All are recorded with their
+  reasons in [publication/PREREGISTRATION.md](PREREGISTRATION.md).
 
 ## How we measured
 

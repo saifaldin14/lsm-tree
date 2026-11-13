@@ -178,8 +178,8 @@ def figure_local(table) -> None:
         gains = [table[(cores, d, most)]["per_db"] / table[(cores, "native", most)]["per_db"]
                  for d in ARMS if d != "native" and (cores, d, most) in table]
         ax.annotate(f"{min(gains):.2f}–{max(gains):.2f}× RocksDB\nat {most} databases",
-                    (most, table[(cores, "native", most)]["per_db"] / 1e3), xytext=(0, 8), textcoords="offset points",
-                    ha="right", va="bottom", fontsize=6.8, fontweight="bold", color=INK)
+                    (most, table[(cores, "native", most)]["per_db"] / 1e3), xytext=(0, -8), textcoords="offset points",
+                    ha="right", va="top", fontsize=6.8, fontweight="bold", color=INK)
         ax.set_xticks(counts)
         ax.set_xlabel("Databases sharing one GPU")
         ax.set_title(f"{cores} cores per database", fontsize=8, color=INK)
@@ -378,9 +378,9 @@ def figure_isolation(table) -> None:
         return
     keys = [k for k in ISOLATION if k in table and k != "solo"]
     solo = table["solo"]["p999"]
-    fig, ax = plt.subplots(figsize=(DOUBLE_COLUMN * 0.75, 2.7))
+    fig, ax = plt.subplots(figsize=(DOUBLE_COLUMN * 0.8, 3.0))
     width = 0.38
-    groups = (("same_node", "Light tenants on the heavy tenant's NUMA node", "#D55E00"),
+    groups = (("same_node", "Light tenants on the NUMA node of the heavy tenant and the service", "#D55E00"),
               ("other_node", "Light tenant on another NUMA node", "#0072B2"))
     for offset, (field, label, colour) in zip((-width / 2, width / 2), groups):
         values = [table[k][field] for k in keys]
@@ -389,14 +389,14 @@ def figure_isolation(table) -> None:
         for x, value in enumerate(values):
             ax.annotate(f"{value / solo:.1f}×", (x + offset, value), xytext=(0, 1.5), textcoords="offset points",
                         ha="center", va="bottom", fontsize=6.4, color=INK)
-    ax.axhline(solo, color="#4d4d4d", linewidth=1.0, linestyle="--", zorder=3)
-    ax.annotate(f"Light tenant alone: {solo:.0f} ms", (len(keys) - 0.5, solo), xytext=(0, 2), textcoords="offset points",
-                ha="right", va="bottom", fontsize=6.6, color="#4d4d4d")
-    ax.set_xticks(range(len(keys)), [ISOLATION[k].replace(", ", ",\n", 1) for k in keys], fontsize=6.6)
-    ax.set_ylim(0, max(max(table[k]["same_node"], table[k]["other_node"]) for k in keys) * 1.25)
+    ax.axhline(solo, color="#4d4d4d", linewidth=1.0, linestyle="--", zorder=1, label=f"Light tenant alone ({solo:.0f} ms)")
+    ticks = {"separate": "No service:\nGPU used by\neach process"}
+    ax.set_xticks(range(len(keys)), [ticks.get(k, ISOLATION[k].replace(", ", ",\n", 1)) for k in keys], fontsize=6.6)
+    ax.set_ylim(0, max(max(table[k]["same_node"], table[k]["other_node"]) for k in keys) * 1.15)
     finish_axis(ax, "Light tenants: slowest 0.1%\nof writes (ms)")
-    ax.legend(fontsize=6.6, frameon=False, loc="upper right")
-    fig.tight_layout()
+    fig.legend(*ax.get_legend_handles_labels(), fontsize=6.6, frameon=False, loc="upper center", ncol=2,
+               bbox_to_anchor=(0.55, 1.0))
+    fig.tight_layout(rect=(0, 0, 1, 0.84))
     save(fig, "fig45_isolation")
 
 
