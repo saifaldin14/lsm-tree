@@ -31,6 +31,7 @@ import argparse
 import json
 import os
 import random
+import re
 import shutil
 import signal
 import subprocess
@@ -252,7 +253,9 @@ class SharedGpu:
         if self.mode == "mps":
             subprocess.run(["nvidia-cuda-mps-control"], input="quit\n", text=True, env={**os.environ, **self.environment})
             log = self.scratch / "mps-log" / "control.log"
-            record["mps_clients"] = log.read_text().count("New client") if log.exists() else None
+            # One "NEW CLIENT <pid>" line per process (a client may be listed twice while the server starts).
+            record["mps_clients"] = (len(set(re.findall(r"NEW CLIENT (\d+)", log.read_text(), re.IGNORECASE)))
+                                     if log.exists() else None)
         elif self.mode == "service" and self.server is not None:
             after = process_cpu_seconds(self.server.pid)
             record["server_cpu_seconds"] = (after - self.cpu_before) if None not in (after, self.cpu_before) else None

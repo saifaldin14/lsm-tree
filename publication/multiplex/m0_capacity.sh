@@ -27,10 +27,15 @@ for k in "${engines[@]}"; do
       --backend cuda_merge --engines "$k" --scheduler fifo > "$log" 2>&1 &
     server=$!
     for _ in $(seq 1 1200); do grep -q '^listening' "$log" && break; sleep 0.1; done
-    nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader,nounits -lms 500 > "$work/gpu-$k.csv" &
-    monitor=$!
     numactl --physcpubind=18-35 --preferred=1 "$build/lsm_rpc_bench" --endpoint "unix://$work/s.sock" \
-      --replay "$recorded" --clients "$clients" --duration "$seconds" > "$work/replay.json" || true
+      --replay "$recorded" --clients "$clients" --duration "$seconds" > "$work/replay.json" 2> "$work/replay.err" &
+    bench=$!
+    # Sample the GPU only while requests are being replayed, not while the client loads them.
+    for _ in $(seq 1 6000); do grep -q '^replaying' "$work/replay.err" && break; sleep 0.1; done
+    nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader,nounits -lms 500 \
+      > "$work/gpu-$k-$repetition.csv" &
+    monitor=$!
+    wait "$bench" || true
     kill "$monitor"
     kill "$server"
     wait "$server" || true
@@ -39,7 +44,7 @@ import json, sys
 k, repetition, work, out = int(sys.argv[1]), int(sys.argv[2]), sys.argv[3], sys.argv[4]
 replay = json.loads(open(f"{work}/replay.json").read())
 util, memory = [], []
-for line in open(f"{work}/gpu-{k}.csv"):
+for line in open(f"{work}/gpu-{k}-{repetition}.csv"):
     try:
         u, m = (float(x) for x in line.split(","))
         util.append(u); memory.append(m)
