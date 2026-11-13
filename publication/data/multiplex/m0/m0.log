@@ -1,0 +1,19 @@
+K=1 rep 1: 1.45 GiB/s, 8.7 jobs/s, p50 1.63 s, GPU 22%, failures 0, oom retries 0
+K=1 rep 2: 1.43 GiB/s, 8.6 jobs/s, p50 1.62 s, GPU 23%, failures 0, oom retries 0
+K=1 rep 3: 1.44 GiB/s, 8.6 jobs/s, p50 1.62 s, GPU 23%, failures 0, oom retries 0
+K=2 rep 1: 2.16 GiB/s, 13.1 jobs/s, p50 1.06 s, GPU 30%, failures 0, oom retries 0
+K=2 rep 2: 2.15 GiB/s, 13.0 jobs/s, p50 1.08 s, GPU 30%, failures 0, oom retries 0
+K=2 rep 3: 2.12 GiB/s, 12.8 jobs/s, p50 1.10 s, GPU 30%, failures 0, oom retries 0
+K=3 rep 1: 2.30 GiB/s, 14.0 jobs/s, p50 0.96 s, GPU 31%, failures 0, oom retries 0
+K=3 rep 2: 2.26 GiB/s, 13.7 jobs/s, p50 0.97 s, GPU 31%, failures 0, oom retries 0
+K=3 rep 3: 2.25 GiB/s, 13.6 jobs/s, p50 0.98 s, GPU 31%, failures 0, oom retries 0
+K=4 rep 1: 2.38 GiB/s, 14.4 jobs/s, p50 0.92 s, GPU 32%, failures 0, oom retries 0
+K=4 rep 2: 2.44 GiB/s, 14.7 jobs/s, p50 0.90 s, GPU 32%, failures 0, oom retries 0
+K=4 rep 3: 2.42 GiB/s, 14.5 jobs/s, p50 0.91 s, GPU 31%, failures 0, oom retries 0
+K=6 rep 1: 2.50 GiB/s, 15.1 jobs/s, p50 0.89 s, GPU 31%, failures 0, oom retries 0
+K=6 rep 2: 2.42 GiB/s, 14.6 jobs/s, p50 0.88 s, GPU 31%, failures 0, oom retries 0
+K=6 rep 3: 2.48 GiB/s, 15.0 jobs/s, p50 0.90 s, GPU 32%, failures 0, oom retries 0
+K=8 rep 1: 2.14 GiB/s, 13.0 jobs/s, p50 0.89 s, GPU 30%, failures 0, oom retries 6
+K=8 rep 2: 2.13 GiB/s, 12.7 jobs/s, p50 0.90 s, GPU 30%, failures 0, oom retries 4
+K=8 rep 3: 2.13 GiB/s, 12.8 jobs/s, p50 0.88 s, GPU 30%, failures 0, oom retries 4
+m0 exit 0

@@ -432,8 +432,8 @@ def experiment_r9(cluster: Cluster, out: Path, repetitions: int, records: int, s
     scratch = cluster.config["scratch"]
     golden = f"{scratch}/rdma-golden-{records}"
     if "done" not in cluster.run(c["host"], f"test -f {golden}.done && echo done || true"):
-        cluster.run(c["host"], f"rm -rf {golden} && {cluster.build}/lsm_system_bench --phase preload --dir {golden} "
-                               f"--records {records} --threads 8 > {golden}.json 2>&1 && touch {golden}.done")
+        cluster.run(c["host"], f"mkdir -p {scratch} && rm -rf {golden} && {cluster.build}/lsm_system_bench --phase preload "
+                               f"--dir {golden} --records {records} --threads 8 > {golden}.json 2>&1 && touch {golden}.done")
     results = out / "r9-sharing.jsonl"
     done = {(r["repetition"], r["design"], r["instances"]) for r in map(json.loads, results.open())} \
         if results.exists() else set()

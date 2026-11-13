@@ -71,7 +71,10 @@ namespace
         {
             std::ifstream file(path, std::ios::binary);
             Frame frame;
-            frame.bytes.assign(std::istreambuf_iterator<char>(file), {});
+            frame.bytes.resize(std::filesystem::file_size(path));
+            file.read(frame.bytes.data(), static_cast<std::streamsize>(frame.bytes.size()));
+            if (!file)
+                throw std::runtime_error("cannot read " + path.string());
             lsm_lab::RequestHeader header;
             if (frame.bytes.size() < sizeof(header))
                 continue;
@@ -87,6 +90,7 @@ namespace
     int replay(const std::string &endpoint, const std::string &directory, int clients, double duration)
     {
         const auto frames = load_frames(directory);
+        std::cerr << "replaying " << frames.size() << " requests" << std::endl;
         std::mutex mutex;
         std::vector<double> latencies;
         std::uint64_t jobs = 0, input = 0, failures = 0;
