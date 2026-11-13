@@ -861,6 +861,30 @@ Hypotheses (medians over blocks or repetitions):
   same cores: each database at least 1,125k writes/s (RocksDB tuned 837k; the GPU and 4
   server cores divided by 4), which is 89% of ours' tuned single-database 1,260k.
 
+**Outcomes (2026-11-12; `data/multiplex`, `multiplex/analyze.py`; every run checked all
+keys):**
+
+- **M0:** K = 4 (2.42 GiB/s; the best was 2.48 at K = 6; K = 8 re-queued 14 jobs for
+  memory and fell to 2.13).
+- **X1 supported:** 0 CPU fallbacks in 66 service runs (42 in M1, 24 in M2).
+- **X2 partly supported:** service-fair at 8 cores, N = 4 kept 91% of its N = 1
+  (threshold 81%), but its 1,121k writes/s per database is below MPS's 1,149k. MPS kept 89%
+  here, not the quick pass's 62%, for two reasons. In this build a GPU out-of-memory error
+  inside a database process also releases idle buffers and retries (one MPS database
+  re-queued 112 jobs and fell back once). Each database also sits within one NUMA node.
+- **X3 supported:** 94% (894k against 947k writes/s per database). At N = 8, 89%, and
+  2.10× RocksDB on the same cores.
+- **X4 not supported:** the light tenants' worst p99.9 was 4.31× (fifo), 4.46× (fair) and
+  4.15× (stall) their solo 13.6 ms. The stall policy never ran a job early, because no
+  tenant stalled. The light tenant on another NUMA node stayed at 1.1–1.3× solo; the two on
+  the heavy tenant's node were at 4.2–4.5×.
+- **X5 not supported:** 1,121k against 1,125k writes/s per database, $0.238 per billion
+  writes against RocksDB's $0.234 (N = 1) and $0.245 (N = 4) measured in M1. FIFO reached
+  1,144k ($0.233), and MPS 1,149k ($0.210).
+- **M4:** the light tenants kept 363k writes/s throughout. Their combined pending
+  compaction rose from 1.43 to 2.13 GiB under fifo and from 1.32 to 1.90 GiB under fair,
+  while the heavy tenant ran. Their p99.9 was 44 ms under both.
+
 ## Changes after data collection
 
 - **Shared GPU, first attempt (discarded, kept as `shared-gpu-attempt1`):** all
