@@ -877,7 +877,8 @@ keys):**
 - **X4 not supported:** the light tenants' worst p99.9 was 4.31× (fifo), 4.46× (fair) and
   4.15× (stall) their solo 13.6 ms. The stall policy never ran a job early, because no
   tenant stalled. The light tenant on another NUMA node stayed at 1.1–1.3× solo; the two on
-  the heavy tenant's node were at 4.2–4.5×.
+  the node of the heavy tenant and the service were at 4.2–4.5×. E2 below shows this is not
+  the queue.
 - **X5 not supported:** 1,121k against 1,125k writes/s per database, $0.238 per billion
   writes against RocksDB's $0.234 (N = 1) and $0.245 (N = 4) measured in M1. FIFO reached
   1,144k ($0.233), and MPS 1,149k ($0.210).
@@ -886,6 +887,20 @@ keys):**
   while the heavy tenant ran. Their p99.9 was 44 ms under both.
 
 ## Changes after data collection
+
+- **GPU multiplexing, exploratory runs added after M1 and M3 (2026-11-12; not hypothesis
+  tests; `data/multiplex/e1`, `e2`; seeds 113 and 114, 3 blocks):**
+  - E1: in M1 the service's jobs waited 550–750 ms for one of its 4 engines while the GPU
+    was 64–69% busy, so the service with 4, 6 and 8 engines and MPS were run again at
+    4 × 8 and 6 × 4. Per database: 4 engines 1,210k and 578k, 6 engines 1,204k and 514k,
+    8 engines 1,080k and 473k (10–14 out-of-memory re-queues per run), MPS 1,156k and 560k
+    (17 and 124 CPU fallbacks). The service with 4 engines was 3–5% above MPS here, where
+    M1 had it 2–17% below, so the two are not distinguished by these runs.
+  - E2: in M3 the light tenant on another NUMA node was barely affected, so the M3 tenants
+    were run with the same placement and rates as separate processes (no service) and
+    through the service with 4 engines (fair). Light p99.9 on node 0: 23.1 ms (1.7× solo)
+    without the service, 79.7 ms (5.85×) with 4 engines, although light jobs waited only
+    51 ms. The slowdown comes from the service's work on node 0, not from its queue.
 
 - **Shared GPU, first attempt (discarded, kept as `shared-gpu-attempt1`):** all
   4- and 8-instance trials failed. Native instances were killed by the kernel
