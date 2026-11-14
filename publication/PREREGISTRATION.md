@@ -1064,6 +1064,14 @@ trials completed, all in repetition 1:
   `--counts 6,8 --native-counts 8 --seed-base 3100` (K = 8), both with
   `--server-env "LSM_RDMA_SERVER_BUDGET_MB=32768 LSM_RDMA_CACHE_MB=16384"` and
   `--client-env LSM_RDMA_CACHE_MB=4096`; results go to fresh files in `data/multiplex/m5`.
+- **Builds:** only `transport_rdma.cpp` was recompiled (client on pyke, CUDA server on zyra).
+- **Smoke test (1 M keys, N = 2):** every key verified, no CPU fallback, server statistics
+  printed.
+- **Throughput check (13:30–13:40 EST, `~/rdma-out/m5-check3`): passed.** service-fair at
+  N = 4 reached 870k writes/s per database in the window (863k–879k; 861k counting leftover
+  compaction), against the 867k threshold, with every key verified, no CPU fallback and no
+  out-of-memory re-queue. The server's resident memory stayed at about 30 GB. The same check
+  ran RocksDB at N = 4: 461k per database.
 
 ## Changes after data collection
 

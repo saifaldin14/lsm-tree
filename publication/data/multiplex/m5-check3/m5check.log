@@ -1,0 +1,6 @@
+r9 repetition 1 native N=2: per-database [1034, 1034] k ops/s, exits {'db0': 0, 'db1': 0}
+r9 repetition 1 service-fair N=2: per-database [1224, 1228] k ops/s, exits {'db0': 0, 'db1': 0}
+smoke exit 0
+r9 repetition 1 native N=4: per-database [464, 454, 460, 464] k ops/s, exits {'db0': 0, 'db1': 0, 'db2': 0, 'db3': 0}
+r9 repetition 1 service-fair N=4: per-database [863, 879, 863, 873] k ops/s, exits {'db0': 0, 'db1': 0, 'db2': 0, 'db3': 0}
+check exit 0
