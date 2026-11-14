@@ -609,15 +609,12 @@ def m5_hypotheses() -> None:
         print(f"- Y2: N = 8, K = 4: {k4[(fair, 8)]['with_backlog'] / 1e3:,.0f}k against RocksDB "
               f"{k4[(native, 8)]['with_backlog'] / 1e3:,.0f}k = {ratio:.2f}x, CPU fallbacks "
               f"{k4[(fair, 8)]['fallbacks']} (at least 1.8x with none: {'supported' if ok else 'not supported'}).")
-    if (fair, 12) in k4 and (fair, 1) in k4:
-        share = k4[(fair, 12)]["with_backlog"] / k4[(fair, 1)]["with_backlog"]
-        print(f"- Y3: N = 12, K = 4 keeps {share:.2f} of N = 1 (below 0.80: "
-              f"{'supported' if share < 0.80 else 'not supported'}).")
-    if (fair, 12) in k4 and (fair, 12) in k8:
-        gain = k8[(fair, 12)]["with_backlog"] / k4[(fair, 12)]["with_backlog"]
-        ok = gain >= 1.10 and zero(k8[(fair, 12)]) and zero(k8[(fair, 12)], "oom_failures")
-        print(f"- Y4: N = 12, K = 8 against K = 4: {gain:.2f}x, CPU fallbacks {k8[(fair, 12)]['fallbacks']}, "
-              f"out-of-memory failures {[t.get('oom_failures') for t in k8[(fair, 12)]['runs']]} "
+    # Attempt 3 (PREREGISTRATION.md): Y3 withdrawn; Y4 evaluated at N = 8.
+    if (fair, 8) in k4 and (fair, 8) in k8:
+        gain = k8[(fair, 8)]["with_backlog"] / k4[(fair, 8)]["with_backlog"]
+        ok = gain >= 1.10 and zero(k8[(fair, 8)]) and zero(k8[(fair, 8)], "oom_failures")
+        print(f"- Y4: N = 8, K = 8 against K = 4: {gain:.2f}x, CPU fallbacks {k8[(fair, 8)]['fallbacks']}, "
+              f"out-of-memory failures {[t.get('oom_failures') for t in k8[(fair, 8)]['runs']]} "
               f"(at least 1.10x with none: {'supported' if ok else 'not supported'}).")
     if (fair, 1) in k4:
         base = k4[(fair, 1)]["with_backlog"]

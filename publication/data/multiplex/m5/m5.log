@@ -1,0 +1,29 @@
+r9 repetition 1 native N=8: per-database [404, 408, 398, 410, 379, 416, 402, 403] k ops/s, exits {'db0': 0, 'db1': 0, 'db2': 0, 'db3': 0, 'db4': 0, 'db5': 0, 'db6': 0, 'db7': 0}
+r9 repetition 1 service-fair N=1: per-database [914] k ops/s, exits {'db0': 0}
+r9 repetition 1 native N=1: per-database [478] k ops/s, exits {'db0': 0}
+r9 repetition 1 service-fair N=4: per-database [867, 875, 865, 875] k ops/s, exits {'db0': 0, 'db1': 0, 'db2': 0, 'db3': 0}
+r9 repetition 1 service-fair N=8: per-database [815, 851, 821, 853, 830, 857, 819, 852] k ops/s, exits {'db0': 0, 'db1': 0, 'db2': 0, 'db3': 0, 'db4': 0, 'db5': 0, 'db6': 0, 'db7': 0}
+r9 repetition 1 service-fair N=6: per-database [814, 849, 819, 851, 815, 859] k ops/s, exits {'db0': 0, 'db1': 0, 'db2': 0, 'db3': 0, 'db4': 0, 'db5': 0}
+r9 repetition 2 service-fair N=6: per-database [807, 843, 814, 846, 815, 853] k ops/s, exits {'db0': 0, 'db1': 0, 'db2': 0, 'db3': 0, 'db4': 0, 'db5': 0}
+r9 repetition 2 native N=8: per-database [391, 401, 391, 417, 393, 412, 393, 404] k ops/s, exits {'db0': 0, 'db1': 0, 'db2': 0, 'db3': 0, 'db4': 0, 'db5': 0, 'db6': 0, 'db7': 0}
+r9 repetition 2 native N=1: per-database [474] k ops/s, exits {'db0': 0}
+r9 repetition 2 service-fair N=1: per-database [923] k ops/s, exits {'db0': 0}
+r9 repetition 2 service-fair N=8: per-database [815, 849, 824, 853, 825, 849, 819, 854] k ops/s, exits {'db0': 0, 'db1': 0, 'db2': 0, 'db3': 0, 'db4': 0, 'db5': 0, 'db6': 0, 'db7': 0}
+r9 repetition 2 service-fair N=4: per-database [864, 884, 868, 883] k ops/s, exits {'db0': 0, 'db1': 0, 'db2': 0, 'db3': 0}
+r9 repetition 3 service-fair N=1: per-database [918] k ops/s, exits {'db0': 0}
+r9 repetition 3 native N=8: per-database [389, 400, 397, 407, 407, 407, 401, 414] k ops/s, exits {'db0': 0, 'db1': 0, 'db2': 0, 'db3': 0, 'db4': 0, 'db5': 0, 'db6': 0, 'db7': 0}
+r9 repetition 3 service-fair N=6: per-database [808, 841, 815, 848, 815, 847] k ops/s, exits {'db0': 0, 'db1': 0, 'db2': 0, 'db3': 0, 'db4': 0, 'db5': 0}
+r9 repetition 3 service-fair N=4: per-database [863, 878, 861, 888] k ops/s, exits {'db0': 0, 'db1': 0, 'db2': 0, 'db3': 0}
+r9 repetition 3 service-fair N=8: per-database [816, 853, 823, 853, 820, 852, 827, 855] k ops/s, exits {'db0': 0, 'db1': 0, 'db2': 0, 'db3': 0, 'db4': 0, 'db5': 0, 'db6': 0, 'db7': 0}
+r9 repetition 3 native N=1: per-database [475] k ops/s, exits {'db0': 0}
+main exit 0
+r9 repetition 1 native N=8: per-database [400, 399, 400, 410, 401, 411, 396, 410] k ops/s, exits {'db0': 0, 'db1': 0, 'db2': 0, 'db3': 0, 'db4': 0, 'db5': 0, 'db6': 0, 'db7': 0}
+r9 repetition 1 service-fair N=6: per-database [812, 838, 816, 838, 820, 844] k ops/s, exits {'db0': 0, 'db1': 0, 'db2': 0, 'db3': 0, 'db4': 0, 'db5': 0}
+r9 repetition 1 service-fair N=8: per-database [817, 845, 821, 844, 822, 851, 823, 846] k ops/s, exits {'db0': 0, 'db1': 0, 'db2': 0, 'db3': 0, 'db4': 0, 'db5': 0, 'db6': 0, 'db7': 0}
+r9 repetition 2 service-fair N=6: per-database [803, 841, 810, 848, 812, 850] k ops/s, exits {'db0': 0, 'db1': 0, 'db2': 0, 'db3': 0, 'db4': 0, 'db5': 0}
+r9 repetition 2 native N=8: per-database [399, 405, 395, 404, 394, 406, 393, 411] k ops/s, exits {'db0': 0, 'db1': 0, 'db2': 0, 'db3': 0, 'db4': 0, 'db5': 0, 'db6': 0, 'db7': 0}
+r9 repetition 2 service-fair N=8: per-database [810, 844, 815, 845, 829, 857, 818, 849] k ops/s, exits {'db0': 0, 'db1': 0, 'db2': 0, 'db3': 0, 'db4': 0, 'db5': 0, 'db6': 0, 'db7': 0}
+r9 repetition 3 service-fair N=6: per-database [809, 851, 815, 841, 825, 852] k ops/s, exits {'db0': 0, 'db1': 0, 'db2': 0, 'db3': 0, 'db4': 0, 'db5': 0}
+r9 repetition 3 native N=8: per-database [375, 412, 400, 399, 403, 411, 395, 415] k ops/s, exits {'db0': 0, 'db1': 0, 'db2': 0, 'db3': 0, 'db4': 0, 'db5': 0, 'db6': 0, 'db7': 0}
+r9 repetition 3 service-fair N=8: per-database [811, 843, 822, 849, 822, 857, 820, 846] k ops/s, exits {'db0': 0, 'db1': 0, 'db2': 0, 'db3': 0, 'db4': 0, 'db5': 0, 'db6': 0, 'db7': 0}
+engines exit 0

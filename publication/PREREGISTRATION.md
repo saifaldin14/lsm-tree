@@ -1072,6 +1072,37 @@ trials completed, all in repetition 1:
   compaction), against the 867k threshold, with every key verified, no CPU fallback and no
   out-of-memory re-queue. The server's resident memory stayed at about 30 GB. The same check
   ran RocksDB at N = 4: 461k per database.
+- **Launched** at 13:41:08 EST (`~/rdma-private/m5.sh`); both phases exited 0 (data in
+  `data/multiplex/m5`).
+
+**Outcomes, attempt 3 (2026-11-14; `multiplex/analyze.py`, `m5_hypotheses`; 27 trials, every
+database exited normally and verified all keys, 0 CPU fallbacks, 0 out-of-memory re-queues or
+failures):**
+
+| K | N | Writes/s per database, window | With leftover compaction | Share of N = 1 | Leftover (s) | GPU busy | Engines busy |
+|---|---|---|---|---|---|---|---|
+| RocksDB | 1 | 475k | 465k | 1.00 | 6.3 | | |
+| RocksDB | 8 | 402k | 394k | 0.85 | 8.5 | | |
+| 4 | 1 | 918k | 914k | 1.00 | 0.9 | 19% | 8% |
+| 4 | 4 | 872k | 865k | 0.95 | 1.7 | 72% | 44% |
+| 4 | 6 | 830k | 816k | 0.89 | 3.5 | 96% | 80% |
+| 4 | 8 | 837k | 783k | 0.86 | 10.9 | 98% | 86% |
+| 8 | 6 | 828k | 814k | 0.89 | 3.9 | 93% | 61% |
+| 8 | 8 | 834k | 784k | 0.86 | 10.0 | 96% | 70% |
+
+- **Y1 supported:** 19% GPU utilisation at N = 1 (threshold 40%).
+- **Y2 supported:** at N = 8, K = 4, 783k against RocksDB's 394k writes/s per database, 1.99×
+  (threshold 1.8×), with no CPU fallback. M2's result (786–788k, 2.01×) holds with the new
+  transport.
+- **Y3:** withdrawn before the run (see above).
+- **Y4 not supported:** at N = 8, K = 8 gives 1.00× K = 4. With 6 or more databases the GPU
+  itself is 93–98% busy, so extra engines have nothing to use.
+- **Capacity:** by the registered rule, N = 8 for both K, the largest N tested; capacity on this
+  testbed is therefore at least 8. The GPU is saturated from about N = 6, and from N = 6 to 8
+  the service adds total throughput (4.98M to 6.70M writes/s in the window) mainly by deferring
+  compaction: leftover compaction grows from 3.5 to 10.9 s.
+- **Cost (not a hypothesis):** at N = 8, $0.258 against RocksDB's $0.246 per billion writes
+  (5% more) at the RTX PRO 6000 price ($3.01/h); break-even at $2.73/h.
 
 ## Changes after data collection
 
