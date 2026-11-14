@@ -121,7 +121,44 @@ def main() -> int:
         shared_table("Earlier shared-GPU campaign (untuned RocksDB, no MPS)", shared)
     for extra in sys.argv[1:]:
         shared_table(f"Shared GPU, {extra} (RocksDB at N=1 where not run shared)", shared_gpu(Path(extra)))
+    compaction_throughput_cost()
     return 0
+
+
+def compaction_throughput_cost() -> None:
+    """Hourly cost of 1 GiB/s of compaction input (128 B values, LZ4) on RocksDB's CPU cores, on a dedicated
+    GPU and on a GPU shared through the compaction service. A derived comparison: RocksDB's cost assumes
+    its single-job rate per core scales linearly with cores; the service is charged all 4 of its cores."""
+    from make_figures_v3 import gib_per_second, load_isolated, median
+    sys.path.insert(0, str(HERE / "multiplex"))
+    from analyze import m0, m2, row  # noqa: E402
+
+    single, eight = load_isolated("x1-v128-lz4"), load_isolated("x2-v128-lz4")
+    if not single or not eight:
+        return
+    per_core = median(gib_per_second(single[NATIVE]))
+    gpu_rate = median(gib_per_second(eight[FULL]))
+    gpu_cores = median([c / w for c, w in zip(eight[FULL]["cpu"], eight[FULL]["wall"])])
+    second_gpu = PRICES["gpu_hour_second_server"]
+    rows = [("RocksDB, CPU cores", "measured per core, scaled linearly", per_core, CORE / per_core),
+            (f"GPU dedicated to one database ({PRICES['gpu_name']} price)",
+             f"8 concurrent jobs, {gpu_cores:.1f} host cores", gpu_rate, (GPU + gpu_cores * CORE) / gpu_rate)]
+    capacity = m0()
+    if 4 in capacity:
+        rate = capacity[4]["gib_s"]
+        rows.append((f"GPU shared through the service at capacity ({PRICES['gpu_name']} price)",
+                     "M0 replay, 4 engines, 4 service cores", rate, (GPU + 4 * CORE) / rate))
+    remote = m2()
+    if ("service-fair", 8) in remote:
+        rate = row(remote[("service-fair", 8)])["input_gib_s"]
+        rows.append((f"Remote service, 8 databases ({PRICES['gpu_name_second_server']} price)",
+                     "M2, 4 service cores", rate, (second_gpu + 4 * CORE) / rate))
+    cpu = rows[0][3]
+    print("\n## Cost of compaction throughput (128 B values, LZ4; derived)\n")
+    print("| Where compaction runs | Basis | GiB/s | $ per hour per GiB/s | Against CPU cores |")
+    print("|---|---|---:|---:|---:|")
+    for name, basis, rate, dollars in rows:
+        print(f"| {name} | {basis} | {rate:.3f} | {dollars:.3f} | {dollars / cpu:.2f} |")
 
 
 if __name__ == "__main__":

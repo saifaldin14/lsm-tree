@@ -637,8 +637,8 @@ def figure_prior_database(by_codec):
 def prior_tuned_batched(by_codec):
     """Batched-write bars for the pipeline and ours with tuned settings, {codec: {design: (point, lo, hi)}}.
 
-    LZ4 is the measured tuned rerun (data/prior-tuned/lz4; pipeline = its better arm). Codecs
-    without a tuned run yet take the default-settings result scaled by each design's LZ4 tuning gain."""
+    Only LZ4 has a measured tuned rerun (data/prior-tuned/lz4; pipeline = its better arm); other codecs
+    keep their measured default-settings results."""
     from stats import bootstrap_ci
     path = HERE / "data" / "prior-tuned" / "lz4" / "results.jsonl"
     if not path.exists():
@@ -649,14 +649,7 @@ def prior_tuned_batched(by_codec):
         if record.get("exit_code") == 0 and "keys" in (record["result"].get("verification") or {}):
             runs.setdefault(record["trial"]["design"], []).append(record["result"]["throughput"]["ops_per_second"])
     pipeline = max(("pipeline_native_flags", "pipeline_full_flags"), key=lambda d: statistics.median(runs.get(d, [0])))
-    tuned = {PIPELINE: bootstrap_ci(runs[pipeline]), FULL: bootstrap_ci(runs["full"])}
-    default = {c: by_design([e for e in by_codec[c] if e["config"].get("writes") == "batched"], "ops_per_second")
-               for c in by_codec if by_codec.get(c)}
-    out = {"lz4": tuned}
-    for codec in default:
-        if codec == "zstd" and all(d in default[codec] for d in tuned):
-            out[codec] = {d: tuple(v * tuned[d][0] / default["lz4"][d][0] for v in default[codec][d]) for d in tuned}
-    return out
+    return {"lz4": {PIPELINE: bootstrap_ci(runs[pipeline]), FULL: bootstrap_ci(runs["full"])}}
 
 
 def figure_prior_gpu_designs(by_codec):

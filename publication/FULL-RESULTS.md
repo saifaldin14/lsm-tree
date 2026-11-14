@@ -62,8 +62,12 @@ data:
 **The whole database handles 1.5 to 1.8× more writes and uses 1.8 to 2.2× less CPU per
 write.**
 
-*Setup:* 50 million keys with 128-byte values, writes in batches of 100. Two minutes of
-warm-up, then five minutes measured. Median of 5 runs.
+*Setup:* 50 million keys with 128-byte values (half random bytes, half a repeating pattern,
+about 2:1 compressible; Meta reports 4.5:1 for ZippyDB's production data), uniform keys,
+writes in batches of 100, write-ahead log off, data in memory (`/dev/shm`). Two minutes of
+warm-up, then five minutes measured. Median of 5 runs. With the write-ahead log on and one
+write at a time, the gain over RocksDB is 1.34× (section 9); the metadata and time-series
+workloads of section 8 also run with the log on.
 
 ![Whole database, RocksDB against ours](figures/fig19_v3_database.png)
 
@@ -238,6 +242,25 @@ L40S price.
   102% (4 cores, 8 databases) of its single-database throughput for ours to match RocksDB's
   cost at the L40S price (`cost_model.py`). The measured sharing results are in section 11:
   at these prices, sharing comes close to RocksDB's cost but does not go below it.
+
+**What a GiB of compaction costs** (derived, `cost_model.py`; 128-byte values, LZ4). RocksDB's
+cost assumes its measured single-job rate per core (0.094 GiB/s) scales linearly with cores,
+which favours RocksDB. The service is charged all 4 of its cores.
+
+| Where compaction runs | Basis | GiB/s | $ per hour per GiB/s | Against CPU cores |
+|---|---|---:|---:|---:|
+| RocksDB, CPU cores | measured per core, scaled linearly | 0.094 | 0.945 | 1.00 |
+| GPU dedicated to one database (L40S price) | 8 concurrent jobs, 2.0 host cores | 1.417 | 1.314 | 1.39 |
+| GPU shared through the service at capacity (L40S price) | M0 replay, 4 engines, 4 service cores | 2.418 | 0.843 | 0.89 |
+| Remote service, 8 databases (RTX PRO 6000 Blackwell price) | M2, 4 service cores | 4.304 | 0.781 | 0.83 |
+
+**A dedicated GPU costs more per GiB of compaction than the CPU cores it replaces; only a GPU
+shared near its capacity costs less.** The whole-database cost per write stays near
+RocksDB's even when shared (4% more at 8 remote databases, section 11). Each database still
+pays for the 4 cores that accept its writes, so at 2.1× the writes its share of the GPU and
+service must cost less than 1.1 times those cores ($0.39/h) to break even; at the RTX PRO 6000
+price it is $0.42/h. Higher write amplification (section 8) also adds bytes for the GPU to
+compact.
 
 **Untuned.** The comparison below was run earlier with the same hand-chosen settings for
 both designs.
@@ -435,7 +458,7 @@ Raw data, iostat samples and the drive measurements are in
 ## 9. Compared with earlier GPU and FPGA designs
 
 **In production RocksDB with compression on, ours uses 2.0 to 6.5× less compaction CPU than
-earlier GPU and FPGA designs and reaches up to 1.99× their writes, because it also moves
+earlier GPU and FPGA designs and reaches up to 1.93× their writes, because it also moves
 compression to the GPU.**
 
 *Setup:* earlier GPU and FPGA compaction systems run on other databases and hardware, so
@@ -443,8 +466,13 @@ their published numbers cannot be compared with ours directly. We rebuilt each d
 inside RocksDB 11.8, on this machine, with RocksDB's normal LZ4 or ZSTD compression:
 
 - **Their GPU steps** use our GPU code.
-- **Their CPU steps** use RocksDB's own code, including compression, which none of them
-  moves to the GPU.
+- **Their CPU steps** use RocksDB's own code, including block compression, which none of
+  them offloads: LUDA leaves it as future work and evaluates with compression off, MSST'24
+  builds key-prefix-encoded blocks but does not describe compressing them, and the FPGA
+  paper does not discuss compression. LUDA computes
+  block checksums on the GPU, while the rebuild computes them on the CPU; with compression
+  off the rebuild and ours cost the same CPU (1.81 and 1.80 CPU-s per GiB), so checksums
+  account for no measurable difference.
 - **Benefit of the doubt:** where the choice matters, the rebuild favours the earlier
   design (for example, it decompresses on 4 parallel threads).
 - **Same checks:** every design passes the same exact check against RocksDB.
@@ -470,15 +498,11 @@ with ours, best shown; median of 3 runs, every run verified):
 | Writes | Compression | Best earlier design | Ours | Ours vs best earlier |
 |---|---|---|---|---|
 | Batches of 100 | LZ4 | 592k writes/s | 756k | **1.28×**, 1.56× less CPU per write |
-| Batches of 100 | ZSTD | 293k | 583k | **1.99×** |
+| Batches of 100 | ZSTD | 246k | 475k | **1.93×** |
 | One at a time | LZ4 | 199k | 237k | **1.19×** |
 | One at a time | ZSTD | 157k | 229k | **1.46×** |
 
-The batched LZ4 results are the tuned rerun. The batched ZSTD results, in the table and
-the figure, are estimates: each design's default-settings ZSTD run scaled by its measured
-LZ4 gain from tuning (1.19× for the pipeline design, 1.23× for ours); the tuned ZSTD run
-will replace them. One-at-a-time writes, the sort/merge design and the runs without
-compression use default settings for every design.
+The batched LZ4 results are the tuned rerun. Every other row uses the same default settings for every design; a tuned ZSTD rerun has not been run. One-at-a-time writes, the sort/merge design and the runs without compression use default settings for every design.
 
 Compression is most of what the earlier designs leave on the CPU, so the gap is widest
 with ZSTD. Our advantage depends on compression being on (see
@@ -600,6 +624,22 @@ Blackwell, 100 Gb/s RDMA):
 | 2 | | 957k | | 1.01 | 1.91M | → 0.591 |
 | 4 | | 894k | | 0.94 | 3.57M | → 0.372 |
 | 8 | 401k | 842k | 2.10× | 0.89 | 6.74M | 0.247 → 0.256 |
+
+The writes/s above count only the writing window. Counted to the end of the compaction left
+when writing stops, and with the service's load:
+
+| Databases | RocksDB, writes/s each | Service, writes/s each | Gain | Share of 1 database | Compaction left (s), RocksDB / service | Service input (GiB/s) | Engines busy |
+|---|---|---|---|---|---|---|---|
+| 1 | 460k | 933k | 2.03× | 1.00 | 5.1 / 1.4 | 0.80 | 9% |
+| 2 | | 943k | | 1.01 | / 1.6 | 1.63 | 20% |
+| 4 | | 876k | | 0.94 | / 2.2 | 3.02 | 46% |
+| 8 | 391k | 786k | 2.01× | 0.84 | 7.3 / 11.3 | 4.30 | 86% |
+
+At 8 databases the service is close to its capacity: compaction is deferred (write
+amplification during the window falls from 6.3 to 4.9) and finishes 11 s after writing
+stops. "Engines busy" is the service's summed engine device time per second, divided by its 4
+engines; GPU utilisation was not recorded in these runs (M5 in
+[PREREGISTRATION.md](PREREGISTRATION.md) adds it).
 
 Fair scheduling; FIFO was within 0.5%. The slowest database reached 0.95 of the fastest at
 8 databases, and the 99.9th-percentile write latency was 7.3 ms (RocksDB 11.5 ms). The

@@ -122,7 +122,11 @@ def row(runs: list[dict]) -> dict:
             "aggregate": median([r["aggregate"] for r in runs]), "fallbacks": [r["fallbacks"] for r in runs],
             "verified": all(r["verified"] for r in runs), "oom": [r["oom_retries"] for r in runs],
             "gpu": median([r["gpu"] for r in runs]), "p999_ms": median([max(r["p999_ms"]) for r in runs]),
-            "slowest_db": min(min(r["ops"]) for r in runs)}
+            "slowest_db": min(min(r["ops"]) for r in runs),
+            "with_backlog": median([r.get("with_backlog") for r in runs]),
+            "drain_s": median([r.get("drain_s") for r in runs]),
+            "engine_busy": median([r.get("engine_busy") for r in runs]),
+            "input_gib_s": median([r.get("input_gib_s") for r in runs])}
 
 
 def print_m1(runs) -> dict:
@@ -230,29 +234,47 @@ def figure_local_most(table) -> None:
 # ---------------------------------------------------------------------------------------------
 # M2: databases on pyke sharing malphite's GPU over RDMA (rdma_campaign.py r9).
 
-def m2() -> dict[tuple, list[dict]]:
+def m2(path: Path = DATA / "m2" / "r9-sharing.jsonl") -> dict[tuple, list[dict]]:
+    """Remote sharing runs, one summary per trial. "with_backlog" is writes/s counted to the end of
+    the compaction left after writing stops; "engine_busy" is the service's summed engine device time
+    per second of that span, divided by the engines; "gpu" is the mean sampled GPU utilisation inside
+    the measurement window when the trial recorded GPU telemetry."""
     runs = defaultdict(list)
-    for record in jsonl(DATA / "m2" / "r9-sharing.jsonl"):
+    for record in jsonl(path):
         results = list(record["results"].values())
         if len(results) != record["instances"] or any(code != 0 for code in record["exit_codes"].values()):
-            raise SystemExit(f"M2 repetition {record['repetition']} {record['design']} N={record['instances']} failed")
+            raise SystemExit(f"{path.name} repetition {record['repetition']} {record['design']} "
+                             f"N={record['instances']} failed")
         ops = [r["throughput"]["ops_per_second"] for r in results]
         server = record.get("server_statistics") or {}
+        span = max(r["ingest_and_compact"]["seconds"] for r in results)
+        engines = record.get("engines")
+        gpu = None
+        samples = (record.get("gpu_telemetry") or {}).get("samples")
+        if samples:
+            start = min(r["window"]["start_unix"] for r in results)
+            end = max(r["window"]["end_unix"] for r in results)
+            inside = [s[1] for s in samples if start <= s[0] <= end]
+            gpu = statistics.mean(inside) if inside else None
         runs[(record["design"], record["instances"])].append({
             "ops": ops, "mean": statistics.mean(ops), "slowest_share": min(ops) / max(ops), "aggregate": sum(ops),
+            "with_backlog": statistics.mean(r["ingest_and_compact"]["ops_per_second"] for r in results),
+            "drain_s": max(r["ingest_and_compact"]["drain_seconds"] for r in results),
             "fallbacks": sum(fallbacks(r) for r in results),
             "verified": all(r["verification"]["keys"] == r["config"]["records"] for r in results),
-            "oom_retries": server.get("merge_oom_retries"), "gpu": None,
+            "oom_retries": server.get("merge_oom_retries"), "gpu": gpu,
+            "engine_busy": (server["merge_device_ns"] / 1e9 / span / engines
+                            if engines and server.get("merge_device_ns") is not None else None),
+            "input_gib_s": server["merge_input_bytes"] / 2**30 / span if server.get("merge_input_bytes") else None,
             "p999_ms": [r["write_latency"]["p999_ns"] / 1e6 for r in results],
-            "server_cores_busy": (record["server_cpu_seconds"] / max(r["ingest_and_compact"]["seconds"] for r in results)
-                                  if record.get("server_cpu_seconds") else None)})
+            "server_cores_busy": (record["server_cpu_seconds"] / span if record.get("server_cpu_seconds") else None)})
     return runs
 
 
-def print_m2(runs) -> dict:
+def print_m2(runs, title: str = "M2: databases on pyke sharing malphite's GPU over RDMA (medians of 3 repetitions)") -> dict:
     if not runs:
         return {}
-    print("\n## M2: databases on pyke sharing malphite's GPU over RDMA (medians of 3 repetitions)\n")
+    print(f"\n## {title}\n")
     print("| Arm | N | Writes/s per database | Share of N = 1 | Slowest / fastest | All databases | CPU fallbacks | "
           "Worst p99.9 (ms) | Server cores busy (of 4) | $ per billion writes |")
     print("|---|---|---|---|---|---|---|---|---|---|")
@@ -260,13 +282,26 @@ def print_m2(runs) -> dict:
     for design in ("native", "service-fifo", "service-fair"):
         for n in sorted(n for d, n in runs if d == design):
             r = row(runs[(design, n)])
-            r["share"] = r["per_db"] / row(runs[(design, 1)])["per_db"] if (design, 1) in runs else float("nan")
+            base = row(runs[(design, 1)]) if (design, 1) in runs else None
+            r["share"] = r["per_db"] / base["per_db"] if base else float("nan")
+            r["share_backlog"] = r["with_backlog"] / base["with_backlog"] if base else float("nan")
             r["cost"] = cost_per_billion(r["per_db"], 4, n, design != "native", design != "native", GPU_HOUR_REMOTE)
             busy = median([t["server_cores_busy"] for t in runs[(design, n)]])
             table[(design, n)] = r
             print(f"| {ARMS[design][0]} | {n} | {r['per_db'] / 1e3:,.0f}k | {r['share']:.2f} | {r['slowest_share']:.2f} | "
                   f"{r['aggregate'] / 1e6:.2f}M | {r['fallbacks']} | {r['p999_ms']:.1f} | "
                   f"{'' if busy != busy else f'{busy:.1f}'} | {r['cost']:.3f} |")
+    fmt = lambda value, spec: "" if value != value else format(value, spec)
+    print("\nCounting the compaction left when writing stops (writes/s to the end of that compaction), and the "
+          "service's load (engine busy = summed engine device time per second, divided by the engines; GPU = "
+          "sampled utilisation inside the window, where recorded):\n")
+    print("| Arm | N | Writes/s per database, with backlog | Share of N = 1 | Backlog (s) | Service input (GiB/s) | "
+          "Engine busy | GPU busy |")
+    print("|---|---|---|---|---|---|---|---|")
+    for (design, n), r in sorted(table.items(), key=lambda item: (list(ARMS).index(item[0][0]), item[0][1])):
+        print(f"| {ARMS[design][0]} | {n} | {r['with_backlog'] / 1e3:,.0f}k | {r['share_backlog']:.2f} | "
+              f"{r['drain_s']:.1f} | {fmt(r['input_gib_s'], '.2f')} | {fmt(r['engine_busy'], '.0%')} | "
+              f"{fmt(r['gpu'], '.0f')} |")
     most = max(n for d, n in table if d == "native")
     for n in sorted(n for d, n in table if d == "service-fair"):
         if n == 1:
@@ -572,6 +607,11 @@ def main() -> int:
     remote_runs = m2()
     remote = print_m2(remote_runs)
     figure_remote(remote)
+    for name, engines in (("r9-capacity.jsonl", 4), ("r9-capacity-k8.jsonl", 8)):
+        capacity_path = DATA / "m5" / name
+        if capacity_path.exists():
+            print_m2(m2(capacity_path),
+                     f"M5: remote capacity curve, {engines} engines, with GPU telemetry (medians of 3 repetitions)")
     isolation = print_m3(m3())
     figure_isolation(isolation)
     figure_burst(m4())

@@ -9,16 +9,20 @@ against unmodified RocksDB.
 
 - One compaction is 8–12× faster and uses 9–16× less CPU with small compressed values. One
   GPU does the compaction work of 15–18 CPU cores.
-- The whole database handles 1.5–1.8× more writes and uses 1.8–2.2× less CPU per write. The
-  gain is smaller than for compaction alone because the CPU work of accepting writes is not
-  offloaded.
-- Earlier GPU and FPGA designs, rebuilt in the same RocksDB, leave compression on the CPU.
-  With compression on, this design uses 2.0–6.5× less compaction CPU than the best of them.
+- The whole database handles 1.5–1.8× more writes and uses 1.8–2.2× less CPU per write, with
+  data in memory, the write-ahead log off and writes in batches of 100. The gain is smaller
+  than for compaction alone because the CPU work of accepting writes is not offloaded.
+- Earlier GPU and FPGA designs do not offload block compression (LUDA leaves it as future
+  work). Rebuilt in the same RocksDB, with compression on, this design uses 2.0–6.5× less
+  compaction CPU than the best of them; with compression off, the two are equal.
 - One GPU can serve several databases. Eight databases on one machine, sharing a GPU on
-  another machine over RDMA, each handle 2.1× more writes than RocksDB on the same cores, at
-  about the same cost per write (4% more) including the GPU.
-- Cost: the GPU version is the cheaper way to go beyond RocksDB's highest write rate. For
-  any rate RocksDB can reach, RocksDB is cheaper.
+  another machine over RDMA, each handle 2.0× more writes than RocksDB on the same cores,
+  counting the compaction left when writing stops, at about the same cost per write (4% more)
+  including the GPU. At 8 databases the service is close to its capacity.
+- Cost: per GiB of compaction, a GPU dedicated to one database costs 1.39× as much as CPU
+  cores at AWS prices, and a GPU shared through the service 0.83–0.89× as much. The GPU
+  version is the cheaper way to go beyond RocksDB's highest write rate; for any rate RocksDB
+  can reach, RocksDB is cheaper.
 - Gains are small for read-heavy workloads and for data stored without compression. When a
   drive is the limit, throughput is about equal and the gain is lower CPU and latency.
 
@@ -31,12 +35,12 @@ unless stated otherwise. The GPU is in addition to those cores.
 |---|---|
 | One compaction | 8–12× faster, 9–16× less CPU (small values, compressed); 3–4× with 1 KB values or no compression |
 | GPU capacity | One GPU does the compaction work of 15–18 CPU cores |
-| Whole database | 1.5–1.8× more writes, 1.8–2.2× less CPU per write; no write stalls |
+| Whole database (in memory, write-ahead log off, batched writes) | 1.5–1.8× more writes, 1.8–2.2× less CPU per write; no write stalls. Write-ahead log on, one write at a time: 1.34× |
 | Postponed compaction | After 5 minutes of writing, RocksDB needs 11–69 s to finish postponed compaction, GPU offload 1.3–2.6 s; including this time, 1.55–1.86× more writes |
 | Write latency, 99.9th percentile | 3.8× lower at 70% of RocksDB's maximum load, 9.6× lower at 90% (1.75× at 50%) |
 | NVMe drive | 8 cores: the same writes/s (1.02×, the drive is the limit), 1.70× less CPU per write; 99th-percentile write latency 29× lower at 630k writes/s. 4 cores: 1.43× more writes |
 | Remote GPU over RDMA | Each compaction 4.0–6.5× faster; whole database 1.75× more writes, 2.04× less CPU per write |
-| Several databases on one GPU | 8 databases sharing a remote GPU: 2.1× more writes each, at 4% higher cost per write; 4 databases sharing a local GPU: 1.36–1.42× more writes each |
+| Several databases on one GPU | 8 databases sharing a remote GPU: 2.0× more writes each counting leftover compaction (2.1× during writing), at 4% higher cost per write; 4 databases sharing a local GPU: 1.36–1.42× more writes each |
 | Earlier GPU and FPGA designs | 2.0–6.5× less compaction CPU than the best; whole-database gain over RocksDB 1.75×, against 1.14–1.41× for earlier designs |
 | Cost (AWS prices, GPU priced as an L40S) | 2.26M writes/s on 16 cores and a GPU at 23% lower cost per write than RocksDB's highest, 1.60M on 32 cores; at the same write rate RocksDB is cheaper |
 
@@ -55,8 +59,8 @@ runs, LZ4, median of 5:
 | Work | What it moves off the database's CPU | How it was compared |
 |---|---|---|
 | gLSM (ACM TOS'24), gParaKV (SC'25) | Sorting and merging, to a GPU; values kept outside the sorted files | Rebuilt in RocksDB ("GPU sort/merge"); gParaKV's own code also run |
-| LUDA (arXiv'20), MSST'24 GPU compaction | Most of the compaction, to a GPU; compression stays on the CPU | Rebuilt in RocksDB ("GPU pipeline"); LUDA's own code also run |
-| Alibaba's FPGA compaction (FAST'20) | Most of the compaction, to an FPGA; compression stays on the CPU | Same design as the GPU pipeline rebuild |
+| LUDA (arXiv'20), MSST'24 GPU compaction | Most of the compaction, to a GPU, including block checksums in LUDA; block compression is not offloaded (LUDA: future work) | Rebuilt in RocksDB ("GPU pipeline", checksums on the CPU); LUDA's own code also run |
+| Alibaba's FPGA compaction (FAST'20) | Most of the compaction, to an FPGA; the paper does not discuss compression | Same design as the GPU pipeline rebuild |
 | GPComp (TPDS'25), GCLComp (ICPADS'25) | Data movement between the SSD and the GPU; whether they compress on the GPU is not yet established | Not run |
 | re-eval-gpcomp (GitHub, 2026, concurrent) | GPComp-style merge, packing and Bloom filters, compared with multi-threaded RocksDB | Not run |
 | Nova-LSM (SIGMOD'21), CaaS-LSM (SIGMOD'24) | Compaction, to other machines' CPUs | Represented by our remote CPU compaction server |
@@ -83,7 +87,7 @@ paired with its RocksDB run.
 | GPU pipeline, CPU compression (as LUDA, MSST'24, Alibaba's FPGA design) | 1.41× / 1.17× / 1.34× |
 | This work | 1.75× / 2.27× / 1.40× |
 
-- The earlier designs compress on the CPU. With compression on, this design uses 2.0–6.5×
+- The rebuilt earlier designs compress on the CPU. With compression on, this design uses 2.0–6.5×
   less compaction CPU than the best of them.
 - With every design tuned (LZ4, 4 cores): RocksDB 498k writes/s, best earlier design 592k
   (1.19×), this work 756k (1.52×).
@@ -144,8 +148,9 @@ With eight compactions running at once on 8 cores, the GPU processes 1.42 GiB/s 
 
 ### 2. Whole database
 
-50 million keys, 128-byte values, batches of 100 writes, 5 minutes measured, median of 5
-runs.
+50 million keys, 128-byte values (half random bytes, half a repeating pattern; about 2:1
+compressible), uniform keys, batches of 100 writes, write-ahead log off, data in memory
+(`/dev/shm`), 5 minutes measured, median of 5 runs.
 
 ![Whole database, RocksDB against GPU offload](publication/figures/fig19_v3_database.png)
 
@@ -268,6 +273,10 @@ their compactions over RDMA to one service on the GPU server.
 - With 8 databases, each handles 842k writes/s against 401k for RocksDB on the same cores
   (2.10×): 6.7M writes/s in total against 3.2M. Each database keeps 89% of the throughput it
   has alone (94% with 4 databases).
+- At 8 databases the service is close to its capacity: its 4 engines were 86–87% busy, and
+  it left 11 s of compaction when writing stopped (2 s with 4 databases). Counting that
+  compaction, each database handles 786–788k writes/s against 391k for RocksDB (2.0×) and
+  keeps 84–85% of its throughput alone.
 - Cost per billion writes, with the GPU and the service's cores divided among the 8
   databases: $0.256 against $0.247 for RocksDB, 4% more, with the GPU priced as the same
   card on AWS (RTX PRO 6000 Blackwell, g7e, $3.01 an hour). The two cost the same at a GPU
