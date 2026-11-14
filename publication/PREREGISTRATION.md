@@ -987,6 +987,34 @@ Three trials completed before the run was stopped:
 - **Action:** no M5 outcome is evaluated from attempt 1. How M5 continues is recorded below
   before any further run.
 
+**Continuation, attempt 2 (registered 2026-11-14, before any attempt-2 trial):**
+- **Code change (transport only):** the RDMA buffer pool keeps only buffers of at most
+  `LSM_RDMA_KEEP_MB` (default 64 MiB) for reuse; larger request and reply buffers are released
+  after each call, on the server and the client. The server bounds its large request buffers
+  across all connections with `LSM_RDMA_SERVER_BUDGET_MB`: a connection waits for room before
+  accepting a large request, which holds its client back. M5 uses 32768 (malphite has 95 GB;
+  the 4 engines pin about 12 GB when the server starts). Small requests and replies are
+  unchanged.
+- **Builds:** `build/zyra-rdma` and `build/zyra-cuda` are rebuilt in place with this change;
+  M2's binaries are kept in `build/m2-binaries`.
+- **Database counts:** K = 4 at N in {1, 4, 8, 10}, RocksDB at {1, 8, 10}; K = 8 at {8, 10},
+  RocksDB at {8, 10}. N = 12 is dropped. The space rule is now N times M2's peak database size
+  (5.5 GB) plus 25%, plus the source copy, within pyke's 94 GB `/dev/shm`. N = 12 needs 87 GB,
+  too little room for the growth seen in attempt 1; N = 10 needs 74 GB.
+- **Hypotheses:** Y3 and Y4 are evaluated at N = 10 instead of 12, with the same thresholds.
+  Y1, Y2, the capacity rule and the decision rules are unchanged. Y2 at N = 8 now also tests
+  whether M2's result holds with the fixed transport.
+- **Run:** as registered above, with `--counts 1,4,8,10 --native-counts 1,8,10 --seed-base 2000`
+  (K = 4) and `--counts 8,10 --native-counts 8,10 --seed-base 2100` (K = 8), both with
+  `--server-env LSM_RDMA_SERVER_BUDGET_MB=32768`. Results go to fresh files in
+  `data/multiplex/m5`.
+- **Before the run:** a smoke test of the rebuilt binaries (1 M keys, N = 2, budget set, in a
+  separate output directory) must verify every key with no CPU fallback.
+- **Smoke test result (13:10 EST):** both databases verified all 1 M keys with no CPU fallback;
+  the server printed its statistics (123 compaction jobs). The engine fingerprint (RocksDB
+  commit and engine patch hash) is identical to M2's. The CUDA server was rebuilt on zyra,
+  where the build was configured; malphite's default gcc 13 is newer than CUDA 12.3 accepts.
+
 ## Changes after data collection
 
 - **Cost analysis repriced (2026-11-14; analysis change only, no new runs).** Every cost

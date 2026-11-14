@@ -1,7 +1,9 @@
 // RDMA transport: RC queue pairs set up with librdmacm.
 //
-// Protocol for one call (request and reply buffers on both sides are registered once
-// and reused). The request moves by push (default) or pull (LSM_RDMA_PUSH=0):
+// Protocol for one call (request and reply buffers of at most LSM_RDMA_KEEP_MB are registered
+// once and reused; larger ones are registered for the call and released after it, and the server
+// bounds its large request buffers with LSM_RDMA_SERVER_BUDGET_MB). The request moves by push
+// (default) or pull (LSM_RDMA_PUSH=0):
 //   pull: client -> server  SEND  kRequest {request addr/rkey/bytes, reply addr/rkey/capacity}
 //         server            RDMA READ the request from client memory
 //   push: client -> server  SEND  kRequestPush {request bytes, reply addr/rkey/capacity}
@@ -28,6 +30,7 @@
 #include <arpa/inet.h>
 #include <atomic>
 #include <cerrno>
+#include <condition_variable>
 #include <cstdlib>
 #include <cstring>
 #include <chrono>
@@ -144,7 +147,27 @@ namespace lsm_lab::detail
             ibv_mr *mr = nullptr;
         };
 
-        // Registered buffers, reused across calls (registration is expensive).
+        // Registered buffers, reused across calls (registration is expensive). Only buffers of at most
+        // LSM_RDMA_KEEP_MB (default 64 MiB) are kept for reuse, up to 4 times that per pool; larger ones
+        // are deregistered when returned, so a connection does not keep its largest job's buffers pinned.
+        std::size_t keep_bytes()
+        {
+            static const std::size_t value = [] {
+                const char *configured = std::getenv("LSM_RDMA_KEEP_MB");
+                const auto parsed = configured == nullptr ? -1L : std::atol(configured);
+                return static_cast<std::size_t>(parsed >= 0 ? parsed : 64) << 20;
+            }();
+            return value;
+        }
+
+        std::size_t region_capacity(std::size_t bytes)
+        {
+            std::size_t capacity = 1ULL << 20;
+            while (capacity < bytes)
+                capacity <<= 1;
+            return capacity;
+        }
+
         class Pool : public std::enable_shared_from_this<Pool>
         {
         public:
@@ -167,12 +190,11 @@ namespace lsm_lab::detail
                     {
                         auto region = *best;
                         free_.erase(best);
+                        cached_ -= region.capacity;
                         return region;
                     }
                 }
-                std::size_t capacity = 1ULL << 20;
-                while (capacity < bytes)
-                    capacity <<= 1;
+                const std::size_t capacity = region_capacity(bytes);
                 Region region;
                 region.capacity = capacity;
                 region.data = static_cast<char *>(std::aligned_alloc(kPage, capacity));
@@ -190,8 +212,16 @@ namespace lsm_lab::detail
 
             void put(Region region)
             {
-                const std::lock_guard guard(mutex_);
-                free_.push_back(region);
+                {
+                    const std::lock_guard guard(mutex_);
+                    if (region.capacity <= keep_bytes() && cached_ + region.capacity <= 4 * keep_bytes())
+                    {
+                        free_.push_back(region);
+                        cached_ += region.capacity;
+                        return;
+                    }
+                }
+                destroy(region);
             }
 
         private:
@@ -204,6 +234,7 @@ namespace lsm_lab::detail
             std::shared_ptr<Pd> pd_;
             std::mutex mutex_;
             std::vector<Region> free_;
+            std::size_t cached_ = 0;
         };
 
         // One connected RC queue pair with its completion queue and control messages.
@@ -649,6 +680,7 @@ namespace lsm_lab::detail
                                 pool->put(region);
                             });
                             *reply_bytes = received.payload.size();
+                            trim_request();
                             return rocksdb::Status::OK();
                         }
                         if (answer.type == kNeed)
@@ -674,6 +706,7 @@ namespace lsm_lab::detail
                             pool->put(region);
                         });
                         *reply_bytes = answer.reply_bytes;
+                        trim_request();
                         return rocksdb::Status::OK();
                     }
                 }
@@ -687,6 +720,16 @@ namespace lsm_lab::detail
             std::string describe() const override { return endpoint_.text() + " (" + device_ + ")"; }
 
         private:
+            // The server has the request once the reply arrives; do not keep a large buffer pinned.
+            void trim_request()
+            {
+                if (request_.capacity > keep_bytes())
+                {
+                    requests_->put(request_);
+                    request_ = Region{};
+                }
+            }
+
             Endpoint endpoint_;
             std::string device_;
             rdma_event_channel *events_ = nullptr;
@@ -720,10 +763,67 @@ namespace lsm_lab::detail
                 return region_.data;
             }
             const Region &region() const { return region_; }
+            // Releases a reply buffer too large to keep between calls.
+            void trim()
+            {
+                if (region_.capacity > keep_bytes())
+                {
+                    pool_->put(region_);
+                    region_ = Region{};
+                }
+            }
 
         private:
             std::shared_ptr<Pool> pool_;
             Region region_;
+        };
+
+        // Bounds the server's large request buffers across all connections (LSM_RDMA_SERVER_BUDGET_MB;
+        // unset or 0 means no bound). A connection waits for room before it accepts a large request,
+        // which holds its client back; one request is always admitted when none is held, so a request
+        // larger than the budget still runs. Reply buffers are not counted: they are bounded by the
+        // compactions running at once, so the budget cannot deadlock the engines.
+        class Budget
+        {
+        public:
+            Budget()
+            {
+                const char *configured = std::getenv("LSM_RDMA_SERVER_BUDGET_MB");
+                const auto parsed = configured == nullptr ? 0L : std::atol(configured);
+                limit_ = parsed > 0 ? static_cast<std::size_t>(parsed) << 20 : 0;
+            }
+
+            bool acquire(std::size_t bytes, const std::atomic<bool> &stopping)
+            {
+                if (limit_ == 0)
+                    return true;
+                std::unique_lock lock(mutex_);
+                while (!(used_ == 0 || used_ + bytes <= limit_))
+                {
+                    if (stopping)
+                        return false;
+                    changed_.wait_for(lock, std::chrono::milliseconds(200));
+                }
+                used_ += bytes;
+                return true;
+            }
+
+            void release(std::size_t bytes)
+            {
+                if (limit_ == 0 || bytes == 0)
+                    return;
+                {
+                    const std::lock_guard guard(mutex_);
+                    used_ -= bytes;
+                }
+                changed_.notify_all();
+            }
+
+        private:
+            std::size_t limit_ = 0;
+            std::size_t used_ = 0;
+            std::mutex mutex_;
+            std::condition_variable changed_;
         };
 
         class RdmaServer final : public RpcServer
@@ -834,6 +934,7 @@ namespace lsm_lab::detail
             {
                 auto &channel = *connection.channel;
                 Region request;
+                std::size_t held = 0; // budget held for a large request buffer
                 RegionSink sink(connection.pool);
                 try
                 {
@@ -849,6 +950,14 @@ namespace lsm_lab::detail
                         {
                             if (request.data != nullptr)
                                 connection.pool->put(request);
+                            request = Region{};
+                            const auto capacity = region_capacity(request_bytes);
+                            if (capacity > keep_bytes())
+                            {
+                                if (!budget_.acquire(capacity, stopping_))
+                                    break;
+                                held = capacity;
+                            }
                             request = connection.pool->get(request_bytes);
                         }
                         if (message.type == kRequestInline)
@@ -873,11 +982,20 @@ namespace lsm_lab::detail
                             while (ready.type != kRequestReady);
                         }
                         const auto bytes = handler_(request.data, request_bytes, sink);
+                        if (request.capacity > keep_bytes())
+                        {
+                            // The input is consumed; do not keep the largest job's buffer pinned.
+                            connection.pool->put(request);
+                            request = Region{};
+                            budget_.release(held);
+                            held = 0;
+                        }
                         if (bytes <= kInline)
                         {
                             Ctrl done;
                             done.type = kDoneInline;
                             channel.send(done, sink.region().data, bytes);
+                            sink.trim();
                             continue;
                         }
                         auto reply_addr = message.reply_addr;
@@ -900,6 +1018,7 @@ namespace lsm_lab::detail
                         done.type = kDone;
                         done.reply_bytes = bytes;
                         channel.send(done);
+                        sink.trim();
                     }
                 }
                 catch (const std::exception &)
@@ -908,9 +1027,11 @@ namespace lsm_lab::detail
                 }
                 if (request.data != nullptr)
                     connection.pool->put(request);
+                budget_.release(held);
             }
 
             RpcHandler handler_;
+            Budget budget_;
             rdma_event_channel *events_ = nullptr;
             rdma_cm_id *listener_ = nullptr;
             std::uint16_t port_ = 0;
