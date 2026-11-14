@@ -112,6 +112,28 @@ class Cluster:
             time.sleep(2)
         return None
 
+    def start_gpu_sampler(self, host: str, log: str) -> int:
+        """Samples the GPU's utilisation and memory about once a second, each row prefixed with the
+        host's Unix time so it can be aligned with the databases' measurement windows; returns its PID."""
+        loop = ("while true; do printf '%s, ' \"$(date +%s.%N)\"; "
+                "nvidia-smi --query-gpu=utilization.gpu,memory.used,memory.total --format=csv,noheader,nounits; "
+                "sleep 1; done")
+        wrapped = f"nohup setsid bash -c {shlex.quote(loop)} > {log} 2>&1 < /dev/null & echo $!"
+        return int(self.run(host, wrapped).strip().splitlines()[-1])
+
+    def gpu_samples(self, host: str, log: str) -> dict | None:
+        """The stopped sampler's rows as [unix time, utilisation %, memory used MiB], plus the GPU's
+        total memory (MiB)."""
+        rows, total = [], None
+        for line in self.run(host, f"cat {log}", check=False).splitlines():
+            fields = [field.strip() for field in line.split(",")]
+            try:
+                stamp, utilisation, used, total = float(fields[0]), int(fields[1]), int(fields[2]), int(fields[3])
+            except (ValueError, IndexError):
+                continue
+            rows.append([stamp, utilisation, used])
+        return {"samples": rows, "memory_total_mib": total} if rows else None
+
 
 def pin(machine: dict) -> str:
     return f"numactl --physcpubind={machine['cores']} --membind={machine['node']}"
@@ -423,10 +445,13 @@ R9_FLAGS = {
 
 
 def experiment_r9(cluster: Cluster, out: Path, repetitions: int, records: int, seconds: tuple[int, int],
-                  counts: list[int], engines: int, policies: list[str]) -> None:
+                  counts: list[int], engines: int, policies: list[str], seed_base: int = 900,
+                  gpu_telemetry: bool = False, results_name: str = "r9-sharing.jsonl",
+                  native_counts: list[int] | None = None) -> None:
     """Several databases on the client machine sharing one remote GPU compaction server over RDMA
-    (PREREGISTRATION.md, GPU multiplexing, M2). The client's "db_slots" lists [cores, node] for
-    each database in order; the server is restarted for every trial."""
+    (PREREGISTRATION.md, GPU multiplexing, M2; capacity curve, M5). The client's "db_slots" lists
+    [cores, node] for each database in order; the server is restarted for every trial. With
+    gpu_telemetry, nvidia-smi samples the GPU host once a second during every service trial."""
     c, g = cluster.config["client"], cluster.config["gpu"]
     gpu_build = g.get("build", cluster.build)
     scratch = cluster.config["scratch"]
@@ -434,13 +459,13 @@ def experiment_r9(cluster: Cluster, out: Path, repetitions: int, records: int, s
     if "done" not in cluster.run(c["host"], f"test -f {golden}.done && echo done || true"):
         cluster.run(c["host"], f"mkdir -p {scratch} && rm -rf {golden} && {cluster.build}/lsm_system_bench --phase preload "
                                f"--dir {golden} --records {records} --threads 8 > {golden}.json 2>&1 && touch {golden}.done")
-    results = out / "r9-sharing.jsonl"
+    results = out / results_name
     done = {(r["repetition"], r["design"], r["instances"]) for r in map(json.loads, results.open())} \
         if results.exists() else set()
     for repetition in range(1, repetitions + 1):
         order = [(f"service-{policy}", n) for n in counts for policy in policies]
-        order += [("native", n) for n in sorted({counts[0], counts[-1]})]
-        random.Random(900 + repetition).shuffle(order)
+        order += [("native", n) for n in (native_counts or sorted({counts[0], counts[-1]}))]
+        random.Random(seed_base + repetition).shuffle(order)
         for design, n in order:
             if (repetition, design, n) in done:
                 continue
@@ -448,7 +473,9 @@ def experiment_r9(cluster: Cluster, out: Path, repetitions: int, records: int, s
                       "engines": engines if design != "native" else None,
                       "load_before": {"client": cluster.load(c["host"]), "gpu": cluster.load(g["host"])}}
             server = None
+            sampler = None
             log = "/tmp/lsm-r9-server.log"
+            sampler_log = "/tmp/lsm-r9-gpu.csv"
             try:
                 env, mode, flags = "", "native_cpu", R9_FLAGS["native"]
                 if design != "native":
@@ -460,16 +487,22 @@ def experiment_r9(cluster: Cluster, out: Path, repetitions: int, records: int, s
                     mode, flags = "remote_merge", R9_FLAGS["service"]
                     record["server_cpu_before"] = cluster.cpu_seconds(g["host"], server[0])
                 options = " ".join(f"--{k} {str(v).lower() if isinstance(v, bool) else v}" for k, v in flags.items())
-                lines = [f"set -u; D={scratch}/r9; rm -rf $D; mkdir -p $D"]
+                copy = [f"set -u; D={scratch}/r9; rm -rf $D; mkdir -p $D"]
                 for index in range(n):
-                    cores, node = c["db_slots"][index]
-                    lines.append(f"cp -a {golden} $D/db{index}")
+                    copy.append(f"cp -a {golden} $D/db{index}")
+                lines = [f"set -u; D={scratch}/r9"]
                 for index in range(n):
                     cores, node = c["db_slots"][index]
                     lines.append(f"(LSM_TENANT=db{index} {env} numactl --physcpubind={cores} --preferred={node} "
                                  f"{cluster.build}/lsm_system_bench --phase run --mode {mode} --dir $D/db{index} "
                                  f"--records {records} --warmup-seconds {seconds[0]} --duration-seconds {seconds[1]} "
                                  f"{options} > $D/db{index}.json 2> $D/db{index}.err; echo $? > $D/db{index}.rc) &")
+                if gpu_telemetry and server:
+                    # Copy first, so the GPU samples cover only the databases' run.
+                    cluster.run(c["host"], "bash -c " + shlex.quote("\n".join(copy)))
+                    sampler = cluster.start_gpu_sampler(g["host"], sampler_log)
+                else:
+                    lines = copy + lines[1:]
                 lines.append("wait")
                 lines.append("for f in $D/db*.rc; do echo rc $(basename $f .rc) $(cat $f); done")
                 lines.append("for f in $D/db*.json; do printf 'json %s %s\\n' \"$(basename $f .json)\" \"$(tr -d '\\n' < $f)\"; done")
@@ -493,6 +526,9 @@ def experiment_r9(cluster: Cluster, out: Path, repetitions: int, records: int, s
                     elif kind == "err" and value.strip():
                         record["errors"][name] = value
             finally:
+                if sampler:
+                    cluster.stop(g["host"], sampler)
+                    record["gpu_telemetry"] = cluster.gpu_samples(g["host"], sampler_log)
                 if server:
                     cluster.stop(g["host"], server[0])
                     record["server_statistics"] = cluster.statistics(g["host"], log)
@@ -516,6 +552,10 @@ def main() -> int:
     parser.add_argument("--counts", default="1,2,4,8", help="r9: databases sharing the GPU")
     parser.add_argument("--engines", type=int, default=4, help="r9: engines of the compaction server")
     parser.add_argument("--policies", default="fifo,fair", help="r9: scheduler policies")
+    parser.add_argument("--seed-base", type=int, default=900, help="r9: run-order seed base (seed = base + repetition)")
+    parser.add_argument("--gpu-telemetry", action="store_true", help="r9: sample the GPU host with nvidia-smi")
+    parser.add_argument("--results-name", default="r9-sharing.jsonl", help="r9: results file name in OUT_DIR")
+    parser.add_argument("--native-counts", help="r9: database counts for RocksDB (default: smallest and largest)")
     arguments = parser.parse_args()
     cluster = Cluster(json.loads(arguments.hosts.read_text()))
     arguments.out.mkdir(parents=True, exist_ok=True)
@@ -528,7 +568,9 @@ def main() -> int:
     elif arguments.experiment == "r9":
         experiment_r9(cluster, arguments.out, arguments.repetitions or 3, arguments.records,
                       (arguments.warmup_seconds, arguments.duration_seconds),
-                      [int(n) for n in arguments.counts.split(",")], arguments.engines, arguments.policies.split(","))
+                      [int(n) for n in arguments.counts.split(",")], arguments.engines, arguments.policies.split(","),
+                      arguments.seed_base, arguments.gpu_telemetry, arguments.results_name,
+                      [int(n) for n in arguments.native_counts.split(",")] if arguments.native_counts else None)
     elif arguments.experiment == "r8":
         experiment_r8(cluster, arguments.out, arguments.repetitions or 3, arguments.records,
                       (arguments.warmup_seconds, arguments.duration_seconds),

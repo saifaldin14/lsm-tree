@@ -886,6 +886,67 @@ keys):**
   compaction rose from 1.43 to 2.13 GiB under fifo and from 1.32 to 1.90 GiB under fair,
   while the heavy tenant ran. Their p99.9 was 44 ms under both.
 
+### Remote capacity curve with GPU telemetry, M5 (registered 2026-11-14, before any M5 run)
+
+M2 counted only the writing window and recorded no GPU utilisation. Re-analysis of M2
+(`multiplex/analyze.py`, AUDIT item 36) shows that at N = 8 the service's 4 engines were
+86–87% busy and left 10.7–11.3 s of compaction when writing stopped (1.4–2.2 s at N ≤ 4).
+Counting that compaction, each database reached 786–788k writes/s against 391k for RocksDB
+(2.01×) and kept 84–85% of N = 1. The sharing argument needs the capacity of one service
+measured directly, and the claim that one database leaves the GPU mostly idle needs GPU
+utilisation in the remote setting.
+
+- **Run** (`rdma_campaign.py r9`, client pyke, service on malphite's RTX PRO 6000 Blackwell
+  over 100 Gb/s RDMA, 4 service cores; protocol, settings and builds as M2: tuned 4-core
+  settings (`R9_FLAGS`), 50 M keys per database on `/dev/shm`, 30 s warm-up plus 120 s,
+  every key verified; 3 repetitions in shuffled order; `--gpu-telemetry`, which samples GPU
+  utilisation and memory on malphite once a second, after the databases are copied):
+  - **Main:** service-fair with K = 4 at N in {1, 4, 8, 10, 12}; RocksDB at N in {1, 8, 12}:
+    `--counts 1,4,8,10,12 --policies fair --engines 4 --native-counts 1,8,12 --seed-base 1000
+    --results-name r9-capacity.jsonl --out data/multiplex/m5`.
+  - **Engines:** service-fair with K = 8 at N in {8, 12}, RocksDB at N in {8, 12} in the same
+    blocks: `--counts 8,12 --policies fair --engines 8 --native-counts 8,12 --seed-base 1100
+    --results-name r9-capacity-k8.jsonl --out data/multiplex/m5`. M0 chose K = 4 on the
+    48 GiB A6000; the RTX PRO 6000 has 96 GiB.
+  - FIFO is not run: it was within 0.5% of fair at every N in M2.
+  - **Before the runs:** the hosts file lists 12 four-core database slots on pyke, alternating
+    its NUMA nodes. If pyke's `/dev/shm` cannot hold N database copies with 25% headroom
+    (checked with `df` against the golden database's size), the largest N that fits is run and
+    each larger N is reported as not run, with the reason.
+- **Reported** (`multiplex/analyze.py`, every N and arm): per-database writes/s in the window
+  and counted to the end of the compaction left when writing stops; share of N = 1;
+  that leftover compaction (s); service input GiB/s; engine busy (summed engine device time
+  per second, divided by K); mean GPU utilisation inside the window and peak GPU memory; server
+  cores busy; CPU fallbacks and out-of-memory re-queues; worst p99.9 write latency; cost per
+  write at `prices.json` and the GPU price at which each N breaks even with RocksDB; and cost
+  per GiB/s of compaction (`cost_model.py`).
+- **Primary measure:** per-database writes/s counted to the end of the leftover compaction
+  ("backlog-inclusive").
+
+Hypotheses (medians over repetitions):
+
+- **Y1 (premise: one database leaves the GPU mostly idle):** at N = 1, mean GPU utilisation
+  inside the window is at most 40%.
+- **Y2 (replication of M2):** at N = 8 with K = 4, backlog-inclusive writes/s per database is
+  at least 1.8× RocksDB's at N = 8, with zero CPU fallbacks.
+- **Y3 (saturation):** with K = 4, backlog-inclusive writes/s per database at N = 12 is below
+  80% of N = 1.
+- **Y4 (engines):** at N = 12, K = 8 gives at least 10% more backlog-inclusive writes/s per
+  database than K = 4, with zero CPU fallbacks and zero out-of-memory failures.
+
+Decision rules:
+
+- **Capacity** of one service is reported as the largest N, for each K, at which
+  backlog-inclusive writes/s per database stays at or above 80% of N = 1, with zero CPU
+  fallbacks. The README and the paper state this N in place of "8 databases".
+- If Y2 fails, the "2.0× per database" sharing claim is replaced by the M5 value at N = 8,
+  whatever it is.
+- If Y1 fails, the paper does not claim that one database leaves the GPU mostly idle. It
+  states the measured utilisation, and justifies sharing only by the measured cost per GiB/s
+  of compaction.
+- The cost conclusion follows the measured break-even GPU price at the capacity N. No cost
+  hypothesis is registered, because the conclusion depends on the price used.
+
 ## Changes after data collection
 
 - **Cost analysis repriced (2026-11-14; analysis change only, no new runs).** Every cost
