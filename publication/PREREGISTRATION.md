@@ -947,6 +947,46 @@ Decision rules:
 - The cost conclusion follows the measured break-even GPU price at the capacity N. No cost
   hypothesis is registered, because the conclusion depends on the price used.
 
+Pre-run checks (2026-11-14, before the first M5 trial; the registration above was pushed at
+11:51 EST):
+
+- `/dev/shm` on pyke: 94 GB free. The 50 M-key database is 4.67 GB (M2's `levels_before`),
+  so 12 copies with 25% headroom need 70 GB: every N is run. M2's databases grew to at most
+  5.5 GB by the end of a run.
+- Builds unchanged since M2: `build/zyra-rdma/lsm_system_bench` (2026-11-10 21:58) and
+  `build/zyra-cuda/lsm_compaction_server` (2026-11-10 20:46).
+- Database slots: 12 four-core slots on physical cores, alternating NUMA nodes; the first 8
+  are M2's.
+- Smoke test of the GPU sampler (1 M keys, 5 s plus 10 s, one database, separate output
+  directory, not part of M5): 17 timestamped samples covering the database's window, every
+  key verified, no CPU fallback.
+- Launched at 11:55:57 EST with `~/rdma-private/m5.sh` (the two commands above, in order).
+- Analysis clarification, written while the first K = 4 trials ran and before any K = 8 data:
+  K = 8 is not run at N = 1, so its capacity rule uses K = 4's N = 1 as the base
+  (`multiplex/analyze.py`, `m5_hypotheses`).
+
+**Attempt 1 stopped (2026-11-14, 12:10 EST; data kept in `data/multiplex/m5-attempt1`).**
+Three trials completed before the run was stopped:
+- **service-fair, N = 8:** every database exited normally, but 17 compactions fell back to the
+  CPU ("server disconnected", then "connection rejected"). The server printed no statistics,
+  and its CPU time could not be read at the end. GPU utilisation inside the window was 98%,
+  with 27 GB of GPU memory in use.
+- **RocksDB, N = 1:** normal.
+- **service-fair, N = 12:** the server disappeared before the window. Its resident memory had
+  reached 25 GB within a minute of starting, and malphite reported 568 MB free. 342
+  compactions fell back to the CPU. As compaction fell behind, the databases outgrew pyke's
+  94 GB `/dev/shm`: 9 of the 12 exited with "No space left on device" and 1 was killed
+  (exit 137). The registered space check (12 copies of the 4.67 GB database plus 25%) did
+  not allow for that growth.
+- **Diagnosis:** the cause is host memory, not the GPU. The RDMA transport's buffer pool
+  (`src/remote/transport_rdma.cpp`, `Pool`) rounds each buffer up to a power of two, registers
+  (pins) it, and keeps it on a free list that is never trimmed. Each database opens 4
+  connections, so 12 databases hold up to 48 pinned request and reply buffers of up to 1 GiB
+  each, against malphite's 95 GB. The clients use the same pool on pyke. M2 at N = 8 stayed
+  under the limit in all 6 runs; attempt 1's first N = 8 trial did not.
+- **Action:** no M5 outcome is evaluated from attempt 1. How M5 continues is recorded below
+  before any further run.
+
 ## Changes after data collection
 
 - **Cost analysis repriced (2026-11-14; analysis change only, no new runs).** Every cost

@@ -262,7 +262,8 @@ def m2(path: Path = DATA / "m2" / "r9-sharing.jsonl") -> dict[tuple, list[dict]]
             "drain_s": max(r["ingest_and_compact"]["drain_seconds"] for r in results),
             "fallbacks": sum(fallbacks(r) for r in results),
             "verified": all(r["verification"]["keys"] == r["config"]["records"] for r in results),
-            "oom_retries": server.get("merge_oom_retries"), "gpu": gpu,
+            "oom_retries": server.get("merge_oom_retries"), "oom_failures": server.get("merge_oom_failures"),
+            "gpu": gpu,
             "engine_busy": (server["merge_device_ns"] / 1e9 / span / engines
                             if engines and server.get("merge_device_ns") is not None else None),
             "input_gib_s": server["merge_input_bytes"] / 2**30 / span if server.get("merge_input_bytes") else None,
@@ -588,6 +589,46 @@ def hypotheses(local: dict, remote: dict, isolation: dict, local_runs, remote_ru
           f"and N = 4 ${local[(8, 'native', 4)]['cost']:.3f}.")
 
 
+def m5_hypotheses() -> None:
+    """Y1 to Y4 and the capacity of one service, as registered (PREREGISTRATION.md, M5)."""
+    main_path, k8_path = DATA / "m5" / "r9-capacity.jsonl", DATA / "m5" / "r9-capacity-k8.jsonl"
+    if not main_path.exists():
+        return
+    k4 = {key: row(runs) | {"runs": runs} for key, runs in m2(main_path).items()}
+    k8 = {key: row(runs) | {"runs": runs} for key, runs in m2(k8_path).items()} if k8_path.exists() else {}
+    fair, native = "service-fair", "native"
+    zero = lambda r, field="fallbacks": all((t.get(field) or 0) == 0 for t in r["runs"])
+    print("\n## M5 hypotheses (medians over repetitions; backlog-inclusive writes/s)\n")
+    if (fair, 1) in k4:
+        gpu = k4[(fair, 1)]["gpu"]
+        print(f"- Y1: GPU utilisation at N = 1 inside the window {gpu:.1f}% (at most 40%: "
+              f"{'supported' if gpu <= 40 else 'not supported'}).")
+    if (fair, 8) in k4 and (native, 8) in k4:
+        ratio = k4[(fair, 8)]["with_backlog"] / k4[(native, 8)]["with_backlog"]
+        ok = ratio >= 1.8 and zero(k4[(fair, 8)])
+        print(f"- Y2: N = 8, K = 4: {k4[(fair, 8)]['with_backlog'] / 1e3:,.0f}k against RocksDB "
+              f"{k4[(native, 8)]['with_backlog'] / 1e3:,.0f}k = {ratio:.2f}x, CPU fallbacks "
+              f"{k4[(fair, 8)]['fallbacks']} (at least 1.8x with none: {'supported' if ok else 'not supported'}).")
+    if (fair, 12) in k4 and (fair, 1) in k4:
+        share = k4[(fair, 12)]["with_backlog"] / k4[(fair, 1)]["with_backlog"]
+        print(f"- Y3: N = 12, K = 4 keeps {share:.2f} of N = 1 (below 0.80: "
+              f"{'supported' if share < 0.80 else 'not supported'}).")
+    if (fair, 12) in k4 and (fair, 12) in k8:
+        gain = k8[(fair, 12)]["with_backlog"] / k4[(fair, 12)]["with_backlog"]
+        ok = gain >= 1.10 and zero(k8[(fair, 12)]) and zero(k8[(fair, 12)], "oom_failures")
+        print(f"- Y4: N = 12, K = 8 against K = 4: {gain:.2f}x, CPU fallbacks {k8[(fair, 12)]['fallbacks']}, "
+              f"out-of-memory failures {[t.get('oom_failures') for t in k8[(fair, 12)]['runs']]} "
+              f"(at least 1.10x with none: {'supported' if ok else 'not supported'}).")
+    if (fair, 1) in k4:
+        base = k4[(fair, 1)]["with_backlog"]
+        for engines, table in ((4, k4), (8, k8)):
+            counts = sorted(n for d, n in table if d == fair)
+            good = [n for n in counts if table[(fair, n)]["with_backlog"] >= 0.80 * base and zero(table[(fair, n)])]
+            if counts:
+                print(f"- Capacity, K = {engines} (against K = 4's N = 1): largest N meeting the rule among "
+                      f"{counts}: {max(good) if good else 'none'}.")
+
+
 def main() -> int:
     capacity = m0()
     if capacity:
@@ -612,6 +653,7 @@ def main() -> int:
         if capacity_path.exists():
             print_m2(m2(capacity_path),
                      f"M5: remote capacity curve, {engines} engines, with GPU telemetry (medians of 3 repetitions)")
+    m5_hypotheses()
     isolation = print_m3(m3())
     figure_isolation(isolation)
     figure_burst(m4())
