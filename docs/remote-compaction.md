@@ -80,6 +80,8 @@ over RDMA, against about 0.7 over TCP.
 | `LSM_RDMA_POLL` | `1` busy-polls completions instead of blocking. |
 | `LSM_REMOTE_TIMEOUT_MS` | Client timeout without progress (default 120000). |
 | `LSM_TENANT` | Name of this database in a shared server's scheduler and statistics (default: the database path). |
+| `LSM_RDMA_CACHE_MB` | Registered RDMA buffers a process keeps for reuse between calls, shared by its connections; the oldest beyond this are deregistered (default: keep all). |
+| `LSM_RDMA_SERVER_BUDGET_MB` | Server only: bound on request buffers in use across connections; a connection waits for room before accepting a request, holding its client back (default: no bound). |
 
 ### Sharing one GPU
 

@@ -1038,6 +1038,33 @@ trials completed, all in repetition 1:
   (`~/rdma-private/m5clean.sh`) now stops sampler loops by their command line, without
   matching itself.
 
+**Continuation, attempt 3 (registered 2026-11-14, before any attempt-3 build, check or trial):**
+- **Code change (transport only), replacing attempt 2's:** each process has one RDMA
+  protection domain and buffer pool per device, shared by all its connections. Request and
+  reply buffers go back to the pool after every call, so any connection can reuse them, and
+  idle connections hold none. `LSM_RDMA_CACHE_MB` caps the bytes the pool keeps registered
+  between calls, evicting the oldest first; a cached buffer more than 4 times the size needed
+  is not handed out. `LSM_RDMA_SERVER_BUDGET_MB` now counts every request buffer in use on the
+  server.
+- **Settings:** server `LSM_RDMA_SERVER_BUDGET_MB=32768 LSM_RDMA_CACHE_MB=16384`; each database
+  `LSM_RDMA_CACHE_MB=4096`.
+- **Throughput check before the run (pass rule fixed here):** one service-fair trial at N = 4
+  with K = 4 and the M5 protocol, in a separate output directory. It passes if writes/s per
+  database in the window is at least 97% of M2's N = 4 median (894k, so at least 867k), with
+  every key verified and no CPU fallback. If it fails, M5 does not run and the result is
+  recorded here.
+- **Database counts:** K = 4 at N in {1, 4, 6, 8}, RocksDB at {1, 8}; K = 8 at N in {6, 8},
+  RocksDB at {8}. Eight 50 M-key databases is the most that fits pyke's `/dev/shm` (attempt 2,
+  N = 10).
+- **Hypotheses:** Y1, Y2 and the decision rules are unchanged. Y4 is evaluated at N = 8
+  (K = 8 against K = 4). Y3 is withdrawn: saturation beyond N = 8 cannot be reached on this
+  testbed, and at N = 8 M2 already gives 0.84 of N = 1, so Y3 at N = 8 would not test a
+  prediction. The capacity rule is applied to N in {1, 4, 6, 8}.
+- **Run:** `--counts 1,4,6,8 --native-counts 1,8 --seed-base 3000` (K = 4) and
+  `--counts 6,8 --native-counts 8 --seed-base 3100` (K = 8), both with
+  `--server-env "LSM_RDMA_SERVER_BUDGET_MB=32768 LSM_RDMA_CACHE_MB=16384"` and
+  `--client-env LSM_RDMA_CACHE_MB=4096`; results go to fresh files in `data/multiplex/m5`.
+
 ## Changes after data collection
 
 - **Cost analysis repriced (2026-11-14; analysis change only, no new runs).** Every cost

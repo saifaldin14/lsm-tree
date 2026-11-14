@@ -447,7 +447,7 @@ R9_FLAGS = {
 def experiment_r9(cluster: Cluster, out: Path, repetitions: int, records: int, seconds: tuple[int, int],
                   counts: list[int], engines: int, policies: list[str], seed_base: int = 900,
                   gpu_telemetry: bool = False, results_name: str = "r9-sharing.jsonl",
-                  native_counts: list[int] | None = None, server_env: str = "") -> None:
+                  native_counts: list[int] | None = None, server_env: str = "", client_env: str = "") -> None:
     """Several databases on the client machine sharing one remote GPU compaction server over RDMA
     (PREREGISTRATION.md, GPU multiplexing, M2; capacity curve, M5). The client's "db_slots" lists
     [cores, node] for each database in order; the server is restarted for every trial. With
@@ -472,6 +472,7 @@ def experiment_r9(cluster: Cluster, out: Path, repetitions: int, records: int, s
             record = {"experiment": "r9", "repetition": repetition, "design": design, "instances": n,
                       "engines": engines if design != "native" else None,
                       "server_env": server_env if design != "native" else None,
+                      "client_env": client_env if design != "native" else None,
                       "load_before": {"client": cluster.load(c["host"]), "gpu": cluster.load(g["host"])}}
             server = None
             sampler = None
@@ -484,7 +485,7 @@ def experiment_r9(cluster: Cluster, out: Path, repetitions: int, records: int, s
                     server = cluster.start(g["host"], f"{GPU_SERVER_ENV} {server_env} LSM_SCHEDULER_LOG=1 {pin(g)} {gpu_build}/"
                                                       f"lsm_compaction_server --listen rdma://{g['rdma_address']}:0 "
                                                       f"--backend cuda_merge --engines {engines} --scheduler {policy}", log)
-                    env = f"LSM_RDMA_PUSH=1 LSM_REMOTE_ENDPOINT={server[1]} LSM_REMOTE_CONNECTIONS=4"
+                    env = f"LSM_RDMA_PUSH=1 LSM_REMOTE_ENDPOINT={server[1]} LSM_REMOTE_CONNECTIONS=4 {client_env}"
                     mode, flags = "remote_merge", R9_FLAGS["service"]
                     record["server_cpu_before"] = cluster.cpu_seconds(g["host"], server[0])
                 options = " ".join(f"--{k} {str(v).lower() if isinstance(v, bool) else v}" for k, v in flags.items())
@@ -558,6 +559,7 @@ def main() -> int:
     parser.add_argument("--results-name", default="r9-sharing.jsonl", help="r9: results file name in OUT_DIR")
     parser.add_argument("--native-counts", help="r9: database counts for RocksDB (default: smallest and largest)")
     parser.add_argument("--server-env", default="", help="r9: extra environment for the compaction server")
+    parser.add_argument("--client-env", default="", help="r9: extra environment for the databases using the server")
     arguments = parser.parse_args()
     cluster = Cluster(json.loads(arguments.hosts.read_text()))
     arguments.out.mkdir(parents=True, exist_ok=True)
@@ -573,7 +575,7 @@ def main() -> int:
                       [int(n) for n in arguments.counts.split(",")], arguments.engines, arguments.policies.split(","),
                       arguments.seed_base, arguments.gpu_telemetry, arguments.results_name,
                       [int(n) for n in arguments.native_counts.split(",")] if arguments.native_counts else None,
-                      arguments.server_env)
+                      arguments.server_env, arguments.client_env)
     elif arguments.experiment == "r8":
         experiment_r8(cluster, arguments.out, arguments.repetitions or 3, arguments.records,
                       (arguments.warmup_seconds, arguments.duration_seconds),
