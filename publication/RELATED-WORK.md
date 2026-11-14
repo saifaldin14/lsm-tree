@@ -212,8 +212,10 @@ time-series models are described in [../docs/workloads.md](../docs/workloads.md)
    compaction CPU and up to 1.93x in database throughput. Without compression the advantage
    disappears.
 2. **Measured inside production RocksDB.** RocksDB 11.8 with its own file cuts, index,
-   filters and installation, verified byte-for-byte against native output on every run,
-   rather than a standalone merge kernel or a research store.
+   filters and installation, checked against native output on every run (every stored key
+   version and 200,000 point lookups match; the bytes can differ, for example in ZSTD
+   output, which uses nvCOMP's compression level), rather than a standalone merge kernel or
+   a research store.
 3. **Earlier designs rebuilt rather than cited.** Each comparison runs in the same process,
    on the same hardware, against the same inputs, under preregistered fairness rules.
 4. **A shared GPU compaction service, local or over RDMA.** We are not aware of a prior

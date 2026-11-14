@@ -1,0 +1,6 @@
+trial 0 full   dev=nvme0n1 n=463 window wMB/s median=698 mean=655 util median=90% rMB/s=0 | user MiB/s=117.9 WA=5.55 WA*user(MB/s)=686 device/user=5.30
+trial 1 native dev=nvme0n1 n=469 window wMB/s median=459 mean=469 util median=59% rMB/s=0 | user MiB/s=116.1 WA=4.02 WA*user(MB/s)=490 device/user=3.85
+trial 2 native dev=nvme0n1 n=460 window wMB/s median=465 mean=477 util median=59% rMB/s=0 | user MiB/s=114.5 WA=4.14 WA*user(MB/s)=497 device/user=3.98
+trial 3 full   dev=nvme0n1 n=461 window wMB/s median=701 mean=655 util median=90% rMB/s=0 | user MiB/s=118.4 WA=5.49 WA*user(MB/s)=682 device/user=5.28
+trial 4 native dev=nvme0n1 n=463 window wMB/s median=456 mean=454 util median=56% rMB/s=0 | user MiB/s=118.4 WA=3.80 WA*user(MB/s)=472 device/user=3.65
+trial 5 full   dev=nvme0n1 n=463 window wMB/s median=705 mean=660 util median=90% rMB/s=0 | user MiB/s=118.7 WA=5.53 WA*user(MB/s)=689 device/user=5.30

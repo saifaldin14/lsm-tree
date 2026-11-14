@@ -1,0 +1,8 @@
+full: subcompactions=4 writes/s=1.275M WA(window)=6.34 WA(run, tickers)=6.30
+  user GB=17.00 flush GB=10.86 compaction-write GB=96.29 compact/user=5.66
+  flushes=294 compactions(non-trivial)=373 L0->Lbase compactions with >=2 subcompactions=73 (median subcompactions 4.0)
+  flushes per such L0 compaction=4.0; user GB per L0 compaction=0.23; compaction time p50=0.34s p95=1.06s
+native: subcompactions=8 writes/s=0.843M WA(window)=3.75 WA(run, tickers)=3.61
+  user GB=12.12 flush GB=7.78 compaction-write GB=35.93 compact/user=2.96
+  flushes=210 compactions(non-trivial)=160 L0->Lbase compactions with >=2 subcompactions=8 (median subcompactions 7.7)
+  flushes per such L0 compaction=26.2; user GB per L0 compaction=1.52; compaction time p50=2.48s p95=7.40s

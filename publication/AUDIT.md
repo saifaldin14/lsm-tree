@@ -83,3 +83,10 @@ Profiling only the measured compaction (`perf` switched on and off through a con
 - Shared-GPU campaign: re-run with the fixes in item 14.
 - SATA SSD scale campaign and the `db_bench` cross-check: not yet run.
 - Archive raw data in a DOI-backed store before submission.
+- NVMe check N2 (ours at 8 subcompactions): its outcome is cited in
+  [PREREGISTRATION.md](PREREGISTRATION.md), but its data is not in
+  `data/malphite-nvme/followup/` (`run.log` stops after 4 of 6 runs). Archive it or
+  withdraw the cited outcome.
+- Write amplification: run WA-1 and WA-2 from
+  [WRITE-AMPLIFICATION.md](WRITE-AMPLIFICATION.md) (per-level compaction bytes need new
+  instrumentation first).

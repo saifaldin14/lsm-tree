@@ -1,0 +1,428 @@
+
+=== N6 nvme buffered
+metric                                      full 8c sub4                  native 8c sub8
+writes/s (M)                                       0.838                           0.822
+WA window                                          5.532                           4.022
+WA ingest+drain                                    5.587                           4.018
+flush/user                                         0.646                           0.642
+compact/user                                       4.886                           3.379
+compact read/user                                  0.076                           3.995
+comp in/user                                       5.534                           4.049
+comp out/in                                        0.884                           0.840
+jobs                                             815.000                         661.000
+jobs per GB user                                  21.970                          18.096
+MB in/job                                        252.312                         217.701
+MB out/job                                       223.037                         182.809
+in records/user write                              8.693                           6.367
+B/in record                                       94.279                          94.218
+user B/write                                     148.113                         148.118
+flush B/write                                     95.682                          95.121
+proc write/user                                    5.563                           4.040
+stall frac                                         0.027                           0.009
+data B/entry                                      91.201                          90.894
+filter B/entry                                     1.250                           1.250
+index B/entry                                      0.602                           0.600
+data B/block                                    2364.307                        2363.153
+entries/block                                     25.924                          25.999
+raw/data ratio                                     1.667                           1.672
+entries (M)                                       57.010                          57.061
+live SST B/entry                                  92.956                          92.648
+live SST GB                                        5.299                           5.287
+L0 files end                                       1.000                           0.000
+n levels end                                       3.000                           3.000
+files end                                         90.000                         107.000
+MB/file end (L>0)                                 58.788                          50.380
+L0 files mean                                      5.623                           9.383
+L0 files p90                                       8.000                          13.000
+running comp mean                                  5.300                           5.450
+pending comp GB mean                               4.766                           7.120
+imm memtables mean                                 2.133                           1.340
+delayed s frac                                     0.450                           0.143
+gpu merge_fallbacks                                0.000                               -
+gpu built B/block                               2378.601                               -
+drain s                                            7.781                          12.106
+n                                                  3.000                           3.000
+
+=== N1 malphite tmpfs
+metric                                      full 8c sub4                  native 8c sub8
+writes/s (M)                                       1.620                           0.948
+WA window                                          6.401                           4.047
+WA ingest+drain                                    6.395                           4.028
+flush/user                                         0.649                           0.643
+compact/user                                       5.751                           3.404
+compact read/user                                  0.085                           4.012
+comp in/user                                       6.399                           4.046
+comp out/in                                        0.899                           0.842
+jobs                                            1746.000                         805.000
+jobs per GB user                                  24.288                          19.104
+MB in/job                                        263.885                         211.265
+MB out/job                                       237.186                         174.726
+in records/user write                             10.022                           6.351
+B/in record                                       94.559                          94.375
+user B/write                                     148.116                         148.118
+flush B/write                                     96.055                          95.239
+stall frac                                         0.000                           0.004
+data B/entry                                      91.513                          90.981
+filter B/entry                                     1.250                           1.250
+index B/entry                                      0.601                           0.599
+data B/block                                    2372.467                        2365.418
+entries/block                                     25.925                          25.999
+raw/data ratio                                     1.661                           1.671
+entries (M)                                       57.098                          57.367
+live SST B/entry                                  93.268                          92.734
+live SST GB                                        5.325                           5.317
+L0 files end                                       2.000                           0.000
+n levels end                                       3.000                           3.000
+files end                                         94.000                         105.000
+MB/file end (L>0)                                 57.557                          50.611
+L0 files mean                                      2.220                           8.457
+L0 files p90                                       4.000                          18.000
+running comp mean                                  1.377                           4.053
+pending comp GB mean                               0.793                           6.001
+imm memtables mean                                 0.957                           0.777
+delayed s frac                                     0.000                           0.067
+gpu merge_fallbacks                                0.000                               -
+gpu built B/block                               2386.941                               -
+drain s                                            0.911                           6.361
+n                                                  3.000                           3.000
+
+=== NVMe confirm (direct)
+metric                    full 8c sub4 dio pw=1,th=16,ay  native 8c sub8 dio pw=1,th=16,
+writes/s (M)                                       0.975                           0.909
+WA window                                          3.758                           3.185
+WA ingest+drain                                    3.878                           3.227
+flush/user                                         0.646                           0.643
+compact/user                                       3.112                           2.542
+compact read/user                                  0.046                           3.241
+comp in/user                                       3.748                           3.184
+comp out/in                                        0.828                           0.797
+jobs                                             549.000                         517.000
+jobs per GB user                                  12.732                          12.685
+MB in/job                                        297.574                         244.047
+MB out/job                                       246.339                         194.908
+in records/user write                              5.868                           4.988
+B/in record                                       94.657                          94.508
+user B/write                                     148.113                         148.117
+flush B/write                                     95.738                          95.255
+proc write/user                                    3.801                           3.210
+stall frac                                         0.022                           0.014
+data B/entry                                      91.276                          90.924
+filter B/entry                                     1.250                           1.250
+index B/entry                                      0.602                           0.600
+data B/block                                    2366.233                        2363.950
+entries/block                                     25.924                          25.999
+raw/data ratio                                     1.665                           1.672
+entries (M)                                       57.067                          57.018
+live SST B/entry                                  93.030                          92.678
+live SST GB                                        5.309                           5.284
+L0 files end                                       0.000                           0.000
+n levels end                                       3.000                           3.000
+files end                                         96.000                         106.000
+MB/file end (L>0)                                 55.733                          48.968
+L0 files mean                                     13.203                          15.340
+L0 files p90                                      19.000                          21.000
+running comp mean                                  5.083                           4.713
+pending comp GB mean                               9.919                          10.615
+imm memtables mean                                 2.190                           1.140
+delayed s frac                                     0.363                           0.227
+gpu merge_fallbacks                                0.000                               -
+gpu built B/block                               2384.977                               -
+drain s                                           15.932                          19.712
+n                                                  3.000                           3.000
+
+=== NVMe tune (direct)
+metric                    full 8c sub4 dio pw=0,th=16,ay  full 8c sub4 dio pw=0,th=8,ay=  full 8c sub4 dio pw=1,th=16,ay  full 8c sub4 dio pw=1,th=8,ay=  full 8c sub8 dio pw=0,th=16,ay  full 8c sub8 dio pw=0,th=8,ay=  full 8c sub8 dio pw=1,th=16,ay  full 8c sub8 dio pw=1,th=8,ay=  native 8c sub4 dio pw=0,th=16,  native 8c sub4 dio pw=0,th=8,a  native 8c sub4 dio pw=1,th=16,  native 8c sub4 dio pw=1,th=8,a  native 8c sub8 dio pw=0,th=16,  native 8c sub8 dio pw=0,th=8,a  native 8c sub8 dio pw=1,th=16,  native 8c sub8 dio pw=1,th=8,a
+writes/s (M)                                       0.948                           0.948                           0.964                           0.930                           0.929                           0.914                           0.877                           0.864                           0.960                           0.836                           0.936                           0.801                           0.941                           0.848                           0.997                           0.834
+WA window                                          3.819                           3.870                           3.745                           3.799                           3.875                           3.879                           4.100                           4.239                           2.614                           3.677                           2.965                           3.943                           3.125                           3.183                           2.927                           3.665
+WA ingest+drain                                    4.646                           4.860                           4.611                           5.027                           4.730                           4.880                           4.787                           5.235                           3.478                           4.261                           3.871                           4.297                           3.845                           3.798                           3.801                           4.444
+flush/user                                         0.642                           0.638                           0.636                           0.636                           0.637                           0.642                           0.637                           0.636                           0.639                           0.639                           0.639                           0.641                           0.643                           0.646                           0.641                           0.636
+compact/user                                       3.177                           3.233                           3.109                           3.163                           3.238                           3.237                           3.464                           3.602                           1.975                           3.037                           2.327                           3.301                           2.482                           2.537                           2.285                           3.028
+compact read/user                                  0.049                           0.051                           0.048                           0.049                           0.050                           0.051                           0.054                           0.055                           2.448                           3.578                           2.849                           3.911                           3.053                           3.120                           2.789                           3.520
+comp in/user                                       3.737                           3.709                           3.612                           3.622                           3.752                           3.729                           3.991                           4.099                           2.323                           3.607                           2.743                           3.820                           3.005                           2.995                           2.817                           3.494
+comp out/in                                        0.866                           0.872                           0.861                           0.873                           0.863                           0.868                           0.868                           0.881                           0.818                           0.858                           0.833                           0.854                           0.827                           0.826                           0.834                           0.874
+jobs                                             119.000                         122.000                         124.000                         118.000                         134.000                         123.000                         128.000                         139.000                          84.000                         116.000                          99.000                         128.000                         113.000                          99.000                         114.000                         124.000
+jobs per GB user                                  14.136                          14.493                          14.481                          14.285                          16.240                          15.143                          16.425                          18.103                           9.849                          15.621                          11.905                          17.989                          13.515                          13.149                          12.865                          16.739
+MB in/job                                        264.340                         255.907                         249.391                         253.576                         231.042                         246.273                         243.016                         226.401                         235.850                         230.937                         230.376                         212.360                         222.365                         227.757                         218.993                         208.738
+MB out/job                                       228.826                         223.057                         214.680                         221.409                         199.380                         213.743                         210.871                         199.474                         192.898                         198.170                         191.874                         181.452                         183.971                         188.191                         182.628                         182.522
+in records/user write                              5.937                           5.900                           5.735                           5.767                           5.965                           5.940                           6.361                           6.535                           3.632                           5.667                           4.299                           6.004                           4.713                           4.691                           4.418                           5.493
+B/in record                                       93.154                          93.048                          93.276                          93.037                          93.114                          92.935                          92.936                          92.896                          94.661                          94.230                          94.502                          94.237                          94.391                          94.499                          94.444                          94.217
+user B/write                                     148.017                         148.028                         148.114                         148.116                         148.014                         148.032                         148.112                         148.111                         148.015                         148.031                         148.118                         148.117                         148.017                         148.031                         148.115                         148.116
+flush B/write                                     94.956                          94.379                          94.238                          94.250                          94.220                          95.026                          94.317                          94.253                          94.591                          94.621                          94.592                          94.986                          95.180                          95.568                          94.968                          94.272
+proc write/user                                    3.852                           3.972                           3.858                           4.066                           3.938                           4.077                           4.099                           4.323                           2.639                           3.706                           2.989                           3.977                           3.148                           3.204                           2.954                           3.702
+stall frac                                         0.021                           0.019                           0.023                           0.018                           0.022                           0.020                           0.026                           0.025                           0.015                           0.001                           0.013                           0.001                           0.010                           0.010                           0.010                           0.002
+data B/entry                                      90.204                          90.150                          90.160                          90.150                          90.221                          90.148                          90.223                          90.096                          90.265                          90.297                          90.304                          90.277                          90.267                          90.316                          90.298                          90.310
+filter B/entry                                     1.250                           1.250                           1.250                           1.250                           1.250                           1.250                           1.250                           1.250                           1.250                           1.250                           1.250                           1.250                           1.250                           1.250                           1.250                           1.250
+index B/entry                                      0.602                           0.602                           0.602                           0.602                           0.601                           0.602                           0.601                           0.602                           0.600                           0.600                           0.600                           0.600                           0.600                           0.600                           0.600                           0.601
+data B/block                                    2338.442                        2337.149                        2337.316                        2337.050                        2338.981                        2336.996                        2338.941                        2335.656                        2346.808                        2347.648                        2347.835                        2347.139                        2346.866                        2348.143                        2347.669                        2347.977
+entries/block                                     25.924                          25.925                          25.924                          25.924                          25.925                          25.924                          25.924                          25.924                          25.999                          25.999                          25.999                          25.999                          25.999                          25.999                          25.999                          25.999
+raw/data ratio                                     1.685                           1.686                           1.686                           1.686                           1.685                           1.686                           1.685                           1.687                           1.684                           1.683                           1.683                           1.684                           1.684                           1.683                           1.683                           1.683
+entries (M)                                       56.900                          56.643                          56.062                          56.826                          57.470                          56.865                          58.295                          56.494                          56.653                          56.847                          56.728                          56.782                          56.312                          57.023                          56.733                          56.633
+live SST B/entry                                  91.965                          91.912                          91.922                          91.912                          91.983                          91.910                          91.987                          91.858                          92.022                          92.054                          92.062                          92.034                          92.024                          92.073                          92.055                          92.067
+live SST GB                                        5.233                           5.206                           5.153                           5.223                           5.286                           5.226                           5.362                           5.189                           5.213                           5.233                           5.223                           5.226                           5.182                           5.250                           5.223                           5.214
+L0 files end                                       0.000                           3.000                           0.000                           0.000                           3.000                           0.000                           1.000                           0.000                           0.000                           0.000                           0.000                           0.000                           0.000                           0.000                           0.000                           0.000
+n levels end                                       3.000                           3.000                           3.000                           3.000                           3.000                           3.000                           3.000                           3.000                           3.000                           3.000                           3.000                           3.000                           3.000                           3.000                           3.000                           3.000
+files end                                         91.000                          95.000                          94.000                          91.000                          95.000                          89.000                          94.000                          89.000                          93.000                          82.000                          86.000                          83.000                          82.000                          95.000                          93.000                          84.000
+MB/file end (L>0)                                 57.504                          55.645                          54.823                          57.396                          56.652                          58.724                          55.796                          58.308                          56.057                          63.817                          60.727                          62.963                          63.196                          55.266                          56.156                          62.072
+L0 files mean                                     11.817                          10.333                          11.767                          10.633                          10.567                           9.867                           9.233                           8.867                          15.067                          11.183                          14.083                          10.450                          13.400                          12.533                          13.733                           9.250
+L0 files p90                                      17.000                          15.000                          18.000                          16.000                          14.000                          14.000                          13.000                          12.000                          21.000                          16.000                          21.000                          15.000                          20.000                          19.000                          21.000                          15.000
+running comp mean                                  5.400                           5.383                           5.250                           5.400                           5.433                           5.167                           5.817                           5.717                           3.083                           5.000                           4.300                           5.567                           4.533                           4.350                           4.383                           4.950
+pending comp GB mean                               8.095                           7.103                           8.405                           6.758                           7.786                           6.690                           6.906                           6.138                           9.755                           7.521                           9.000                           6.995                           8.621                           8.476                           8.951                           5.945
+imm memtables mean                                 2.317                           2.133                           2.167                           1.983                           2.367                           2.033                           2.383                           2.067                           0.833                           0.933                           1.033                           1.067                           1.217                           1.000                           1.067                           1.083
+delayed s frac                                     0.383                           0.150                           0.300                           0.150                           0.383                           0.200                           0.400                           0.283                           0.233                           0.017                           0.183                           0.000                           0.200                           0.083                           0.133                           0.017
+gpu merge_fallbacks                                0.000                           0.000                           0.000                           0.000                           0.000                           0.000                           0.000                           0.000                               -                               -                               -                               -                               -                               -                               -                               -
+gpu built B/block                               2353.409                        2350.473                        2352.841                        2351.418                        2351.169                        2350.094                        2350.422                        2347.944                               -                               -                               -                               -                               -                               -                               -                               -
+drain s                                           16.594                          14.572                          13.629                          14.740                          12.522                          13.245                          11.908                          13.223                          19.487                          16.767                          20.235                          15.628                          19.152                          14.427                          18.722                          19.895
+n                                                  1.000                           1.000                           1.000                           1.000                           1.000                           1.000                           1.000                           1.000                           1.000                           1.000                           1.000                           1.000                           1.000                           1.000                           1.000                           1.000
+
+=== X8 nvme
+metric                                  full 8c sub4 dio              native 8c sub8 dio
+writes/s (M)                                       0.973                           0.909
+WA window                                          3.736                           3.196
+WA ingest+drain                                    3.948                           3.329
+flush/user                                         0.648                           0.644
+compact/user                                       3.088                           2.552
+compact read/user                                  0.046                           3.253
+comp in/user                                       3.730                           3.204
+comp out/in                                        0.828                           0.801
+jobs                                             559.000                         516.000
+jobs per GB user                                  13.131                          12.939
+MB in/job                                        285.554                         247.660
+MB out/job                                       237.153                         197.089
+in records/user write                              5.833                           5.025
+B/in record                                       94.645                          94.434
+user B/write                                     148.015                         148.015
+flush B/write                                     95.861                          95.252
+proc write/user                                    3.767                           3.220
+stall frac                                         0.020                           0.012
+data B/entry                                      91.286                          90.929
+filter B/entry                                     1.250                           1.250
+index B/entry                                      0.602                           0.600
+data B/block                                    2366.498                        2364.086
+entries/block                                     25.924                          25.999
+raw/data ratio                                     1.665                           1.672
+entries (M)                                       57.186                          57.331
+live SST B/entry                                  93.041                          92.683
+live SST GB                                        5.321                           5.314
+L0 files end                                       0.000                           0.000
+n levels end                                       3.000                           3.000
+files end                                         94.000                         104.000
+MB/file end (L>0)                                 56.814                          51.101
+L0 files mean                                     13.053                          14.973
+L0 files p90                                      19.000                          21.000
+running comp mean                                  5.010                           4.730
+pending comp GB mean                              10.034                          10.330
+imm memtables mean                                 2.203                           1.103
+delayed s frac                                     0.363                           0.223
+gpu merge_fallbacks                                0.000                               -
+gpu built B/block                               2385.951                               -
+drain s                                           16.792                          18.005
+n                                                  3.000                           3.000
+
+=== H31
+metric                                   full 4c C4 sub4         full 8c BZ sub4 bm=zstd           full 8c TR sub4 l0=12               native 4c C4 sub8       native 8c BZ sub8 bm=zstd          native 8c TR sub8 l0=8
+writes/s (M)                                       0.713                           0.818                           1.069                           0.498                           0.751                           0.956
+WA window                                          5.714                           5.468                           3.791                           3.960                           3.833                           2.654
+WA ingest+drain                                    5.824                           5.487                           3.767                           4.250                           4.079                           2.725
+flush/user                                         0.642                           0.643                           0.644                           0.640                           0.639                           0.640
+compact/user                                       5.071                           4.825                           3.147                           3.320                           3.194                           2.014
+compact read/user                                  0.078                           0.075                           0.044                           3.887                           3.789                           2.633
+comp in/user                                       5.703                           5.467                           3.792                           3.915                           3.840                           2.674
+comp out/in                                        0.889                           0.883                           0.830                           0.847                           0.838                           0.758
+jobs                                             419.000                         467.000                         268.000                         243.500                         363.000                         269.500
+jobs per GB user                                  22.046                          21.418                           9.405                          18.334                          18.131                          10.576
+MB in/job                                        258.744                         255.321                         403.147                         213.665                         211.888                         252.861
+MB out/job                                       230.067                         225.335                         334.563                         181.001                         177.526                         191.756
+in records/user write                              9.029                           8.826                           5.968                           6.121                           6.166                           4.200
+B/in record                                       93.567                          91.744                          94.109                          94.746                          92.246                          94.307
+user B/write                                     148.117                         148.113                         148.114                         148.119                         148.117                         148.116
+flush B/write                                     95.132                          95.201                          95.419                          94.807                          94.593                          94.735
+proc write/user                                    5.776                           5.503                           3.823                           3.981                           3.856                           2.668
+stall frac                                         0.018                           0.029                           0.021                           0.006                           0.004                           0.019
+data B/entry                                      90.750                          87.625                          91.275                          90.420                          85.753                          90.594
+filter B/entry                                     1.250                           1.250                           1.250                           1.250                           1.250                           1.250
+index B/entry                                      0.601                           0.601                           0.601                           0.600                           0.600                           0.601
+data B/block                                    2352.737                        2271.602                        2366.307                        2350.835                        2229.503                        2355.353
+entries/block                                     25.925                          25.924                          25.925                          25.999                          25.999                          25.999
+raw/data ratio                                     1.675                           1.735                           1.665                           1.681                           1.773                           1.678
+entries (M)                                       57.341                          57.485                          61.746                          56.682                          56.803                          54.856
+live SST B/entry                                  92.509                          89.303                          93.032                          92.177                          87.425                          92.349
+live SST GB                                        5.305                           5.134                           5.745                           5.225                           4.966                           5.066
+L0 files end                                       3.000                           0.500                           3.000                           1.000                           1.000                           0.000
+n levels end                                       3.000                           3.000                           2.000                           3.000                           3.000                           2.000
+files end                                         91.000                          88.000                          94.500                          98.500                         102.500                         103.000
+MB/file end (L>0)                                 59.119                          58.026                          58.984                          53.371                          48.890                          49.183
+L0 files mean                                      3.900                           5.931                          11.678                           7.208                           8.736                          15.533
+L0 files p90                                       6.000                           8.000                          16.000                           9.500                          11.000                          21.500
+running comp mean                                  2.789                           5.456                           3.175                           3.000                           5.989                           3.264
+pending comp GB mean                               2.515                           4.968                           3.555                           7.615                           7.638                           7.645
+imm memtables mean                                 1.633                           2.100                           2.000                           1.164                           1.161                           1.108
+delayed s frac                                     0.136                           0.433                           0.333                           0.064                           0.078                           0.311
+gpu merge_fallbacks                                0.000                           0.000                           0.000                               -                               -                               -
+gpu built B/block                               2362.073                        2306.792                        2373.970                               -                               -                               -
+drain s                                            5.035                           6.746                           4.726                          20.898                          19.817                          16.735
+n                                                  2.000                           2.000                           2.000                           2.000                           2.000                           2.000
+
+=== v3-ssd SATA
+metric                                 full 16c sub4 dio                full 8c sub4 dio            native 16c sub16 dio              native 8c sub8 dio
+writes/s (M)                                       0.516                           0.462                           0.497                           0.496
+WA window                                          3.255                           3.652                           2.977                           3.126
+WA ingest+drain                                    3.451                           3.896                           3.097                           3.161
+flush/user                                         0.646                           0.642                           0.642                           0.643
+compact/user                                       2.611                           3.007                           2.335                           2.483
+compact read/user                                  0.037                           0.045                           3.027                           3.159
+comp in/user                                       3.253                           3.644                           2.938                           3.002
+comp out/in                                        0.803                           0.832                           0.791                           0.799
+jobs                                             229.000                         266.000                         290.000                         264.000
+jobs per GB user                                  10.391                          12.648                          13.415                          11.606
+MB in/job                                        315.599                         286.112                         229.186                         250.506
+MB out/job                                       256.196                         237.759                         180.589                         200.196
+in records/user write                              5.104                           5.730                           4.616                           4.718
+B/in record                                       94.224                          94.129                          94.225                          94.345
+user B/write                                     148.097                         148.015                         148.102                         148.015
+flush B/write                                     95.733                          95.074                          95.018                          95.241
+proc write/user                                    3.291                           3.684                           3.002                           3.151
+stall frac                                         0.026                           0.043                           0.026                           0.035
+live SST GB                                        5.290                           5.245                           5.220                           5.276
+L0 files end                                       0.000                           0.000                           0.000                           0.000
+n levels end                                       3.000                           3.000                           3.000                           3.000
+files end                                         92.000                          94.000                          98.000                         104.000
+MB/file end (L>0)                                 57.033                          55.716                          53.764                          50.482
+L0 files mean                                     14.643                          13.233                          17.180                          17.560
+L0 files p90                                      20.000                          19.000                          22.000                          22.000
+running comp mean                                  6.373                           5.187                           7.497                           4.817
+pending comp GB mean                              11.187                          10.421                          10.084                          11.832
+imm memtables mean                                 2.477                           2.503                           1.730                           1.453
+delayed s frac                                     0.830                           0.717                           0.797                           0.593
+gpu merge_fallbacks                                0.000                           0.000                               -                               -
+gpu built B/block                               2378.051                        2374.785                               -                               -
+drain s                                           36.590                          37.550                          34.537                          38.036
+n                                                  3.000                           3.000                           3.000                           3.000
+
+=== wa-trigger run (zyra)
+metric                                full 8c sub4 l0=12               full 8c sub4 l0=4               full 8c sub4 l0=8            native 8c sub8 l0=12             native 8c sub8 l0=4             native 8c sub8 l0=8
+writes/s (M)                                       1.384                           1.273                           1.335                           0.704                           0.859                           0.936
+WA window                                          4.219                           6.359                           5.223                           3.393                           3.543                           2.532
+WA ingest+drain                                    4.150                           6.351                           5.238                           3.284                           3.556                           2.671
+flush/user                                         0.644                           0.643                           0.643                           0.640                           0.641                           0.640
+compact/user                                       3.576                           5.716                           4.580                           2.754                           2.901                           1.893
+compact read/user                                  0.045                           0.086                           0.064                           3.361                           3.509                           2.472
+comp in/user                                       4.213                           6.353                           5.221                           3.426                           3.558                           2.485
+comp out/in                                        0.849                           0.900                           0.877                           0.814                           0.822                           0.759
+jobs                                             233.000                         552.000                         259.000                         123.000                         226.000                         180.000
+jobs per GB user                                   9.475                          24.407                          10.919                           9.831                          14.813                          10.823
+MB in/job                                        444.659                         260.296                         478.151                         348.520                         240.177                         229.637
+MB out/job                                       377.401                         234.202                         419.470                         283.673                         197.453                         174.321
+in records/user write                              6.647                          10.042                           8.274                           5.385                           5.586                           3.901
+B/in record                                       93.812                          93.637                          93.391                          94.176                          94.281                          94.308
+user B/write                                     148.015                         148.015                         148.015                         148.018                         148.019                         148.017
+flush B/write                                     95.248                          95.211                          95.217                          94.680                          94.903                          94.669
+stall frac                                         0.000                           0.000                           0.000                           0.017                           0.005                           0.013
+data B/entry                                      91.017                          90.835                          90.718                          90.708                          90.416                          90.416
+filter B/entry                                     1.250                           1.250                           1.250                           1.250                           1.250                           1.250
+index B/entry                                      0.601                           0.601                           0.602                           0.600                           0.600                           0.601
+data B/block                                    2359.723                        2354.867                        2351.795                        2358.331                        2350.751                        2350.741
+entries/block                                     25.926                          25.925                          25.924                          25.999                          25.999                          25.999
+raw/data ratio                                     1.670                           1.673                           1.676                           1.676                           1.681                           1.681
+entries (M)                                       59.909                          57.642                          55.267                          63.271                          56.305                          55.458
+live SST B/entry                                  92.776                          92.592                          92.475                          92.465                          92.173                          92.173
+live SST GB                                        5.558                           5.337                           5.111                           5.850                           5.190                           5.112
+L0 files end                                       5.000                           2.000                           0.500                           3.000                           0.000                           0.000
+n levels end                                       2.000                           3.000                           2.000                           2.000                           3.000                           2.000
+files end                                        100.000                          91.000                          86.000                          95.000                          98.000                          97.000
+MB/file end (L>0)                                 56.821                          59.396                          59.651                          57.541                          52.957                          52.698
+L0 files mean                                      8.692                           2.529                           5.696                          15.875                          12.458                          15.100
+L0 files p90                                      14.000                           4.000                           9.000                          21.000                          18.000                          21.000
+running comp mean                                  1.283                           1.938                           1.846                           2.967                           5.133                           3.008
+pending comp GB mean                               1.397                           1.108                           1.364                           4.615                           9.079                           7.391
+imm memtables mean                                 1.008                           0.925                           1.008                           0.858                           1.225                           0.850
+delayed s frac                                     0.000                           0.000                           0.000                           0.292                           0.092                           0.242
+gpu merge_fallbacks                                0.000                           0.000                           0.000                               -                               -                               -
+gpu built B/block                               2369.278                        2365.734                        2357.735                               -                               -                               -
+drain s                                            1.876                           1.462                           2.039                           6.175                          16.439                          14.767
+n                                                  1.000                           2.000                           2.000                           1.000                           1.000                           1.000
+
+=== wa-trigger run16 (zyra)
+metric                                full 8c sub4 l0=16            native 8c sub8 l0=16
+writes/s (M)                                       1.391                           0.624
+WA window                                          3.670                           3.004
+WA ingest+drain                                    3.575                           2.801
+flush/user                                         0.644                           0.639
+compact/user                                       3.026                           2.365
+compact read/user                                  0.034                           2.984
+comp in/user                                       3.664                           3.049
+comp out/in                                        0.826                           0.789
+jobs                                             210.000                          94.000
+jobs per GB user                                   8.502                           8.484
+MB in/job                                        430.899                         359.743
+MB out/job                                       355.893                         283.850
+in records/user write                              5.764                           4.768
+B/in record                                       94.084                          94.636
+user B/write                                     148.015                         148.018
+flush B/write                                     95.379                          94.559
+stall frac                                         0.002                           0.028
+data B/entry                                      91.208                          90.785
+filter B/entry                                     1.250                           1.250
+index B/entry                                      0.600                           0.598
+data B/block                                    2364.823                        2360.338
+entries/block                                     25.928                          25.999
+raw/data ratio                                     1.667                           1.674
+entries (M)                                       63.669                          65.568
+live SST B/entry                                  92.968                          92.547
+live SST GB                                        5.919                           6.068
+L0 files end                                       9.000                          12.500
+n levels end                                       2.000                           2.000
+files end                                        104.500                         112.500
+MB/file end (L>0)                                 58.810                          56.232
+L0 files mean                                     11.521                          16.446
+L0 files p90                                      18.500                          21.000
+running comp mean                                  0.808                           2.000
+pending comp GB mean                               1.568                           3.889
+imm memtables mean                                 1.004                           0.613
+delayed s frac                                     0.021                           0.467
+gpu merge_fallbacks                                0.000                               -
+gpu built B/block                               2377.683                               -
+drain s                                            1.574                           8.304
+n                                                  2.000                           2.000
+
+=== W (zyra)
+metric                                full 8c sub4 l0=16              full 8c sub4 l0=24            native 8c sub8 l0=16            native 8c sub8 l0=24
+writes/s (M)                                       1.419                           1.467                           0.946                           0.971
+WA window                                          3.640                           3.087                           2.517                           2.173
+WA ingest+drain                                    3.612                           2.955                           2.442                           2.203
+flush/user                                         0.644                           0.645                           0.639                           0.638
+compact/user                                       2.996                           2.443                           1.878                           1.535
+compact read/user                                  0.034                           0.024                           2.467                           2.128
+comp in/user                                       3.631                           3.078                           2.500                           2.166
+comp out/in                                        0.825                           0.794                           0.757                           0.716
+jobs                                             215.500                         171.000                         142.000                         112.000
+jobs per GB user                                   8.551                           6.561                           8.447                           6.491
+MB in/job                                        424.587                         469.117                         295.972                         333.741
+MB out/job                                       350.337                         372.318                         224.038                         238.910
+in records/user write                              5.712                           4.821                           3.904                           3.372
+B/in record                                       94.077                          94.489                          94.794                          95.088
+user B/write                                     148.015                         148.015                         148.018                         148.018
+flush B/write                                     95.343                          95.402                          94.642                          94.427
+stall frac                                         0.000                           0.000                           0.009                           0.009
+data B/entry                                      91.125                          91.552                          91.130                          91.086
+filter B/entry                                     1.250                           1.250                           1.250                           1.250
+index B/entry                                      0.601                           0.599                           0.599                           0.600
+data B/block                                    2362.434                        2373.885                        2369.318                        2368.149
+entries/block                                     25.925                          25.929                          25.999                          25.999
+raw/data ratio                                     1.668                           1.660                           1.668                           1.669
+entries (M)                                       61.635                          71.336                          70.644                          66.583
+live SST B/entry                                  92.883                          93.314                          92.891                          92.843
+live SST GB                                        5.725                           6.657                           6.562                           6.182
+L0 files end                                       3.000                          13.500                          11.500                           0.000
+n levels end                                       2.000                           2.000                           2.000                           2.000
+files end                                         99.500                         122.500                         126.000                         127.500
+MB/file end (L>0)                                 58.368                          56.662                          49.175                          48.485
+L0 files mean                                     11.900                          18.171                          23.617                          34.438
+L0 files p90                                      18.500                          28.000                          33.000                          49.000
+running comp mean                                  0.779                           0.654                           2.733                           2.346
+pending comp GB mean                               1.635                           1.897                           8.167                          10.010
+imm memtables mean                                 1.046                           1.012                           1.087                           1.058
+delayed s frac                                     0.000                           0.000                           0.133                           0.154
+gpu merge_fallbacks                                0.000                           0.000                               -                               -
+gpu built B/block                               2378.085                        2389.261                               -                               -
+drain s                                            3.563                           0.992                           5.671                          33.463
+n                                                  2.000                           2.000                           2.000                           2.000

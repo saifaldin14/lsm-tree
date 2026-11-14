@@ -334,7 +334,12 @@ even: [publication/FULL-RESULTS.md](publication/FULL-RESULTS.md#7-what-it-costs-
   the cheaper way to provision it, including when 4 to 8 databases share one GPU, with the
   GPU priced as the measured card or its closest AWS equivalent.
 - Write amplification: about 1.4× higher (5.5 against 4.0 bytes written per user byte on
-  NVMe). The likely cause is that faster compactions start earlier with less data each.
+  NVMe), and on NVMe it is what caps the GPU version's throughput. The extra bytes are all
+  compaction output, not larger files. The main cause is that the GPU version compacts
+  level 0 sooner, with fewer files waiting, so data is rewritten more often: raising its
+  level-0 trigger from 4 to 24 lowered its write amplification from 6.36 to 3.09 in memory.
+  About 13% remains unexplained (RocksDB at trigger 24: 2.17). Analysis and proposed
+  experiments: [publication/WRITE-AMPLIFICATION.md](publication/WRITE-AMPLIFICATION.md).
 - Shared GPU: the shared service does not isolate databases from each other. With one heavy
   and three light databases, the light databases on the service's NUMA node had 4.2–5.8×
   their solo 99.9th-percentile write latency under every scheduling policy (1.7× without
@@ -368,6 +373,7 @@ even: [publication/FULL-RESULTS.md](publication/FULL-RESULTS.md#7-what-it-costs-
 | `apps/` | `lsm_compaction_bench`, `lsm_system_bench`, `lsm_compaction_server`, `lsm_replica_server`, `lsm_rpc_bench`, `lsm_burn`, and the harness services (`lsm_db`, `lsm_worker`, `lsm_loadgen`, `lsm_admin`, `lsm_telemetry`, `lsm_gpu_check`) |
 | `tools/` | `labctl` harness: plans, runs, audits and analysis |
 | `publication/` | Results, raw data, figures, and the scripts that produce them |
+| `paper/` | PVLDB paper draft (`main.tex`, `refs.bib`); build with `tectonic main.tex` |
 | `configs/` | Dataset and experiment configurations |
 | `docs/` | Design and operating documentation |
 | `tests/` | C++ (CTest) and Python tests |
@@ -409,6 +415,7 @@ python3 publication/multiplex/analyze.py                     # figures 42-47 (se
 - [docs/gpu-compaction.md](docs/gpu-compaction.md): what is offloaded, how it plugs into RocksDB, eligibility, configuration and limits
 - [docs/remote-compaction.md](docs/remote-compaction.md): remote compaction and replication over TCP and RDMA, and their results
 - [publication/RELATED-WORK.md](publication/RELATED-WORK.md): earlier GPU, FPGA and remote compaction designs, measured head to head on this harness
+- [publication/WRITE-AMPLIFICATION.md](publication/WRITE-AMPLIFICATION.md): why the GPU version writes more bytes per user byte, and the experiments to fix it
 - [docs/runbook.md](docs/runbook.md): building, benchmarks, the `labctl` harness, hardware gates
 - [docs/telemetry.md](docs/telemetry.md): resource and energy telemetry
 - [publication/](publication/): results, methodology audit and data

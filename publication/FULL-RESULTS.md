@@ -374,8 +374,12 @@ cache).
   drive in the earlier configuration.
 - **Costs on the drive.** Ours writes more bytes per byte of user data: write
   amplification 5.5 against 4.0 with the same I/O path (3.8 against 3.2 with direct reads).
-  Compaction scheduling is a candidate explanation, not an isolated cause; the trigger
-  experiments below change level sizing too. Its 99.9th-percentile write latency was
+  The extra is all compaction output; bytes per entry, filters and indexes are the same.
+  Ours keeps fewer files in level 0 (5.6 against 9.4) and reads each user write back
+  through compaction 8.69 times against 6.37. Raising ours' level-0 trigger lowers its
+  write amplification (6.36 at trigger 4 to 3.09 at 24, in memory), and about 13% remains
+  unexplained after accounting for level-0 depth
+  ([WRITE-AMPLIFICATION.md](WRITE-AMPLIFICATION.md)). Its 99.9th-percentile write latency was
   54.5 against 52.4 ms in the direct-read run.
 - **Correct on this hardware:** every key was verified in every run, and a separate
   single-compaction check matched RocksDB in all 16 repetitions with no CPU fallback.
