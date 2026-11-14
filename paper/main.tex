@@ -6,8 +6,9 @@
 %
 % Build: tectonic main.tex   (or: latexmk -pdf main.tex)
 % Figures are read from ../publication/figures/, so regenerate them there.
-% Every number below comes from publication/FULL-RESULTS.md or publication/RELATED-WORK.md;
-% the section of FULL-RESULTS each number comes from is given in a comment.
+% Every number below comes from publication/FULL-RESULTS.md, publication/RELATED-WORK.md or a
+% script named in a comment, all computed from archived runs. Claims that depend on the
+% registered M5 experiment (PREREGISTRATION.md) are marked \todo{M5}.
 
 \documentclass[sigconf, nonacm]{acmart}
 
@@ -34,31 +35,32 @@
 \begin{document}
 
 % Title options:
-%   Whole-Compaction GPU Offload for RocksDB: Compression Included, Shared Across Databases
-%   What the CPU Still Does: Offloading All of LSM Compaction, Compression Included, to a GPU
-\title{Whole-Compaction GPU Offload for RocksDB: Compression Included, Shared Across Databases}
+%   One GPU, Many Databases: Whole-Compaction Offload as a Shared Service for RocksDB
+%   Compression Is What Is Left: Whole-Compaction GPU Offload, Shared Across Databases
+\title{One GPU, Many Databases: Whole-Compaction Offload as a Shared Service for RocksDB}
 
 \author{\todo{Authors}}
 \affiliation{\institution{\todo{Institution}}\city{\todo{City}}\country{\todo{Country}}}
 
 \begin{abstract}
-Compaction is the largest CPU cost of a write-heavy LSM-tree store. Earlier GPU and FPGA
-designs move sorting, merging and block building off the CPU but leave decompression,
-compression and checksums on it. Rebuilt inside the same RocksDB and measured on the same
+Compaction is the largest CPU cost of a write-heavy LSM-tree store. GPU and FPGA designs
+have moved sorting, merging, block building and, in one case, checksums off the CPU, but
+none offloads block compression. Rebuilt inside the same RocksDB and measured on one
 machine, the best of them still uses 49\% of RocksDB's compaction CPU with LZ4 and 69\%
-with ZSTD. We offload the whole compaction to a GPU, compression included, while RocksDB
-keeps its own file boundaries, index and installation, and we check every compaction's
-output against unmodified RocksDB. One compaction runs 8--12$\times$ faster with
-9--16$\times$ less CPU for small values, and one GPU does the compaction work of 15--18
-cores. With data in memory, the whole database accepts 1.5--1.8$\times$ more writes with
-1.8--2.2$\times$ less CPU per write, against 1.14--1.41$\times$ for the earlier designs.
-The GPU can be shared: through a compaction service reached over RDMA, eight databases on
-another machine each accept 2.1$\times$ RocksDB's writes and keep 89\% of their
-throughput alone, with no compaction falling back to the CPU. We also report where the
-design does not pay: on a drive that is already the bottleneck, throughput is unchanged and
-only the CPU saving and lower tail latency remain; it writes more bytes per user byte; and
-at cloud prices it is the cheaper choice only beyond the highest write rate RocksDB can
-reach.
+with ZSTD, and with compression turned off it uses the same CPU as a full offload: the gap
+is the codec. We offload the whole compaction, compression included, while RocksDB keeps
+its own file boundaries, index and installation, and we check every compaction against
+unmodified RocksDB. One GPU then does the compaction work of 15--18 cores and CPU per write
+halves; under load, 99.9th-percentile write latency falls 3.8--9.6$\times$; and when
+compaction is the CPU bottleneck (data in memory, write-ahead log off) the database accepts
+1.5--1.8$\times$ more writes. At cloud prices, however, a GPU dedicated to one database
+costs 1.39$\times$ as much per GiB compacted as the CPU cores it replaces; only a GPU shared
+close to its capacity costs less (0.83--0.89$\times$). We therefore make GPU compaction a
+shared service, reached over RDMA. Eight databases on another machine each sustain
+2.0$\times$ RocksDB's writes on the same cores, counting the compaction left when writing
+stops, with no compaction falling back to the CPU, at close to the service's capacity and
+within 4\% of RocksDB's cost per write. The service does not yet isolate tenants, and when a
+drive is the bottleneck throughput is unchanged.
 \end{abstract}
 
 \maketitle
@@ -97,58 +99,81 @@ The source code, data, and/or other artifacts have been made available at
 \label{sec:intro}
 
 LSM-trees~\cite{oneil1996lsm} accept writes into memory and keep data sorted on storage by
-merging files in the background. In RocksDB~\cite{dong2021rocksdb}, this merging,
-compaction, is the largest CPU cost of a write-heavy database: with 128-byte values it
-takes 3.5--5.5\,\textmu s of CPU per write, more than accepting the write itself
-(2.3\,\textmu s). % FULL-RESULTS 3, "Where the CPU goes"
-When compaction falls behind, RocksDB slows its writers, and the work it postpones still
-has to be done later.
+merging files in the background. In RocksDB~\cite{dong2021rocksdb} this merging,
+compaction, is the largest CPU cost of a write-heavy database: with 128-byte values it takes
+3.5--5.5\,\textmu s of CPU per write, more than accepting the write itself
+(2.3\,\textmu s). % FULL-RESULTS 3, "Where the CPU goes" (in memory, write-ahead log off)
+When compaction falls behind, RocksDB slows its writers, and the work it postpones still has
+to be done later.
 
-Offloading compaction to an accelerator has been studied for GPUs~\cite{luda2020,glsm2024,
-zhou2024msst,gpcomp2025,gclcomp2025,gparakv2025} and FPGAs~\cite{fpga2020}. These designs
-take the sort and merge, and in some cases block building, off the CPU. Decompressing the
-input and compressing and checksumming the output stay on the CPU. Their published speedups
-come from different stores (LevelDB, X-Engine, key-value-separated stores) and different
-hardware, so they cannot be compared with each other or with RocksDB.
+Accelerators have been applied to compaction for six years. GPU
+designs~\cite{luda2020,glsm2024,zhou2024msst,gpcomp2025,gclcomp2025,gparakv2025} and an
+FPGA design~\cite{fpga2020} take the sort and merge off the CPU, and some also build blocks,
+compute checksums~\cite{luda2020} or move data from the SSD to the GPU
+directly~\cite{gpcomp2025}. None of the designs we could examine offloads block compression:
+LUDA leaves it as future work and is evaluated with compression off~\cite{luda2020}, the
+MSST'24 design builds key-prefix-encoded blocks but does not describe compressing them~\cite{zhou2024msst}, and the FPGA paper does not
+discuss it~\cite{fpga2020}. \todo{Confirm for GPComp and GCLComp from their full texts.}
+Their results come from different stores and hardware and cannot be compared with each
+other or with RocksDB.
 
-We rebuilt the two families of earlier designs inside RocksDB~11.8 and measured them on one
-machine against the same inputs (Section~\ref{sec:prior}). Offloading sorting and merging
-saves little. Offloading everything except decompression, compression and checksums still
-leaves 49\% of RocksDB's compaction CPU on the CPU with LZ4 and 69\% with ZSTD.
-% RELATED-WORK 1, isolated table: 5.44/11.04 and 14.15/20.46
-Since RocksDB normally runs with compression on, compression is most of what the earlier
-designs leave behind.
+\paragraph{What earlier designs leave behind.} We rebuilt the two families of earlier
+designs inside RocksDB~11.8 and measured them on one machine against the same inputs
+(Section~\ref{sec:prior}). Offloading everything except decompression and compression still
+leaves 49\% of RocksDB's compaction CPU on the CPU with LZ4 and 69\% with ZSTD. With
+compression turned off, the same rebuild uses the same CPU as a full offload (1.81 and
+1.80\,CPU-s per GiB), so the remaining gap is the codec, not checksums or block building.
+% RELATED-WORK 1; data/summary.md
 
-This paper offloads the whole compaction, compression included, and keeps everything that
-decides the shape of the LSM-tree in RocksDB. \todo{One paragraph: design summary
-(Section~\ref{sec:design}): steps 1--4 on the GPU; RocksDB's own file cuts, index, filter
-sizing, properties and installation; logical equivalence checked on every run; eligibility
-and CPU fallback; the shared compaction service, local or over RDMA.}
+\paragraph{Whole-compaction offload.} We offload decompression, merging, block building,
+compression, checksums and Bloom-filter hashing to the GPU (Section~\ref{sec:design}).
+RocksDB keeps every decision that shapes the tree: where output files end, the index, filter
+sizing, metadata and installation. Every compaction's stored versions and 200{,}000 lookups
+match unmodified RocksDB (Section~\ref{sec:correct}). One GPU then does the compaction work
+of 15--18 RocksDB cores, CPU per write halves, and 99.9th-percentile write latency under load
+falls 3.8--9.6$\times$. Throughput rises 1.5--1.8$\times$ when compaction is the CPU
+bottleneck, and not at all when a drive is (Section~\ref{sec:storage}).
 
-\todo{One paragraph: headline results with the scope stated: in memory; CPU-bound regime;
-what changes on drives.}
+\paragraph{When GPU compaction pays.} Speed is not the same as value. At cloud prices, a GPU
+dedicated to one database costs 1.39$\times$ as much per GiB compacted as the RocksDB cores
+it replaces, because one database does not keep the GPU busy: in our local runs, one
+database kept it busy 27--42\% of the time. A GPU shared by several databases close to its
+capacity costs 0.83--0.89$\times$ as much (Section~\ref{sec:economics}).
+% cost_model.py, "Cost of compaction throughput"; multiplex/analyze.py M1 (GPU busy, N = 1)
+\todo{M5: replace the local utilisation with the remote measurement (Y1).}
+GPU compaction should therefore be a shared, disaggregated resource, as CaaS-LSM made CPU
+compaction a service~\cite{caaslsm2024}.
+
+\paragraph{A shared GPU compaction service.} One process owns the GPU and runs the
+compactions of every database, received over shared memory or RDMA
+(Section~\ref{sec:design-service}). It queues jobs and re-queues a job that runs out of GPU
+memory instead of failing it. Eight databases on one machine sharing a GPU on another each
+sustain 2.0$\times$ RocksDB's writes on the same cores, counting the compaction left when
+writing stops, and keep 84--85\% of their throughput alone, with no CPU fallback in 105
+runs. At eight databases the service is close to its capacity (its engines are 86--87\%
+busy) and costs 4\% more per write than RocksDB at the price of the card we measured; it
+breaks even at \$2.79 an hour (Section~\ref{sec:sharing}).
+% multiplex/analyze.py M2 (backlog-inclusive table); FULL-RESULTS 11
+\todo{M5: state the measured capacity of one service.}
+The service does not isolate a light database from a heavy one on the same NUMA node, and
+it is no faster than CUDA MPS on a single machine; its advantages there are the absence of
+CPU fallbacks and fairer throughput across databases.
 
 \paragraph{Contributions.}
 \begin{itemize}
-  \item A whole-compaction GPU offload inside production RocksDB, including decompression,
-        compression, checksums and Bloom-filter hashing, whose output is checked against
-        unmodified RocksDB on every run (Sections~\ref{sec:design}, \ref{sec:correct}).
-  \item A same-harness evaluation of earlier GPU and FPGA compaction designs, rebuilt in the
-        same RocksDB under rules registered before the runs, showing that compression is
-        what they leave on the CPU and that without compression the advantage disappears
-        (Section~\ref{sec:prior}).
-  \item A shared GPU compaction service, reached over shared memory or RDMA, that lets
-        several databases use one GPU without CPU fallbacks (Section~\ref{sec:sharing}).
-  \item An evaluation with tuned baselines, registered hypotheses and archived data,
-        including where the design does not pay: drive-bound systems, write
-        amplification, read-heavy work, isolation and cost (Sections~\ref{sec:eval},
-        \ref{sec:limits}).
+  \item A same-harness evaluation of earlier GPU and FPGA compaction designs, rebuilt in
+        RocksDB under rules registered before the runs, which isolates the codec as what
+        they leave on the CPU (Section~\ref{sec:prior}).
+  \item Whole-compaction GPU offload inside production RocksDB, compression included, with
+        every compaction checked against unmodified RocksDB (Sections~\ref{sec:design},
+        \ref{sec:correct}).
+  \item A cost analysis showing that GPU compaction is cheaper per GiB than CPU cores only
+        when the GPU is shared close to its capacity (Section~\ref{sec:economics}).
+  \item A shared GPU compaction service, reached over shared memory or RDMA, and its
+        capacity, fairness and isolation measured with archived, registered experiments,
+        including the results that did not meet their registered thresholds
+        (Sections~\ref{sec:sharing}, \ref{sec:limits}).
 \end{itemize}
-
-\todo{Novelty check before submission: read the full texts of GPComp~\cite{gpcomp2025} and
-GCLComp~\cite{gclcomp2025}. If either compresses data blocks on the GPU, the first
-contribution becomes ``the first in production RocksDB, measured against the earlier
-designs on one harness'', and the introduction must say so.}
 
 % ------------------------------------------------------------------------------------------
 \section{Background and Motivation}
@@ -157,30 +182,27 @@ designs on one harness'', and the introduction must say so.}
 \paragraph{Compaction in RocksDB.} \todo{Levelled compaction; the five steps of one
 compaction: (1) read and decompress input blocks; (2) merge and drop hidden versions and
 obsolete deletions; (3) pack survivors into data blocks; (4) compress and checksum each
-block and hash keys for the Bloom filter; (5) cut files, write index, filter, properties
-and footer, install the result. Subcompactions; write stalls; postponed compaction.}
-
-\paragraph{Where the CPU goes.} \todo{Use fig39 (CPU per write by job) and the rebuild
-ladder of Table~\ref{tab:prior-cpu}: native 11.04 CPU-s/GiB, sort/merge 8.21, pipeline
-5.44, ours 2.10 (128\,B, LZ4).}
+block and hash keys for the Bloom filter; (5) cut files, write index, filter, properties and
+footer, install the result. Subcompactions; write stalls; postponed compaction.}
 
 \paragraph{Earlier accelerator designs.} Table~\ref{tab:designs} summarises what each
-family moves off the CPU.
+family moves off the CPU, from the papers where we could read them.
 
 \begin{table}[t]
-  \caption{What each design runs on the accelerator.}
+  \caption{What each design runs on the accelerator, and how we rebuilt it.}
   \label{tab:designs}
   \small
   \begin{tabular}{p{0.24\columnwidth}p{0.33\columnwidth}p{0.33\columnwidth}}
     \toprule
-    Design (stands in for) & On the accelerator & Left on the CPU \\
+    Design (stands in for) & On the accelerator & Left on the CPU in our rebuild \\
     \midrule
     Sort/merge (gLSM~\cite{glsm2024}, gParaKV~\cite{gparakv2025}) & unpack, sort, merge,
       drop hidden versions & decompression, iterator, block building, compression,
       checksums \\
     Pipeline (LUDA~\cite{luda2020}, MSST'24~\cite{zhou2024msst}, FPGA~\cite{fpga2020}) &
-      unpack, sort, merge, deletions, block building, filter hashes & decompression,
-      compression, checksums \\
+      unpack, sort, merge, deletions, block building, filter hashes; checksums in LUDA &
+      decompression, compression, checksums (checksums cost no measurable CPU,
+      Section~\ref{sec:prior}) \\
     This work & steps 1--4 and Bloom-filter hashing & file cuts, index, metadata, file
       writing \\
     \bottomrule
@@ -199,21 +221,22 @@ SnapshotChecker; block cutting by replaying BlockBuilder's size estimate; nvCOMP
 masked CRC32C; only finished blocks, boundary keys and filter hashes return to the host.}
 
 \subsection{Keeping RocksDB in charge of the tree}
-\todo{RocksDB's own ShouldStopBefore decides file cuts between user keys; built runs are
-appended with trailers in pre-reserved gaps; RocksDB chooses filter size and probes, GPU
-sets the bits; statistics kept consistent for RocksDB's record-count verification. Why this
-matters: the LSM shape and every downstream policy are unchanged.}
+\todo{RocksDB's own ShouldStopBefore decides file cuts between user keys, evaluated at each
+block's first key; built runs are appended with trailers in pre-reserved gaps; RocksDB
+chooses filter size and probes, the GPU sets the bits; statistics kept consistent for
+RocksDB's record-count verification.}
 
 \subsection{Eligibility and fallback}
 \todo{No merge operator, compaction filter, blob files or range tombstones; format version
 6, CRC32C, LZ4/ZSTD/none, keys up to 512 bytes; otherwise RocksDB's own path, with the
 reason recorded. GPU out-of-memory: free idle buffers, retry, then fall back.}
 
-\subsection{Remote GPU and the shared compaction service}
+\subsection{The shared compaction service}
 \label{sec:design-service}
-\todo{One process owns the GPU with K engines; jobs arrive over shared memory or RDMA;
-FIFO or per-tenant fair scheduling; on out-of-memory it re-queues instead of failing.
-K = 4 chosen by the registered rule (fewest engines within 95\% of the best).}
+\todo{One process owns the GPU with K engines; jobs arrive over shared memory or RDMA; FIFO
+or per-tenant fair scheduling; on out-of-memory it re-queues instead of failing. Each job
+needs 11--17 times its compressed input in GPU memory, which bounds K. K = 4 chosen by the
+registered rule (fewest engines within 95\% of the best).}
 
 % ------------------------------------------------------------------------------------------
 \section{Correctness}
@@ -233,52 +256,22 @@ level, so compressed bytes differ while the decompressed data is the same.
 
 \subsection{Methodology}
 \todo{Hardware: server 1 (4$\times$ Xeon Gold 5220, RTX A6000), server 2 (Xeon Silver
-4210R, RTX PRO 6000 Blackwell, NVMe), 96-core database machine with 100\,Gb/s RoCE.
-RocksDB 11.8; both designs tuned by the same search per core count; fixed-duration runs
-(2\,min warm-up, 5\,min measured unless stated) in random order; medians with paired 95\%
-bootstrap intervals; hypotheses and thresholds registered before the runs, misses reported;
-data in memory unless stated. Workloads: 50\,M keys, 16\,B keys, 128\,B values, batched
-writes; YCSB~\cite{cooper2010ycsb}; Meta's models~\cite{cao2020}.}
-
-\subsection{One compaction}
-% FULL-RESULTS 1 and 2
-\begin{figure}[t]
-  \centering
-  \includegraphics[width=\columnwidth]{fig17_v3_compaction.pdf}
-  \caption{One compaction (0.6--0.7\,GiB input): time and CPU per GiB, RocksDB against
-  GPU offload. Median of 3 runs, log scale.}
-  \label{fig:compaction}
-\end{figure}
-\todo{8.0--11.7$\times$ faster and 8.8--15.5$\times$ less CPU for 32--128\,B values;
-4.0$\times$ / 4.4$\times$ at 1\,KB; 3.2$\times$ / 4.3$\times$ without compression. Ours
-stays near 1.2 CPU-s/GiB. Eight concurrent compactions: 1.42\,GiB/s (LZ4) and 0.89\,GiB/s
-(ZSTD) using 2.0 and 1.3 cores; one GPU = 15 and 18 RocksDB cores (fig18).}
-
-\subsection{Whole database}
-% FULL-RESULTS 3 and 4
-\begin{figure}[t]
-  \centering
-  \includegraphics[width=\columnwidth]{fig19_v3_database.pdf}
-  \caption{Whole database, 50\,M keys, 128\,B values, batched writes, tuned settings,
-  median of 5 runs.}
-  \label{fig:database}
-\end{figure}
-\todo{LZ4: 1.56$\times$ / 1.51$\times$ / 1.79$\times$ more writes at 4 / 8 / 16 cores,
-1.76--1.90$\times$ less CPU per write; ZSTD bottom level 1.65--1.67$\times$. No write
-stalls (RocksDB up to 6\%). Postponed compaction: RocksDB needs 11--69\,s after 5\,min of
-writing, ours 1.3--2.6\,s; counting it, 1.55--1.86$\times$. CPU per write by job (fig39):
-compaction 3.5--5.5 to 0.8\,\textmu s; accepting writes unchanged at 2.3\,\textmu s, which
-bounds the whole-database gain near 2$\times$.}
-
-\subsection{Tail latency at fixed load}
-\todo{Open loop, 8 cores (fig20): p99.9 1.75$\times$ lower at 50\% of RocksDB's maximum
-(registered 2.5$\times$ not met), 3.8$\times$ at 70\%, 9.6$\times$ at 90\%.}
+4210R, RTX PRO 6000 Blackwell Max-Q, NVMe), 96-core database machine with 100\,Gb/s RoCE.
+RocksDB 11.8; both designs tuned by the same search per core count (the level-0 trigger was
+not part of the search). Default regime, stated with every result: 50\,M keys, 16\,B uniform
+keys, 128\,B values about 2:1 compressible (half random, half a repeating pattern), batches of
+100, write-ahead log off, data in memory; drive, log-on and workload variants are
+identified. Fixed-duration runs in random order; medians of 3--5 runs with paired 95\%
+bootstrap intervals; throughput counted in the writing window and, where compaction is left
+over, to its end; hypotheses and thresholds registered before the runs, misses reported;
+every reported number from archived runs. Workloads: YCSB~\cite{cooper2010ycsb}; Meta's
+models~\cite{cao2020}.}
 
 \subsection{Earlier designs on the same harness}
 \label{sec:prior}
 \begin{table}[t]
-  \caption{Compaction CPU per GiB of input for one compaction, median of 3 warm runs
-  (lower is better). Rebuilds of earlier designs in the same RocksDB.}
+  \caption{Compaction CPU per GiB of input for one compaction, median of 3 warm runs (lower
+  is better). Rebuilds of earlier designs in the same RocksDB.}
   \label{tab:prior-cpu}
   \small
   \begin{tabular}{lrrrr}
@@ -294,18 +287,46 @@ bounds the whole-database gain near 2$\times$.}
   \end{tabular}
 \end{table}
 \todo{How the rebuilds work and why they are generous (4 parallel decompression threads,
-our GPU sort for LUDA). Whole database, 4 cores (fig36): LZ4 1.14 / 1.41 / 1.75$\times$,
-ZSTD 1.16 / 1.17 / 2.27$\times$, none 0.98 / 1.34 / 1.40$\times$. With all designs tuned
-(LZ4, 4 cores): 498k / 592k / 756k writes/s. Without compression ours equals the pipeline
-design (H8). gParaKV's and LUDA's own code: different stores, reported separately.}
+our GPU sort for LUDA); the checksum difference from LUDA and the no-compression control.
+Whole database, 4 cores, default settings (fig36): LZ4 1.14 / 1.41 / 1.75$\times$, ZSTD
+1.16 / 1.17 / 2.27$\times$, none 0.98 / 1.34 / 1.40$\times$. Tuned (LZ4, 4 cores): 498k /
+592k / 756k writes/s. Write-ahead log on, one write at a time (LZ4): 177k / 199k / 237k.
+gParaKV's and LUDA's own code: different stores, reported separately.}
 
-\subsection{Workloads}
-\todo{fig32: write-heavy workloads 1.30--1.77$\times$; Meta's ZippyDB model 1.05--1.10$\times$
-(85\% reads), write-heavy variant 1.34--1.70$\times$; shared machine (40\% / 80\% of each
-core used by another program) 2.14$\times$ / 2.48$\times$; compaction settings (fig40).}
+\subsection{One compaction and one GPU}
+% FULL-RESULTS 1 and 2
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{fig17_v3_compaction.pdf}
+  \caption{One compaction (0.6--0.7\,GiB input): time and CPU per GiB, RocksDB against
+  GPU offload. Median of 3 runs, log scale.}
+  \label{fig:compaction}
+\end{figure}
+\todo{8.0--11.7$\times$ faster and 8.8--15.5$\times$ less CPU for 32--128\,B values;
+4.0$\times$ / 4.4$\times$ at 1\,KB; 3.2$\times$ / 4.3$\times$ without compression. Ours stays
+near 1.2 CPU-s/GiB. Eight concurrent compactions: 1.42\,GiB/s (LZ4) and 0.89\,GiB/s (ZSTD)
+using 2.0 and 1.3 cores; one GPU = 15 and 18 RocksDB cores, derived from RocksDB's per-core
+rate (fig18).}
+
+\subsection{Whole database}
+% FULL-RESULTS 3 and 4
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{fig19_v3_database.pdf}
+  \caption{Whole database, default regime, tuned settings, median of 5 runs.}
+  \label{fig:database}
+\end{figure}
+\todo{LZ4: 1.56$\times$ / 1.51$\times$ / 1.79$\times$ more writes at 4 / 8 / 16 cores,
+1.76--1.90$\times$ less CPU per write; ZSTD bottom level 1.65--1.67$\times$. No write stalls
+(RocksDB up to 6\%). Postponed compaction: RocksDB needs 11--69\,s after 5\,min of writing,
+ours 1.3--2.6\,s; counting it, 1.55--1.86$\times$. CPU per write by job (fig39): compaction
+3.5--5.5 to 0.8\,\textmu s; accepting writes unchanged at 2.3\,\textmu s. Tail latency at fixed
+load (fig20): p99.9 1.75$\times$ lower at 50\% of RocksDB's maximum (registered 2.5$\times$
+not met), 3.8$\times$ at 70\%, 9.6$\times$ at 90\%. Workloads (fig32): write-heavy
+1.30--1.77$\times$, including two with the write-ahead log on; read-heavy 1.02--1.10$\times$.}
 
 \subsection{Storage}
-% FULL-RESULTS 8
+\label{sec:storage}
 \begin{figure}[t]
   \centering
   \includegraphics[width=\columnwidth]{fig33_storage.pdf}
@@ -313,18 +334,30 @@ core used by another program) 2.14$\times$ / 2.48$\times$; compaction settings (
   (server 1), 8 cores.}
   \label{fig:storage}
 \end{figure}
-\todo{When the drive is the limit, throughput is equal: 1.02$\times$ on NVMe, 0.93$\times$
-/ 1.04$\times$ on SATA at 8 / 16 cores. CPU per write 1.70$\times$ (NVMe) and
-1.87--2.0$\times$ (SATA) lower. NVMe at 630k writes/s: p99 17 vs 503\,ms. At 4 cores on
-NVMe, where the CPU is the limit: 1.43$\times$ (2 runs per design; \todo{extend to 5}).
-On NVMe ours keeps the drive 89--90\% busy against 55\% because it writes more bytes per
-user byte (5.5 vs 4.0); see Section~\ref{sec:limits}.}
+\todo{When the drive is the limit, throughput is equal: 1.02$\times$ on NVMe, 0.93$\times$ /
+1.04$\times$ on SATA. CPU per write 1.70$\times$ (NVMe) and 1.87--2.0$\times$ (SATA) lower.
+NVMe at 630k writes/s: p99 17 vs 503\,ms. At 4 cores on NVMe, where the CPU is the limit:
+1.43$\times$ (2 runs per design). On NVMe ours keeps the drive 89--90\% busy against 55\%
+because it writes more bytes per user byte (5.5 vs 4.0), mostly because it compacts level 0
+sooner (publication/WRITE-AMPLIFICATION.md; WA-1 and WA-2 registered).}
+
+\subsection{When GPU compaction pays}
+\label{sec:economics}
+% cost_model.py "Cost of compaction throughput"; prices.json; FULL-RESULTS 7
+\todo{Pricing rule: each measured GPU priced as the cheapest AWS GPU with at least its memory
+and bandwidth (A6000 as L40S, \$1.68/h; RTX PRO 6000 as itself, \$3.01/h). Cost per GiB/s of
+compaction: RocksDB cores \$0.945/h (per-core rate scaled linearly); dedicated GPU \$1.314
+(1.39$\times$); shared service at capacity \$0.843 (0.89$\times$); remote service at 8
+databases \$0.781 (0.83$\times$). Whole database: dedicated, ours is cheaper only beyond
+RocksDB's highest rate (2.26M writes/s on 16 cores + GPU, 23\% less per write than 1.60M on
+32 cores; break-even \$2.61/h); at the same rate RocksDB is cheaper (break-even \$0.71/h).
+Report break-even prices so readers can apply their own.}
 
 \subsection{Remote GPU over RDMA}
-\todo{fig31: one compaction 4.0--6.5$\times$ faster than local RocksDB, 5.6--11$\times$
-less database-machine CPU; transfer about 0.2\,s of 0.9--1.1\,s. Whole database 802k vs
-459k writes/s (1.75$\times$), 2.04$\times$ less CPU per write (1.84$\times$ including the
-GPU server). Remote CPU compaction server: same CPU saving, 9.6--17.6\,s per compaction.}
+\todo{fig31: one compaction 4.0--6.5$\times$ faster than local RocksDB, 5.6--11$\times$ less
+database-machine CPU; transfer about 0.2\,s of 0.9--1.1\,s. Whole database 802k vs 459k
+writes/s (1.75$\times$), 2.04$\times$ less CPU per write (1.84$\times$ including the GPU
+server).}
 
 \subsection{Several databases on one GPU}
 \label{sec:sharing}
@@ -332,51 +365,47 @@ GPU server). Remote CPU compaction server: same CPU saving, 9.6--17.6\,s per com
   \centering
   \includegraphics[width=0.8\columnwidth]{fig44_sharing_remote.pdf}
   \caption{Writes/s per database with 1 to 8 databases (4 cores each) sharing one remote
-  GPU through the compaction service. Median of 3 runs.}
+  GPU through the compaction service. Median of 3 runs. \todo{M5: replace with the capacity
+  curve, counting leftover compaction.}}
   \label{fig:sharing}
 \end{figure}
-\todo{Remote: 8 databases each 842k vs 401k (2.10$\times$), 89\% of solo; 6.7M total;
-0 CPU fallbacks; service used 1.9 of 4 cores. Local: 4$\times$8 cores 1.36--1.42$\times$
-each; service vs CUDA MPS~\cite{cudamps} within run-to-run variation; without the service
-up to 158 CPU fallbacks in 3 runs, MPS up to 124, service 0 in 105 runs; slowest/fastest
-0.87--0.91 vs 0.65--0.73 with MPS. Isolation is not provided (Section~\ref{sec:limits}).}
-
-\subsection{Cost}
-% FULL-RESULTS 7 and 11; prices.json
-\todo{GPU priced as the cheapest AWS GPU with at least the measured card's memory and
-bandwidth (A6000 as L40S, \$1.68/h; RTX PRO 6000 as itself, \$3.01/h). Highest rate each
-reaches: 2.26M writes/s on 16 cores + GPU at \$0.38 per billion vs RocksDB's 1.60M on 32
-cores at \$0.50 (23\% less; break-even GPU price \$2.61/h). Same rate (1.26M): ours 68\%
-more (break-even \$0.71/h). Shared remote GPU, 8 databases: 4\% more than RocksDB
-(break-even \$2.79/h). Report break-even prices so readers can apply their own.}
+\todo{Remote, counting leftover compaction (multiplex/analyze.py): 8 databases 786--788k vs
+391k (2.0$\times$), 84--85\% of N = 1; leftover compaction 11\,s (2\,s at N = 4); engines
+86--87\% busy; 0 CPU fallbacks; cost 4\% above RocksDB, break-even \$2.79/h. Local: 4
+databases of 8 cores 1.36--1.42$\times$ each; service vs CUDA MPS~\cite{cudamps} within
+run-to-run variation; without the service up to 158 CPU fallbacks in 3 runs, MPS up to 124,
+service 0 in 105 runs; slowest/fastest 0.87--0.91 vs 0.65--0.73 with MPS. M5: capacity per
+K, GPU utilisation (Y1--Y4).}
 
 % ------------------------------------------------------------------------------------------
 \section{Limitations}
 \label{sec:limits}
-\todo{Drive-bound systems (throughput equal, CPU and tail latency gains remain); write
-amplification about 1.4$\times$ higher, all of it compaction output; main cause is eager
-level-0 compaction (ours keeps 5.6 vs 9.4 level-0 files and rewrites each write 8.69 vs
-6.37 times; raising ours' trigger from 4 to 24 lowers its WA from 6.36 to 3.09 in memory);
-about 13\% unexplained, possibly block-granular file cuts (publication/WRITE-AMPLIFICATION.md;
-\todo{results of WA-1 and WA-2}); read-heavy work 1.02--1.10$\times$; no compression: no advantage over the
-pipeline design; the shared service does not isolate tenants (light tenants 4.2--5.8$\times$
-their solo p99.9 next to a heavy one); energy: no general claim (0.69--1.19$\times$ per
-write; 1.3--1.5$\times$ lower on a shared machine); cost as above; two GPU models, RocksDB
-11.8, one RDMA machine pair; missed registered thresholds listed.}
+\todo{Isolation: light tenants on the service's NUMA node 4.2--5.8$\times$ their solo p99.9
+next to a heavy one under every policy (registered 1.5$\times$ not met); the cause is the
+service's work on that node, not the queue (exploratory). Drive-bound systems (throughput
+equal; CPU and tail-latency gains remain). Write amplification about 1.4$\times$ higher, all
+compaction output; main cause eager level-0 compaction (raising ours' trigger from 4 to 24
+lowers its WA from 6.36 to 3.09 in memory); about 13\% unexplained. Default regime (log off,
+batched, in memory, synthetic 2:1 values; production ZippyDB compresses 4.5:1~\cite{cao2020}).
+Read-heavy work 1.02--1.10$\times$. No compression: no advantage over the pipeline design.
+Eligibility (merge operators, compaction filters, range tombstones, blob files). Energy: no
+general claim. Two GPU models, RocksDB 11.8, one RDMA machine pair, one client machine.
+Registered thresholds missed, listed.}
 
 % ------------------------------------------------------------------------------------------
 \section{Related Work}
 \label{sec:related}
 \paragraph{Accelerated compaction.} \todo{LUDA~\cite{luda2020}, gLSM~\cite{glsm2024},
 MSST'24~\cite{zhou2024msst}, GPComp~\cite{gpcomp2025}, GCLComp~\cite{gclcomp2025},
-gParaKV~\cite{gparakv2025}, FPGA~\cite{fpga2020}; the NVMe-to-GPU data path line of work
-is complementary; concurrent re-evaluation prototype~\cite{reevalgpcomp}.}
-\paragraph{Remote and disaggregated compaction.} \todo{Nova-LSM~\cite{novalsm2021},
-dLSM~\cite{dlsm2023}, CaaS-LSM~\cite{caaslsm2024}; replication without repeated
-compaction: Tebis~\cite{tebis2022}, RubbleDB~\cite{rubbledb2023}. None uses a GPU or
-shares one between databases.}
-\paragraph{Key-value separation.} \todo{gParaKV compacts fewer bytes by keeping values out
-of the sorted files; complementary.}
+gParaKV~\cite{gparakv2025}, FPGA~\cite{fpga2020}; the NVMe-to-GPU data path is
+complementary; concurrent re-evaluation prototype~\cite{reevalgpcomp}.}
+\paragraph{Compaction as a service and disaggregated LSM-trees.} \todo{CaaS-LSM~\cite{caaslsm2024}
+(CPU compaction service with priority-based global scheduling, stateless execution and
+error handling; the yardstick for isolation), Nova-LSM~\cite{novalsm2021},
+dLSM~\cite{dlsm2023}; replication without repeated compaction: Tebis~\cite{tebis2022},
+RubbleDB~\cite{rubbledb2023}. None uses or shares a GPU.}
+\paragraph{Key-value separation.} \todo{gParaKV compacts fewer bytes by keeping values out of
+the sorted files; complementary.}
 
 % ------------------------------------------------------------------------------------------
 \section{Conclusion}
