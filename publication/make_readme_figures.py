@@ -13,9 +13,8 @@ fig36_other_work      Earlier GPU and FPGA designs rebuilt in the same RocksDB: 
                       settings for every design.
 fig37_catch_up        Tuned whole-database runs: (a) seconds of postponed compaction left when writing
                       stops, (b) gain over RocksDB during the run and counting that catch-up.
-fig35_cost_cheaper    The tuned cost comparisons in which ours is cheaper than RocksDB: the same write
-                      rate (1.26M writes/s), and the highest rate each reaches. AWS prices from
-                      prices.json; ours includes one GPU.
+fig35_cost_cases      The two tuned cost comparisons: the same write rate (1.26M writes/s), and the
+                      highest rate each reaches. AWS prices from prices.json; ours includes one GPU.
 """
 
 from __future__ import annotations
@@ -168,7 +167,7 @@ def figure_storage():
 
 
 def cost_cases():
-    """[(title, [(design, label, writes/s, $ per hour), ...])] for the comparisons where ours is cheaper."""
+    """[(title, [(design, label, writes/s, $ per hour), ...])]: the same write rate and the highest rate each reaches."""
     prices = json.loads((HERE / "prices.json").read_text())
     core, gpu = prices["physical_core_hour"], prices["gpu_hour"]
     headline = load_campaign("v3-headline", "v3-headline-more")
@@ -183,7 +182,7 @@ def cost_cases():
                                            (FULL, "Ours\n16 cores + GPU", rate[(FULL, 16)], 16 * core + gpu)])]
 
 
-def figure_cost_cheaper():
+def figure_cost_cases():
     cases = cost_cases()
     if not cases:
         return
@@ -208,6 +207,7 @@ def figure_cost_cheaper():
             native, ours = values
             text = (f"{ours / native:.2f}× more writes" if letter == "a" and ours / native > 1.05 else
                     "same rate" if letter == "a" else
+                    f"{ours / native - 1:.0%} dearer" if ours > native else
                     f"{100 * (1 - ours / native):.0f}% cheaper" if ours / native > 0.75 else
                     f"{native / ours:.1f}× cheaper")
             ax.annotate(text, (base + 0.5, max(values)), xytext=(0, 13), textcoords="offset points", ha="center",
@@ -219,7 +219,7 @@ def figure_cost_cheaper():
         finish_axis(ax, ylabel)
         panel_label(ax, letter)
     fig.tight_layout(w_pad=2.5, rect=(0, 0.04, 1, 1))
-    save(fig, "fig35_cost_cheaper")
+    save(fig, "fig35_cost_cases")
 
 
 OTHER_DESIGNS = (NATIVE, SORT_MERGE, PIPELINE, FULL)
@@ -322,7 +322,7 @@ def figure_catch_up():
 def main() -> int:
     figure_workload_gains()
     figure_storage()
-    figure_cost_cheaper()
+    figure_cost_cases()
     figure_other_work()
     figure_catch_up()
     return 0

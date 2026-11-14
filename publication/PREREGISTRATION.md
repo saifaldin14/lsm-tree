@@ -888,6 +888,22 @@ keys):**
 
 ## Changes after data collection
 
+- **Cost analysis repriced (2026-11-14; analysis change only, no new runs).** Every cost
+  figure had priced the GPU as an NVIDIA L4 ($0.6263/h), the cheapest AWS GPU, while the
+  measured cards were an RTX A6000 (48 GiB) and an RTX PRO 6000 Blackwell (96 GiB). The L4
+  has 24 GiB, less than the service's 4 engines need (30.7 GiB in M0), and its performance
+  was not measured. The cost analysis now prices each measured GPU as the cheapest AWS GPU
+  with at least its memory and bandwidth: the A6000 as an L40S ($1.6825/h, g6e.xlarge) and
+  the RTX PRO 6000 as the same card ($3.0061/h, g7e.2xlarge) (`prices.json`,
+  `gpu_pricing_rule`). Outcomes recorded above under the L4 price are left as recorded.
+  Under the new prices: the tuned top-rate comparison (ours on 16 cores against RocksDB on
+  32) still favours ours (23% lower cost per write); the same-rate comparison reverses (ours
+  68% more); H30's cost ratio (12 cores, runs not yet final) rises from 0.59× to 0.96× of
+  RocksDB's cost per hour, above its 0.7× threshold; X5's cost part and the M2 cost
+  comparison reverse (service 24% and 4% more per write than RocksDB). Every comparison's
+  break-even GPU price is reported so other prices can be applied. X5 was not supported on
+  throughput either way.
+
 - **GPU multiplexing, exploratory runs added after M1 and M3 (2026-11-12; not hypothesis
   tests; `data/multiplex/e1`, `e2`; seeds 113 and 114, 3 blocks):**
   - E1: in M1 the service's jobs waited 550–750 ms for one of its 4 engines while the GPU

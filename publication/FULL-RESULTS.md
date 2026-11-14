@@ -195,9 +195,21 @@ runs.
 
 ## 7. What it costs, and what it saves
 
+**How the GPU is priced.** Prices are AWS EC2 on-demand rates (Linux, us-east-1, retrieved
+2026-11-09 and 2026-11-14 from [ec2instances.info](https://instances.vantage.sh/aws/ec2/c7i.xlarge),
+which republishes the AWS Price List API). A physical core is $0.08925/h (c7i.xlarge,
+$0.1785/h for 2 physical cores). Each measured GPU is priced as the cheapest AWS GPU with at
+least its memory and bandwidth, so the measured performance is reachable on the priced
+card; a GPU's price is its instance's price less the instance's cores. The first server's
+RTX A6000 (48 GiB), which AWS does not rent, is priced as an NVIDIA L40S (48 GiB, g6e.xlarge):
+$1.6825/h. The second server's RTX PRO 6000 Blackwell (96 GiB) is priced as the same card
+(g7e.2xlarge): $3.0061/h. Every input is in [publication/prices.json](prices.json). Each
+comparison also gives the GPU price at which the two designs cost the same, so other prices
+can be applied directly.
+
 **Tuned, every core count.** Both designs tuned for each core count by the same search;
-median of 5 runs; RocksDB on 32 cores from 3 five-minute runs. Priced as below, with ours
-including one L4 GPU. The README shows only the two comparisons where ours is cheaper.
+median of 5 runs; RocksDB on 32 cores from 3 five-minute runs. Ours includes one GPU at the
+L40S price.
 
 ![Tuned throughput and cost per write against cores](figures/fig24_cost.png)
 
@@ -207,26 +219,38 @@ including one L4 GPU. The README shows only the two comparisons where ours is ch
 | RocksDB | 8 | 837k | 0.714 | 0.237 |
 | RocksDB | 16 | 1,262k | 1.428 | 0.314 |
 | RocksDB | 32 | 1,598k | 2.856 | 0.496 |
-| Ours + L4 | 4 | 748k | 0.983 | 0.365 |
-| Ours + L4 | 8 | 1,260k | 1.340 | 0.296 |
-| Ours + L4 | 16 | 2,260k | 2.054 | 0.253 |
+| Ours + L40S | 4 | 748k | 2.040 | 0.758 |
+| Ours + L40S | 8 | 1,260k | 2.397 | 0.528 |
+| Ours + L40S | 16 | 2,260k | 3.111 | 0.382 |
+
+![Cost per write at the same write rate and at the highest rate each design reaches](figures/fig35_cost_cases.png)
+
+- **Highest rate each reaches.** RocksDB's highest is 1.60M writes/s on 32 cores at $0.496
+  per billion writes. Ours reaches 2.26M on 16 cores and a GPU at $0.382: 1.41× the writes
+  at 23% lower cost per write. It stays cheaper per write up to a GPU price of $2.61/h.
+- **Same write rate.** 1.26M writes/s takes 16 cores with RocksDB ($1.428/h) and 8 cores and
+  a GPU with ours ($2.397/h, 68% more). The two cost the same at a GPU price of $0.71/h,
+  about an L4's price; an L4 has half the A6000's memory and was not measured.
+- **Cheapest way to reach a target rate**, one GPU per database (`cost_model.py`): RocksDB
+  for every target up to 1.5M writes/s (ours costs 1.09× to 3.4× as much per hour); ours is
+  the only one measured above 1.6M.
+- **If several databases share the GPU**, each must keep 64% (16 cores, 8 databases) to
+  102% (4 cores, 8 databases) of its single-database throughput for ours to match RocksDB's
+  cost at the L40S price (`cost_model.py`). The measured sharing results are in section 11:
+  at these prices, sharing comes close to RocksDB's cost but does not go below it.
 
 **Untuned.** The comparison below was run earlier with the same hand-chosen settings for
 both designs.
 
-**Eight cores with the GPU write as much as thirty-two cores without it, for less than
-half the cost: $11,741 against $25,019 per node per year. If 667k writes/s is enough,
-RocksDB on a few cores is cheaper.**
+**Eight cores with the GPU write as much as thirty-two cores without it, at 16% lower cost:
+$20,993 against $25,019 per node per year. If 667k writes/s is enough, RocksDB on a few
+cores is cheaper.**
 
 *Setup:* the `equal-cost` campaign, run before the tuning search of
 [section 3](#3-the-whole-database), so neither design is tuned: both use the same
 hand-chosen settings, including at most 4 parallel threads per compaction
 (`max_subcompactions` = 4) at every core count. Batched LZ4 writes, 30 s warm-up then 2
-minutes measured, median of 5 runs. Priced at AWS EC2 on-demand rates (Linux, us-east-1,
-retrieved 2026-11-09 from [ec2instances.info](https://instances.vantage.sh/aws/ec2/c7i.xlarge),
-which republishes the AWS Price List API): a physical core is $0.08925/h (c7i.xlarge, $0.1785/h
-for 2 physical cores), and the GPU is an NVIDIA L4 at $0.6263/h (its instance less its two
-cores). Every input is in [publication/prices.json](prices.json).
+minutes measured, median of 5 runs. Prices as above.
 
 ![Untuned cost: throughput, cost per write and yearly cost](figures/fig26_cost_untuned.png)
 
@@ -234,18 +258,19 @@ cores). Every input is in [publication/prices.json](prices.json).
   one level 0 to level 1 compaction at a time, split across at most 4 threads, so extra
   cores sit idle. Ours reaches 1,000k on 8 cores.
 - **(b) Cost per write.** RocksDB on 4 or 8 cores is the cheapest per write, but tops out
-  at 667k writes/s. Past that, ours on 8 cores is the cheapest way to go faster: $0.372 per
-  billion, against $0.427 for RocksDB on 16 cores and $0.801 on 32.
+  at 667k writes/s. Past that, ours on 8 cores is the cheapest way to go faster: $0.666 per
+  billion, against $0.801 for RocksDB on 32 cores, which it matches in throughput. RocksDB
+  on 16 cores is cheaper per write ($0.427) but reaches only 929k.
 - **(c) Same throughput, per year.** At full use and list price, 8 cores with a GPU cost
-  $11,741 a year against $25,019 for 32 cores: **$13,278, or 53%, saved per node.**
+  $20,993 a year against $25,019 for 32 cores: **$4,025, or 16%, saved per node.**
 
 **The matched comparison:**
 
-| | RocksDB, 32 cores | Ours, 8 cores + L4 | |
+| | RocksDB, 32 cores | Ours, 8 cores + L40S | |
 |---|---|---|---|
 | Writes/s | 990k | 1,000k | same |
-| Cost per hour | $2.856 | $1.340 | **2.13× cheaper** |
-| Cost per billion writes | $0.801 | $0.372 | **2.15× cheaper** |
+| Cost per hour | $2.856 | $2.397 | **1.19× cheaper** |
+| Cost per billion writes | $0.801 | $0.666 | **1.20× cheaper** |
 | 99th-percentile write | 37.75 ms | 2.23 ms | **16.9× lower** |
 | CPU per write | 9.69 µs | 5.91 µs | 1.64× less |
 
@@ -255,39 +280,39 @@ cores). Every input is in [publication/prices.json](prices.json).
 |---|---|---|---|---|
 | RocksDB | 4 | 341k | 0.357 | 0.291 |
 | RocksDB | 8 | 667k | 0.714 | 0.297 |
-| **Ours + L4** | **8** | **1,000k** | **1.340** | **0.372** |
 | RocksDB | 16 | 929k | 1.428 | 0.427 |
-| Ours + L4 | 4 | 607k | 0.983 | 0.450 |
+| **Ours + L40S** | **8** | **1,000k** | **2.397** | **0.666** |
 | RocksDB | 32 | 990k | 2.856 | 0.801 |
+| Ours + L40S | 4 | 607k | 2.040 | 0.933 |
 
-**The GPU choice does not change the answer.** The measured card is an RTX A6000, which AWS
-does not rent, so the figures price the cheapest current NVIDIA GPU instance. Dearer cards
-still pay:
+**Other GPU prices for the matched comparison.** Cheaper cards with less memory than the
+A6000 would widen the saving, if they reached the same throughput, which was not measured:
 
-| GPU priced | $/hour total | $ per billion | Cheaper than RocksDB on 32 cores | Saved per node per year |
+| GPU priced | $/hour total | $ per billion | Against RocksDB on 32 cores | Saved per node per year |
 |---|---|---|---|---|
-| L4, 24 GiB ([g6.xlarge](https://instances.vantage.sh/aws/ec2/g6.xlarge)) | 1.340 | 0.372 | **2.15×** | $13,278 |
-| A10G, 24 GiB ([g5.xlarge](https://instances.vantage.sh/aws/ec2/g5.xlarge)) | 1.542 | 0.428 | 1.87× | $11,515 |
-| L40S, 48 GiB ([g6e.xlarge](https://instances.vantage.sh/aws/ec2/g6e.xlarge)) | 2.397 | 0.666 | 1.20× | $4,025 |
+| L4, 24 GiB ([g6.xlarge](https://instances.vantage.sh/aws/ec2/g6.xlarge)), not measured | 1.340 | 0.372 | 2.15× cheaper | $13,278 |
+| A10G, 24 GiB ([g5.xlarge](https://instances.vantage.sh/aws/ec2/g5.xlarge)), not measured | 1.542 | 0.428 | 1.87× cheaper | $11,515 |
+| **L40S, 48 GiB ([g6e.xlarge](https://instances.vantage.sh/aws/ec2/g6e.xlarge)), used above** | **2.397** | **0.666** | **1.20× cheaper** | **$4,025** |
 
-The GPU would have to cost **$2.17/hour** before the advantage disappears, more than any of
-these cards.
+The GPU would have to cost **$2.17/hour** before the advantage disappears.
 
 **When it does not pay.** If 667k writes/s or less is enough, RocksDB on 4 to 8 cores is
-the cheapest choice measured ($0.291 per billion on 4 cores). The GPU pays once the target
-is beyond what RocksDB reaches by adding cores. On a SATA SSD, where the disk saturates for
-both designs, it does not pay at all ([section 8](#8-real-world-workloads-and-a-real-disk)).
+the cheapest choice measured ($0.291 per billion on 4 cores). With tuned settings, RocksDB
+is the cheaper way to reach any rate up to its highest, 1.60M writes/s. The GPU pays once the
+target is beyond what RocksDB reaches by adding cores. On a SATA SSD, where the disk
+saturates for both designs, it does not pay at all
+([section 8](#8-real-world-workloads-and-a-real-disk)).
 
 **New tuned comparison, pending clean confirmation.** Three five-minute runs on 12 cores
 with the GPU reached a median 1.785M writes/s. Tuned RocksDB on 32 cores reached 1.598M
 with its original trigger and 1.407M with trigger 8, so the stronger 1.598M result is the
-comparison. Every run verified all 50 M keys. Under the same CPU/GPU pricing model,
-12 cores plus a GPU cost $1.697/h against $2.856/h, about 41% less while exceeding that
-throughput target. Some 12-core runs overlapped a build or smoke test on another NUMA
-node, so this is not yet a final H30 result. These are modeled resource costs applied to
-lab hardware, not measured AWS performance or a complete cloud bill.
-The comparison covers the tested configurations, not every possible core count or a
-globally cheapest deployment.
+comparison. Every run verified all 50 M keys. Under the same pricing, 12 cores plus a GPU
+cost $2.754/h against $2.856/h, 0.96× per hour (H30 required less than 0.7×), and 14% less
+per write ($0.429 against $0.496 per billion) while exceeding that throughput. Some 12-core runs overlapped a
+build or smoke test on another NUMA node, so this is not yet a final H30 result. These are
+modeled resource costs applied to lab hardware, not measured AWS performance or a complete
+cloud bill. The comparison covers the tested configurations, not every possible core count
+or a globally cheapest deployment.
 
 ## 8. Real-world workloads and a real disk
 
@@ -520,7 +545,7 @@ link removes that hop. Those results, with a figure of both testbeds, are in
 ## 11. Several databases on one GPU
 
 **One GPU on another machine, shared by 8 databases of 4 cores each over RDMA, gives each
-database 2.1× RocksDB's writes at 36% lower cost per write. On the same machine, 4
+database 2.1× RocksDB's writes at 4% higher cost per write. On the same machine, 4
 databases of 8 cores get 1.36–1.42× each. A shared compaction service has no CPU fallbacks
 in 105 runs, but does not isolate light databases from a heavy one.**
 
@@ -540,8 +565,10 @@ share the GPU:
   "Sharing one GPU"). It has 4 cores of its own; on the same machine those 4 cores are
   left idle in every arm, so the databases use the same cores in every arm.
 
-Cost per billion writes: the database's cores plus its share of the GPU ($0.63 an hour) and,
-for the service, of the service's 4 cores (`prices.json`). The hypotheses and their outcomes
+Cost per billion writes: the database's cores plus its share of the GPU and, for the service,
+of the service's 4 cores (`prices.json`; section 7). The GPU on the same machine (RTX A6000)
+is priced as an L40S, $1.68 an hour; the GPU on another machine (RTX PRO 6000 Blackwell) as
+the same card on AWS, $3.01 an hour. The hypotheses and their outcomes
 are in [PREREGISTRATION.md](PREREGISTRATION.md), "GPU multiplexing"; the analysis is
 `multiplex/analyze.py`.
 
@@ -565,30 +592,33 @@ Blackwell, 100 Gb/s RDMA):
 
 | Databases | RocksDB, writes/s each | Service, writes/s each | Gain | Share of 1 database | Total | $ per billion writes, RocksDB → service |
 |---|---|---|---|---|---|---|
-| 1 | 465k | 947k | 2.04× | 1.00 | 0.95M | 0.213 → 0.393 |
-| 2 | | 957k | | 1.01 | 1.91M | → 0.246 |
-| 4 | | 894k | | 0.94 | 3.57M | → 0.187 |
-| 8 | 401k | 842k | 2.10× | 0.89 | 6.74M | 0.247 → **0.158** |
+| 1 | 465k | 947k | 2.04× | 1.00 | 0.95M | 0.213 → 1.091 |
+| 2 | | 957k | | 1.01 | 1.91M | → 0.591 |
+| 4 | | 894k | | 0.94 | 3.57M | → 0.372 |
+| 8 | 401k | 842k | 2.10× | 0.89 | 6.74M | 0.247 → 0.256 |
 
 Fair scheduling; FIFO was within 0.5%. The slowest database reached 0.95 of the fastest at
 8 databases, and the 99.9th-percentile write latency was 7.3 ms (RocksDB 11.5 ms). The
-service used 1.9 of its 4 cores. With 8 databases the service costs the same per write as
-RocksDB at a GPU price of $2.79 an hour; an NVIDIA L40S rents for about $1.68.
+service used 1.9 of its 4 cores. With 8 databases the service costs 4% more per write than
+RocksDB at the card's AWS price, and the same at a GPU price of $2.79 an hour. A cheaper GPU
+would change this, but the service's 4 engines need about 31 GiB of GPU memory, so it would
+have to be one with at least 32 GiB (an L40S at $1.68 an hour would make the service 18%
+cheaper than RocksDB per write); this was not measured.
 
 **GPU on the same machine** (RTX A6000; main runs):
 
 | Databases × cores | Arm | Writes/s each | Share of 1 database | Slowest / fastest | CPU fallbacks (3 runs) | p99.9 (ms) | $ per billion writes |
 |---|---|---|---|---|---|---|---|
 | 4 × 8 | RocksDB | 811k | 0.96 | 0.94 | 0 | 28.3 | 0.245 |
-| 4 × 8 | Separate | 1,107k | 0.86 | 0.78 | 38 | 30.4 | 0.218 |
-| 4 × 8 | MPS | 1,149k | 0.89 | 0.73 | 1 | 28.3 | 0.210 |
-| 4 × 8 | Service, fair | 1,121k | 0.91 | 0.87 | 0 | 18.9 | 0.238 |
-| 4 × 8 | Service, FIFO | 1,144k | 0.93 | 0.85 | 0 | 18.9 | 0.233 |
+| 4 × 8 | Separate | 1,107k | 0.86 | 0.78 | 38 | 30.4 | 0.285 |
+| 4 × 8 | MPS | 1,149k | 0.89 | 0.73 | 1 | 28.3 | 0.274 |
+| 4 × 8 | Service, fair | 1,121k | 0.91 | 0.87 | 0 | 18.9 | 0.303 |
+| 4 × 8 | Service, FIFO | 1,144k | 0.93 | 0.85 | 0 | 18.9 | 0.297 |
 | 6 × 4 | RocksDB | 441k | 0.91 | 0.81 | 0 | 19.9 | 0.225 |
-| 6 × 4 | Separate | 517k | 0.68 | 0.71 | 158 | 25.2 | 0.248 |
-| 6 × 4 | MPS | 593k | 0.78 | 0.78 | 107 | 24.1 | 0.216 |
-| 6 × 4 | Service, fair | 490k | 0.68 | 0.97 | 0 | 24.1 | 0.295 |
-| 6 × 4 | Service, FIFO | 498k | 0.69 | 0.95 | 0 | 24.1 | 0.290 |
+| 6 × 4 | Separate | 517k | 0.68 | 0.71 | 158 | 25.2 | 0.342 |
+| 6 × 4 | MPS | 593k | 0.78 | 0.78 | 107 | 24.1 | 0.298 |
+| 6 × 4 | Service, fair | 490k | 0.68 | 0.97 | 0 | 24.1 | 0.395 |
+| 6 × 4 | Service, FIFO | 498k | 0.69 | 0.95 | 0 | 24.1 | 0.388 |
 
 ![The largest local cases: throughput, slowest database, CPU fallbacks and tail latency](figures/fig43_sharing_most.png)
 

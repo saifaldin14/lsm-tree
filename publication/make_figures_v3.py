@@ -321,8 +321,8 @@ def figure_cost(headline):
         for c, y in zip(cores, ys):
             axes[1].annotate(f"{y:.2f} (N={shared[c][1]})", (c, y), xytext=(6, -3), textcoords="offset points",
                              ha="left", va="top", fontsize=5.4, color=INK, bbox=LABEL_BOX, zorder=4)
-        axes[1].legend(handles=[line], frameon=False, fontsize=6, loc="upper left")
-    fig.text(0.5, 0.005, "Ours includes one GPU at the L4 price. Hollow point: RocksDB on 32 cores "
+        axes[1].legend(handles=[line], frameon=False, fontsize=6, loc="upper right")
+    fig.text(0.5, 0.005, f"Ours includes one GPU at the {prices['gpu_name']} price. Hollow point: RocksDB on 32 cores "
              "(5-min runs). Other points: 5-min runs, median of 5.", ha="center", va="bottom", fontsize=5.8,
              color="#555555")
     fig.tight_layout(w_pad=2.5, rect=(0, 0.05, 1, 0.88))

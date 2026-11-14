@@ -16,7 +16,9 @@ against unmodified RocksDB.
   With compression on, this design uses 2.0–6.5× less compaction CPU than the best of them.
 - One GPU can serve several databases. Eight databases on one machine, sharing a GPU on
   another machine over RDMA, each handle 2.1× more writes than RocksDB on the same cores, at
-  36% lower cost per write including the GPU.
+  about the same cost per write (4% more) including the GPU.
+- Cost: the GPU version is the cheaper way to go beyond RocksDB's highest write rate. For
+  any rate RocksDB can reach, RocksDB is cheaper.
 - Gains are small for read-heavy workloads and for data stored without compression. When a
   drive is the limit, throughput is about equal and the gain is lower CPU and latency.
 
@@ -34,9 +36,9 @@ unless stated otherwise. The GPU is in addition to those cores.
 | Write latency, 99.9th percentile | 3.8× lower at 70% of RocksDB's maximum load, 9.6× lower at 90% (1.75× at 50%) |
 | NVMe drive | 8 cores: the same writes/s (1.02×, the drive is the limit), 1.70× less CPU per write; 99th-percentile write latency 29× lower at 630k writes/s. 4 cores: 1.43× more writes |
 | Remote GPU over RDMA | Each compaction 4.0–6.5× faster; whole database 1.75× more writes, 2.04× less CPU per write |
-| Several databases on one GPU | 8 databases sharing a remote GPU: 2.1× more writes each, 36% lower cost per write; 4 databases sharing a local GPU: 1.36–1.42× more writes each |
+| Several databases on one GPU | 8 databases sharing a remote GPU: 2.1× more writes each, at 4% higher cost per write; 4 databases sharing a local GPU: 1.36–1.42× more writes each |
 | Earlier GPU and FPGA designs | 2.0–6.5× less compaction CPU than the best; whole-database gain over RocksDB 1.75×, against 1.14–1.41× for earlier designs |
-| Cost (AWS prices) | 2.26M writes/s on 16 cores and a GPU at half RocksDB's cost per write; RocksDB reaches at most 1.60M on 32 cores |
+| Cost (AWS prices, GPU priced as an L40S) | 2.26M writes/s on 16 cores and a GPU at 23% lower cost per write than RocksDB's highest, 1.60M on 32 cores; at the same write rate RocksDB is cheaper |
 
 ## Where the remaining CPU goes
 
@@ -55,7 +57,8 @@ runs, LZ4, median of 5:
 | gLSM (ACM TOS'24), gParaKV (SC'25) | Sorting and merging, to a GPU; values kept outside the sorted files | Rebuilt in RocksDB ("GPU sort/merge"); gParaKV's own code also run |
 | LUDA (arXiv'20), MSST'24 GPU compaction | Most of the compaction, to a GPU; compression stays on the CPU | Rebuilt in RocksDB ("GPU pipeline"); LUDA's own code also run |
 | Alibaba's FPGA compaction (FAST'20) | Most of the compaction, to an FPGA; compression stays on the CPU | Same design as the GPU pipeline rebuild |
-| GPComp (TPDS'25), GCLComp | Data movement between the SSD and the GPU | Not run |
+| GPComp (TPDS'25), GCLComp (ICPADS'25) | Data movement between the SSD and the GPU; whether they compress on the GPU is not yet established | Not run |
+| re-eval-gpcomp (GitHub, 2026, concurrent) | GPComp-style merge, packing and Bloom filters, compared with multi-threaded RocksDB | Not run |
 | Nova-LSM (SIGMOD'21), CaaS-LSM (SIGMOD'24) | Compaction, to other machines' CPUs | Represented by our remote CPU compaction server |
 | Tebis (EuroSys'22), RubbleDB (ATC'23) | Compaction on replicas: compact once, send the result | Represented by our compact-once replication |
 | This work | The whole compaction including compression, to a local or remote GPU | |
@@ -266,8 +269,11 @@ their compactions over RDMA to one service on the GPU server.
   (2.10×): 6.7M writes/s in total against 3.2M. Each database keeps 89% of the throughput it
   has alone (94% with 4 databases).
 - Cost per billion writes, with the GPU and the service's cores divided among the 8
-  databases: $0.158 against $0.247 for RocksDB, 36% less. The two cost the same at a GPU
-  price of $2.79 an hour, against the $0.63 used.
+  databases: $0.256 against $0.247 for RocksDB, 4% more, with the GPU priced as the same
+  card on AWS (RTX PRO 6000 Blackwell, g7e, $3.01 an hour). The two cost the same at a GPU
+  price of $2.79 an hour. The service's 4 engines need about 31 GiB of GPU memory; on a
+  48 GiB L40S ($1.68 an hour) it would cost 18% less than RocksDB per write, but this was not
+  measured.
 - No compaction fell back to the database machine's CPU. The service used 1.9 of its 4 cores.
 
 **GPU on the same machine.**
@@ -286,9 +292,11 @@ their compactions over RDMA to one service on the GPU server.
   105 runs, local and remote. With 4 databases of 8 cores, its slowest database reached
   0.87–0.91 of the fastest (MPS 0.65–0.73), and its 99.9th-percentile write latency was
   19 ms (MPS 28–29 ms).
-- Cost: with 4 databases of 8 cores, MPS costs 14% less per write than RocksDB and the
-  service 3–5% less. With 6 databases of 4 cores, MPS costs 4% less and the service 29–31%
-  more than RocksDB, because its own 4 cores are a larger share of the total.
+- Cost, with the GPU priced as an L40S: with 4 databases of 8 cores, MPS costs 12% more per
+  write than RocksDB and the service 21–24% more. With 6 databases of 4 cores, MPS costs
+  32% more and the service 72–76% more, because its own 4 cores are a larger share of the
+  total. With 4 databases of 8 cores, MPS matches RocksDB's cost at a GPU price of $1.19 an
+  hour.
 
 Isolation between databases, burst arrivals and the engine count:
 [publication/FULL-RESULTS.md](publication/FULL-RESULTS.md#11-several-databases-on-one-gpu).
@@ -296,22 +304,25 @@ Isolation between databases, burst arrivals and the engine count:
 ### 8. Cost
 
 Both designs tuned for each core count; median of 5 runs (RocksDB on 32 cores: 3). AWS
-on-demand prices: $0.089 per CPU core-hour and, for the GPU version, $0.63 per hour for one
-NVIDIA L4. The figure shows the two cases where the GPU version is cheaper.
+on-demand prices: $0.089 per CPU core-hour and, for the GPU version, $1.68 per hour for the
+GPU. The measured RTX A6000 is not rented by AWS, so it is priced as the cheapest AWS GPU with
+at least its memory and bandwidth, an NVIDIA L40S.
 
-![Cases where the GPU version costs less than RocksDB](publication/figures/fig35_cost_cheaper.png)
+![Cost per write at the same write rate and at the highest rate each design reaches](publication/figures/fig35_cost_cases.png)
 
 - Highest throughput: RocksDB reaches 1.60M writes/s on 32 cores ($25.0k a year, $0.50 per
-  billion writes). The GPU version reaches 2.26M writes/s on 16 cores and a GPU ($18.0k a
-  year, $0.25 per billion writes).
+  billion writes). The GPU version reaches 2.26M writes/s on 16 cores and a GPU ($27.2k a
+  year, $0.38 per billion writes): 1.41× the writes at 23% lower cost per write. This holds
+  up to a GPU price of $2.61 an hour.
 - Same throughput: 1.26M writes/s takes 16 cores with RocksDB and 8 cores and a GPU with the
-  GPU version, which costs 6% less.
+  GPU version, which costs 68% more. The two cost the same at a GPU price of $0.71 an hour,
+  about the price of an NVIDIA L4, which has half the A6000's memory and was not measured.
 
-With one database per GPU, RocksDB costs less per write below about 1.3M writes/s, because
-the GPU costs more than the cores it replaces. Shared by several databases, the GPU costs
-less per write at lower rates too: 36% less with 8 databases of 4 cores sharing a remote GPU
-(section 7). All prices and configurations:
-[publication/FULL-RESULTS.md](publication/FULL-RESULTS.md#7-what-it-costs-and-what-it-saves).
+For any write rate RocksDB can reach, RocksDB is the cheaper way to provision it. The GPU
+version is the cheaper way to go beyond RocksDB's highest rate. Sharing the GPU brings the cost close to RocksDB's
+(4% more with 8 databases of 4 cores sharing a remote GPU, section 7) but not below it at
+these prices. All prices, configurations and the GPU price at which each comparison breaks
+even: [publication/FULL-RESULTS.md](publication/FULL-RESULTS.md#7-what-it-costs-and-what-it-saves).
 
 ## Limitations
 
@@ -319,8 +330,9 @@ less per write at lower rates too: 36% less with 8 databases of 4 cores sharing 
 - Throughput on a drive: on the NVMe drive and the SATA SSD at 8 cores, both designs reach
   about the same throughput (0.93–1.02×); the CPU saving and lower latency remain.
 - No compression: the same CPU as the best earlier design.
-- Low write rates: with one database per GPU, RocksDB costs less per write below about 1.3M
-  writes/s.
+- Cost: for any write rate RocksDB can reach (up to 1.60M writes/s on 32 cores), RocksDB is
+  the cheaper way to provision it, including when 4 to 8 databases share one GPU, with the
+  GPU priced as the measured card or its closest AWS equivalent.
 - Write amplification: about 1.4× higher (5.5 against 4.0 bytes written per user byte on
   NVMe). The likely cause is that faster compactions start earlier with less data each.
 - Shared GPU: the shared service does not isolate databases from each other. With one heavy

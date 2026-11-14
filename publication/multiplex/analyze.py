@@ -25,6 +25,8 @@ from make_figures import DOUBLE_COLUMN, INK, finish_axis, save  # noqa: E402
 DATA = HERE.parent / "data" / "multiplex"
 PRICES = json.loads((HERE.parent / "prices.json").read_text())
 CORE_HOUR, GPU_HOUR = PRICES["physical_core_hour"], PRICES["gpu_hour"]
+# M2's service runs on the second server's GPU, which is priced separately.
+GPU_HOUR_REMOTE = PRICES["gpu_hour_second_server"]
 SERVER_CORES = 4
 
 ARMS = {
@@ -45,12 +47,13 @@ def jsonl(path: Path) -> list[dict]:
     return [json.loads(line) for line in path.open()] if path.exists() else []
 
 
-def cost_per_billion(writes_per_second: float, cores: int, databases: int, gpu: bool, server: bool) -> float:
+def cost_per_billion(writes_per_second: float, cores: int, databases: int, gpu: bool, server: bool,
+                     gpu_hour: float = GPU_HOUR) -> float:
     """Dollars per billion writes for one database: its cores, plus its share of the GPU and of the
     service's cores."""
     hourly = cores * CORE_HOUR
     if gpu:
-        hourly += GPU_HOUR / databases
+        hourly += gpu_hour / databases
     if server:
         hourly += SERVER_CORES * CORE_HOUR / databases
     return hourly / (writes_per_second * 3600) * 1e9
@@ -258,7 +261,7 @@ def print_m2(runs) -> dict:
         for n in sorted(n for d, n in runs if d == design):
             r = row(runs[(design, n)])
             r["share"] = r["per_db"] / row(runs[(design, 1)])["per_db"] if (design, 1) in runs else float("nan")
-            r["cost"] = cost_per_billion(r["per_db"], 4, n, design != "native", design != "native")
+            r["cost"] = cost_per_billion(r["per_db"], 4, n, design != "native", design != "native", GPU_HOUR_REMOTE)
             busy = median([t["server_cores_busy"] for t in runs[(design, n)]])
             table[(design, n)] = r
             print(f"| {ARMS[design][0]} | {n} | {r['per_db'] / 1e3:,.0f}k | {r['share']:.2f} | {r['slowest_share']:.2f} | "
@@ -272,7 +275,7 @@ def print_m2(runs) -> dict:
         allowed = table[("native", most)]["cost"] * table[("service-fair", n)]["per_db"] * 3600 / 1e9
         gpu_hour = (allowed - 4 * CORE_HOUR - SERVER_CORES * CORE_HOUR / n) * n
         print(f"\nBreak-even GPU price, service-fair N = {n} against RocksDB N = {most}: ${gpu_hour:.2f} per hour "
-              f"(priced at ${GPU_HOUR:.2f})", end="")
+              f"(priced at ${GPU_HOUR_REMOTE:.2f})", end="")
     print()
     return table
 
