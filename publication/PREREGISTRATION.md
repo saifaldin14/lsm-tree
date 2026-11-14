@@ -1010,10 +1010,33 @@ Three trials completed before the run was stopped:
   `data/multiplex/m5`.
 - **Before the run:** a smoke test of the rebuilt binaries (1 M keys, N = 2, budget set, in a
   separate output directory) must verify every key with no CPU fallback.
-- **Smoke test result (13:10 EST):** both databases verified all 1 M keys with no CPU fallback;
-  the server printed its statistics (123 compaction jobs). The engine fingerprint (RocksDB
-  commit and engine patch hash) is identical to M2's. The CUDA server was rebuilt on zyra,
-  where the build was configured; malphite's default gcc 13 is newer than CUDA 12.3 accepts.
+- **Smoke test result (about 13:06 EST, before the amendment was pushed at 13:07:52):** both
+  databases verified all 1 M keys with no CPU fallback; the server printed its statistics
+  (123 compaction jobs). The engine fingerprint (RocksDB commit and engine patch hash) is
+  identical to M2's. The CUDA server was rebuilt on zyra, where the build was configured;
+  malphite's default gcc 13 is newer than CUDA 12.3 accepts.
+- **Launched** at 13:08:14 EST (`~/rdma-private/m5.sh`, the two commands above), after moving
+  attempt 1's results file aside so none of its trials are reused.
+
+**Attempt 2 stopped (2026-11-14, 13:24 EST; data kept in `data/multiplex/m5-attempt2`).** Four
+trials completed, all in repetition 1:
+- **service-fair, N = 4:** every key verified, no CPU fallback; the server's resident memory
+  stayed at 17–22 GB, and it printed its statistics. Throughput was 776k writes/s per database
+  (744k counting leftover compaction), against M2's 894k (876k). Attempt 1's N = 8 trial, with
+  the old transport and the same GPU sampler, matched M2 (840k against 842k), so the drop
+  comes from the transport change: large buffers are now registered and pinned for every call
+  instead of reused.
+- **service-fair, N = 10:** the server stayed up with no CPU fallback, but 8 of the 10
+  databases stopped with "No space left on device" in pyke's 94 GB `/dev/shm`. The space rule
+  used M2's database size after each run, which is smaller than the size during a run, when
+  compaction has not caught up.
+- **RocksDB, N = 10 and N = 8:** normal (387k and 416k writes/s per database).
+- **GPU sampler:** a sampler loop left over from attempt 1 was still running on malphite, so
+  attempt 2's GPU telemetry has about two rows per second instead of one. Both loops sampled the
+  same GPU, so the utilisation figures are unaffected.
+- **Action:** no M5 outcome is evaluated from attempt 2. The cleanup script
+  (`~/rdma-private/m5clean.sh`) now stops sampler loops by their command line, without
+  matching itself.
 
 ## Changes after data collection
 
