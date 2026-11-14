@@ -134,20 +134,14 @@ def malphite(name):
 
 
 def figure_storage():
-    nvme = malphite("followup/n6")
-    # Reported ratio from the user's own NVMe run; its raw log is not in the repo.
-    nvme["full"]["ops"] = nvme["native"]["ops"] * 1.60
     groups = [("Second server:\ndata in memory", malphite("followup/n1")),
-              ("Second server:\nNVMe drive", nvme)]
+              ("Second server:\nNVMe drive", malphite("followup/n6"))]
     ssd = load_campaign("v3-ssd")
     if ssd.get((NATIVE, 8)) and ssd.get((FULL, 8)):
-        sata = {
+        groups.append(("First server:\nSATA SSD", {
             design: {"ops": median([window_ops(r) for r in ssd[(key, 8)]]) / 1e6,
                      "cpu": median([cpu_us(r) for r in ssd[(key, 8)]])}
-            for design, key in (("native", NATIVE), ("full", FULL))}
-        # Reported ratio from the user's own SATA SSD run; its raw log is not in the repo.
-        sata["full"]["ops"] = sata["native"]["ops"] * 1.45
-        groups.append(("First server:\nSATA SSD", sata))
+            for design, key in (("native", NATIVE), ("full", FULL))}))
     fig, axes = plt.subplots(1, 2, figsize=(DOUBLE_COLUMN, 2.6))
     width = 0.38
     for ax, letter, (metric, ylabel, fmt) in zip(axes, "ab", [("ops", "Throughput (M writes/s)", "{:.2f}"),
@@ -170,7 +164,7 @@ def figure_storage():
         panel_label(ax, letter)
     fig.tight_layout(w_pad=2.5, rect=(0, 0, 1, 0.88))
     design_legend(fig, (NATIVE, FULL), y=0.88, labels=LABELS)
-    save(fig, "fig33_storage_v2")
+    save(fig, "fig33_storage")
 
 
 def cost_cases():

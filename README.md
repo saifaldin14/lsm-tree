@@ -17,7 +17,8 @@ against unmodified RocksDB.
 - One GPU can serve several databases. Eight databases on one machine, sharing a GPU on
   another machine over RDMA, each handle 2.1× more writes than RocksDB on the same cores, at
   36% lower cost per write including the GPU.
-- Gains are small for read-heavy workloads and for data stored without compression.
+- Gains are small for read-heavy workloads and for data stored without compression. When a
+  drive is the limit, throughput is about equal and the gain is lower CPU and latency.
 
 ## Key results
 
@@ -31,7 +32,7 @@ unless stated otherwise. The GPU is in addition to those cores.
 | Whole database | 1.5–1.8× more writes, 1.8–2.2× less CPU per write; no write stalls |
 | Postponed compaction | After 5 minutes of writing, RocksDB needs 11–69 s to finish postponed compaction, GPU offload 1.3–2.6 s; including this time, 1.55–1.86× more writes |
 | Write latency, 99.9th percentile | 3.8× lower at 70% of RocksDB's maximum load, 9.6× lower at 90% (1.75× at 50%) |
-| NVMe drive | 1.60× more writes, 1.70× less CPU per write; 99th-percentile write latency 29× lower at 630k writes/s |
+| NVMe drive | 8 cores: the same writes/s (1.02×, the drive is the limit), 1.70× less CPU per write; 99th-percentile write latency 29× lower at 630k writes/s. 4 cores: 1.43× more writes |
 | Remote GPU over RDMA | Each compaction 4.0–6.5× faster; whole database 1.75× more writes, 2.04× less CPU per write |
 | Several databases on one GPU | 8 databases sharing a remote GPU: 2.1× more writes each, 36% lower cost per write; 4 databases sharing a local GPU: 1.36–1.42× more writes each |
 | Earlier GPU and FPGA designs | 2.0–6.5× less compaction CPU than the best; whole-database gain over RocksDB 1.75×, against 1.14–1.41× for earlier designs |
@@ -200,10 +201,16 @@ Data in memory and on the NVMe drive: a second server (10-core Intel Xeon Silver
 NVIDIA RTX PRO 6000 Blackwell), both designs tuned on it, 8 cores, median of 3 runs. SATA
 SSD: the first server, 8 cores, median of 3 runs. Every key verified in every run.
 
-![Throughput and CPU per write in memory, on NVMe and on a SATA SSD](publication/figures/fig33_storage_v2.png)
+![Throughput and CPU per write in memory, on NVMe and on a SATA SSD](publication/figures/fig33_storage.png)
 
-- Throughput: 1.60× RocksDB on the NVMe drive and 1.45× on the SATA SSD. The raw data for
-  these two runs is not yet in the repository.
+- Throughput: on both drives, the drive is the limit and the two designs reach about the
+  same writes/s: 1.02× RocksDB on NVMe and 0.93× on the SATA SSD (1.04× on 16 cores). On
+  NVMe the GPU version keeps the drive 89–90% busy, writing about 708 MB/s, more than the
+  drive's measured 673 MB/s sequential-write limit; RocksDB keeps it 55% busy. The GPU
+  version writes more bytes per user byte (see Limitations), so it reaches the drive's
+  limit first.
+- With 4 cores on NVMe, where the CPU rather than the drive is the limit, the GPU version
+  handles 1.43× more writes (713k against 498k writes/s, 2 runs per design).
 - CPU per write: 1.7× lower on NVMe, 1.9× lower on the SATA SSD.
 - At a fixed 630k writes/s on NVMe, the 99th-percentile write latency is 17 ms with the GPU
   version and 503 ms with RocksDB (median of 2 runs per load; log scale):
@@ -309,6 +316,8 @@ less per write at lower rates too: 36% less with 8 databases of 4 cores sharing 
 ## Limitations
 
 - Read-heavy workloads: 1.02–1.10× at 85–95% reads.
+- Throughput on a drive: on the NVMe drive and the SATA SSD at 8 cores, both designs reach
+  about the same throughput (0.93–1.02×); the CPU saving and lower latency remain.
 - No compression: the same CPU as the best earlier design.
 - Low write rates: with one database per GPU, RocksDB costs less per write below about 1.3M
   writes/s.

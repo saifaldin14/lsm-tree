@@ -332,9 +332,6 @@ def figure_cost(headline):
 
 NVME_RUNS = [("followup/n1", "Data in memory"), ("followup/n6", "NVMe drive,\nsame I/O path"),
              ("retune/confirm", "NVMe drive,\nRocksDB reads direct")]
-# Throughput (M writes/s) for the NVMe same-I/O-path run, reported from the author's own test
-# (1.60x). The raw log is not yet in the repository, so these replace the n6 throughput values.
-REPORTED_NVME_OPS = {"native": 0.822, "full": 1.315}
 
 
 def figure_nvme():
@@ -355,9 +352,6 @@ def figure_nvme():
             entry = runs.setdefault(DESIGN[record["trial"]["design"]], {"ops": [], "cpu": []})
             entry["ops"].append(result["throughput"]["ops_per_second"] / 1e6)
             entry["cpu"].append(result["process_cpu"]["cpu_microseconds_per_op"])
-        if name == "followup/n6":
-            for design, ops in REPORTED_NVME_OPS.items():
-                runs[DESIGN[design]]["ops"] = [ops]
         for metric in groups:
             if metric == "ops" and name == "followup/n1":
                 continue
@@ -367,18 +361,10 @@ def figure_nvme():
     fig, axes = plt.subplots(1, 2, figsize=(DOUBLE_COLUMN, 3.0), gridspec_kw={"width_ratios": [1, 1.25]})
     for ax, letter, (metric, ylabel, fmt) in zip(axes, "ab", [("ops", "Throughput (M writes/s)", lambda v: f"{v:.3f}"),
                                                             ("cpu", "CPU per write (µs)", lambda v: f"{v:.1f}")]):
-        top = grouped_bars(ax, groups[metric], (NATIVE, FULL), None, fmt, size=6.4)
+        grouped_bars(ax, groups[metric], (NATIVE, FULL), None, fmt, size=6.4)
         ax.tick_params(axis="x", labelsize=6.4)
         finish_axis(ax, ylabel)
         panel_label(ax, letter)
-        if metric == "ops":
-            native, full = REPORTED_NVME_OPS["native"], REPORTED_NVME_OPS["full"]
-            bracket_y = full * 1.23
-            ax.plot([-0.2, -0.2, 0.2, 0.2], [native * 1.22, bracket_y, bracket_y, full * 1.1],
-                    color=INK, linewidth=0.8)
-            ax.text(0, bracket_y * 1.02, f"{full / native:.2f}× more writes", ha="center", va="bottom",
-                    fontsize=7.5, fontweight="bold", color=INK)
-            ax.set_ylim(0, bracket_y * 1.22)
     fig.tight_layout(w_pad=2.5, rect=(0, 0, 1, 0.9))
     design_legend(fig, (NATIVE, FULL), y=0.9, labels=LABELS)
     save(fig, "fig25_nvme")

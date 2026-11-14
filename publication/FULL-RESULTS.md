@@ -329,18 +329,21 @@ measured, every key verified. Median of 3 runs, paired 95% bootstrap intervals.
 |---|---|---|---|
 | **Data in memory:** writes/s | 0.948M | 1.620M | **1.70×** [1.62, 1.72] |
 | **Data in memory:** CPU per write | 7.73 µs | 3.72 µs | **2.06× less** [1.91, 2.08] |
-| **NVMe drive, same I/O path:** writes/s | 0.822M | 1.315M | **1.60×** |
+| **NVMe drive, same I/O path:** writes/s | 0.822M | 0.838M | 1.02× [1.00, 1.03] |
 | **NVMe drive, same I/O path:** CPU per write | 8.19 µs | 4.81 µs | **1.70× less** [1.64, 1.74] |
 
 The NVMe rows use the same I/O path for both designs (reads and writes through the page
 cache).
 
-- **Throughput on the NVMe drive.** With data in memory, ours gains 1.70×. On the NVMe
-  drive with the same I/O path, ours gains 1.60× in writes/s (an independent test by the
-  author; the 0.822M RocksDB figure is from the registered runs above). In an earlier run
-  where RocksDB read compaction input directly from the drive, ours gained only 1.07×
-  (0.909M against 0.975M writes/s), and both designs reached about the drive's measured
-  limit (`fio`, same read/write mix: 922 MB/s at RocksDB's mix, 741 MB/s at ours).
+- **On the NVMe drive, the drive is the limit, not the machine.** With data in memory,
+  ours gains 1.70×. On the NVMe drive with the same I/O path, ours writes about 708 MB/s
+  with the drive 89–90% busy, more than the drive's measured sequential-write limit
+  (`fio`, 673 MB/s); RocksDB writes about 455 MB/s with the drive 55% busy. Ours writes
+  more bytes per user byte (below), so the drive caps it at about RocksDB's throughput.
+  In an earlier run where RocksDB read compaction input directly from the drive, ours
+  gained 1.07× (0.909M against 0.975M writes/s), and both designs reached about the
+  drive's measured limit (`fio`, same read/write mix: 922 MB/s at RocksDB's mix, 741 MB/s
+  at ours).
 - **CPU saving on NVMe:** 1.70× less CPU per write with the
   same I/O path, and 1.55× (6.96 against 4.48 µs) when RocksDB read directly from the
   drive in the earlier configuration.
@@ -353,8 +356,7 @@ cache).
   single-compaction check matched RocksDB in all 16 repetitions with no CPU fallback.
 
 **What reached the drive in the archived N6 runs.** These device measurements belong to
-the registered 0.822M versus 0.838M writes/s campaign, not the independent 1.315M/s run
-reported above. The figure separates bandwidth, IOPS and device busy time. The top row
+the N6 runs in the table above (0.822M against 0.838M writes/s). The figure separates bandwidth, IOPS and device busy time. The top row
 shows block 0; the bottom row shows medians of the three per-run means. Samples are
 aligned to each recorded measurement window at approximately one-second resolution.
 
@@ -643,10 +645,11 @@ The light databases kept their 363k writes/s throughout under both policies.
 
 ## 12. What this does not show
 
-- **Storage-bound systems.** Most results put the data in memory (`/dev/shm`). On a SATA
-  SSD, where the drive is the limit, throughput is equal (0.93× on 8 cores, 1.04× on 16).
-  On NVMe, the gain was 1.60× in writes/s.
-  The CPU saving remains (1.70 to 2.0×).
+- **Storage-bound systems.** Most results put the data in memory (`/dev/shm`). When the
+  drive is the limit, throughput gains are capped by the drive: equal on a SATA SSD (0.93×
+  on 8 cores, 1.04× on 16), 1.02× on NVMe at 8 cores. On NVMe at 4 cores, where the CPU
+  is the limit, ours gained 1.43× (H31, 2 runs per design; section 8). The CPU saving
+  remains (1.70 to 2.0×).
 - **Costs.** Higher write amplification, including 3.79 against 2.65 in H31's trigger
   comparison (section 8); 1 GiB of
   pinned host memory per GPU engine plus GPU memory.
