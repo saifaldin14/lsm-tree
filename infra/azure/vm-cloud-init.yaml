@@ -1,0 +1,7 @@
+#cloud-config
+# Docker for the C4 plain-VM runs (infra/azure/vms.sh); azureuser may run it without sudo.
+package_update: true
+packages: [docker.io, numactl]
+runcmd:
+  - systemctl enable --now docker
+  - usermod -aG docker azureuser

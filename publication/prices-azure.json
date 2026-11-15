@@ -1,0 +1,36 @@
+{
+ "source": "https://prices.azure.com/api/retail/prices (Linux, pay-as-you-go)",
+ "retrieved": "2026-11-15T15:00:23+00:00",
+ "region": "southcentralus",
+ "aks_control_plane": "free tier, no charge",
+ "sizes": {
+  "Standard_B2s": {
+   "usd_per_hour": 0.0499,
+   "currency": "USD",
+   "meter": "B2s",
+   "product": "Virtual Machines BS Series",
+   "effective": "2025-10-01T00:00:00Z"
+  },
+  "Standard_D16ads_v5": {
+   "usd_per_hour": 0.989,
+   "currency": "USD",
+   "meter": "D16ads v5",
+   "product": "Virtual Machines Dadsv5 Series",
+   "effective": "2021-11-01T00:00:00Z"
+  },
+  "Standard_D16ds_v5": {
+   "usd_per_hour": 1.085,
+   "currency": "USD",
+   "meter": "D16ds v5",
+   "product": "Virtual Machines Ddsv5 Series",
+   "effective": "2021-11-01T00:00:00Z"
+  },
+  "Standard_D16s_v5": {
+   "usd_per_hour": 0.922,
+   "currency": "USD",
+   "meter": "D16s v5",
+   "product": "Virtual Machines Dsv5 Series",
+   "effective": "2021-11-01T00:00:00Z"
+  }
+ }
+}

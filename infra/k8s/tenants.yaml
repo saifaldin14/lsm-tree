@@ -1,0 +1,50 @@
+# Database slots: one Guaranteed pod per database, whole vCPUs (kubelet cpuManagerPolicy=static),
+# spread evenly over the tenant nodes. /golden holds the preloaded database on the node's disk;
+# /work is memory (tmpfs) for the copy each trial runs on, like /dev/shm on the lab cluster.
+# Rendered by publication/cloud/cloud_campaign.py (placeholders __NAME__).
+apiVersion: v1
+kind: Service
+metadata:
+  name: db
+  namespace: lsm
+spec:
+  clusterIP: None
+  selector: {app: lsm-db}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: db
+  namespace: lsm
+spec:
+  serviceName: db
+  replicas: __DB_SLOTS__
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels: {app: lsm-db}
+  template:
+    metadata:
+      labels: {app: lsm-db}
+    spec:
+      nodeSelector: {lsm/role: tenant}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels: {app: lsm-db}
+      terminationGracePeriodSeconds: 5
+      containers:
+        - name: db
+          image: __IMAGE__
+          resources:
+            requests: {cpu: "__DB_CPUS__", memory: __DB_MEMORY__}
+            limits: {cpu: "__DB_CPUS__", memory: __DB_MEMORY__}
+          volumeMounts:
+            - {name: golden, mountPath: /golden}
+            - {name: work, mountPath: /work}
+      volumes:
+        - name: golden
+          emptyDir: {}
+        - name: work
+          emptyDir: {medium: Memory, sizeLimit: __WORK_SIZE__}

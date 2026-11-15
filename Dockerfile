@@ -48,9 +48,11 @@ RUN mkdir -p /opt/lsm/bin /opt/lsm/lib \
 FROM ${RUN_BASE}
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      numactl procps iproute2 ca-certificates python3 \
+      numactl procps iproute2 ca-certificates python3 tini \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /opt/lsm /opt/lsm
 ENV PATH=/opt/lsm/bin:$PATH LD_LIBRARY_PATH=/opt/lsm/lib
 RUN for b in /opt/lsm/bin/*; do if ldd "$b" | grep -q 'not found'; then ldd "$b"; exit 1; fi; done
+# tini reaps the servers and benchmarks that experiments start with kubectl exec or docker exec.
+ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["sleep", "infinity"]

@@ -1104,6 +1104,76 @@ failures):**
 - **Cost (not a hypothesis):** at N = 8, $0.258 against RocksDB's $0.246 per billion writes
   (5% more) at the RTX PRO 6000 price ($3.01/h); break-even at $2.73/h.
 
+### Cloud: the compaction service on Kubernetes, Azure CPU track (registered 2026-11-15, before any cloud run)
+
+Every earlier result comes from one lab cluster with RDMA. These runs deploy the shared service
+on a public cloud with Kubernetes. The subscription available (Visual Studio Enterprise) cannot
+create GPU VMs: every NC, NV and ND size is "NotAvailableForSubscription", an offer restriction
+that quota requests do not lift. So the service runs the CPU backend (`cpu_merge`), bounded and
+ordered by the same job scheduler as the GPU engines (`--engines K --scheduler P`). These runs
+therefore test deployment, compaction shipped over commodity cloud TCP, isolation, elasticity
+with drain, and what Kubernetes costs; GPU results stay the lab results. No absolute comparison
+with the lab cluster is made (different CPUs, network and database size). A GPU track on the
+Digital Research Alliance of Canada cloud will be registered separately, once its GPU is known.
+
+- **Platform** (`infra/azure/aks.sh`, `infra/k8s`, docs/cloud.md): AKS, free control plane,
+  southcentralus. Service node Standard_D16ads_v5 (16 vCPUs, 64 GB), tenant nodes
+  Standard_D16ds_v5 and Standard_D16s_v5 (16 vCPUs each), system node Standard_B2s; kubelet
+  `cpuManagerPolicy: static`. Each database is a Guaranteed pod with 4 whole vCPUs (2 physical
+  cores with their hyperthreads; on the lab cluster a database had 4 physical cores) and 16 GiB,
+  at most 3 per tenant node, spread evenly, so N <= 6; its data is on a memory `emptyDir` (as
+  `/dev/shm` on the lab cluster). The service pod has 14 whole vCPUs and 32 GiB. Image:
+  `ghcr.io/saifaldin14/lsm-tree:cpu-<commit>` (Dockerfile; RocksDB built for x86-64-v3), the
+  commit recorded with every trial. Pay-as-you-go prices archived in `prices-azure.json`.
+- **Protocol** (`publication/cloud/cloud_campaign.py`; records in the r9 format, analysed with
+  `multiplex/analyze.py`): M5 settings (`R9_FLAGS`: tuned 4-core settings, batches of 100, WAL
+  off, LZ4, 128-byte values), 10 M keys per database preloaded once per slot and copied into
+  memory before every trial, 30 s warm-up plus 120 s, every key verified, 3 repetitions in
+  shuffled order (seed 2000 + repetition), the service restarted for every trial, clients over
+  TCP with 4 connections each.
+- **C0 (engines, not a hypothesis):** service-fair at N = 6 with K in {4, 7, 14}, one
+  repetition each. **Rule:** C1, C2 and C4 use the smallest K whose backlog-inclusive writes/s
+  per database is at least 95% of the best K's; C3 gives each of its two replicas half of it
+  (rounded up).
+- **C1 (capacity over cloud TCP):** service-fair at N in {1, 2, 4, 6}; RocksDB at N in {1, 4, 6}.
+- **C2 (isolation, the service on its own node):** with K = 2 (deliberately contended), one
+  heavy tenant (closed loop) and three light tenants (open loop at 50% of C1's service-fair
+  N = 1 median writes/s in the window, rounded down to 1,000), under fair and under fifo, and one
+  light tenant alone at the same rate under each policy. 3 repetitions.
+- **C3 (elastic):** N = 6 databases reach the service through a Kubernetes Service
+  (`infra/k8s/compaction-service.yaml`) with `LSM_REMOTE_JOBS_PER_CONNECTION=4`. Replicas of 7
+  vCPUs each (two fit on the service node), `--drain-seconds 60`. One replica at the start; a
+  second is added 60 s after the warm-up and one is removed at 150 s (it drains); writing stops
+  at 240 s. 3 repetitions. Per-second throughput from the databases' timelines.
+- **C4 (what Kubernetes costs):** C1's service-fair and RocksDB at N = 4 on plain VMs of the
+  same sizes in the same region (`infra/azure/vms.sh`: the same image in Docker, each database
+  pinned to 4 vCPUs, the service to 14), 3 repetitions, against C1's N = 4 on AKS.
+- **Reported:** as M5 (writes/s in the window and backlog-inclusive, share of N = 1, leftover
+  compaction, service input GiB/s, service cores busy, CPU fallbacks, retries, p99/p99.9), plus
+  pod placement and, for C3, retries, recycled connections and refused merges per replica.
+- **Cost (C5, not a hypothesis):** per billion writes, each database charged its 4/16 of its
+  tenant node and 1/N of the service node, against RocksDB charged its 4/16; and the service node
+  price at which the service breaks even with RocksDB.
+
+Hypotheses (medians over repetitions; backlog-inclusive writes/s per database unless stated):
+
+- **Z1 (offload over cloud TCP):** at N = 1, the service gives at least 1.3x RocksDB's
+  writes/s, with zero CPU fallbacks.
+- **Z2 (sharing):** at N = 6, the service gives at least RocksDB's writes/s at N = 6, with zero
+  CPU fallbacks in every C1 trial.
+- **Z3 (isolation):** in C2 under fair, the light tenants' worst p99.9 write latency is within
+  1.5x their solo value; under fifo it is not.
+- **Z4 (elastic):** in every C3 repetition, zero CPU fallbacks across scale-out and the drained
+  scale-in; and total writes/s in the 60 s after the second replica is ready is at least 10% above
+  the 60 s before the scale-out.
+- **Z5 (Kubernetes):** at N = 4, AKS is within 5% of plain VMs for both the service and RocksDB.
+
+Decision rules: the capacity of one 14-vCPU CPU service is reported as in M5 (largest N at or
+above 80% of N = 1 with zero fallbacks). If Z1 fails, the paper does not claim that offloading
+compaction over commodity cloud networking helps. If Z4 fails because of fallbacks, the paper
+does not claim drain-safe scaling. A trial that fails for an infrastructure reason (node lost,
+image pull, quota) is rerun and reported.
+
 ## Changes after data collection
 
 - **Cost analysis repriced (2026-11-14; analysis change only, no new runs).** Every cost

@@ -1,0 +1,48 @@
+# The compaction service as a Kubernetes workload (C3, elastic): replicas behind a ClusterIP
+# Service. Scaling in sends SIGTERM; the server then refuses new merges with Busy (clients retry
+# them on a new connection, which the Service sends to another replica), finishes running merges
+# within --drain-seconds, prints its statistics and exits. Clients set
+# LSM_REMOTE_JOBS_PER_CONNECTION so jobs spread over replicas added later.
+apiVersion: v1
+kind: Service
+metadata:
+  name: compaction
+  namespace: lsm
+spec:
+  selector: {app: lsm-compaction}
+  ports:
+    - {name: rpc, port: 7471, targetPort: 7471}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: compaction
+  namespace: lsm
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: lsm-compaction}
+  template:
+    metadata:
+      labels: {app: lsm-compaction}
+    spec:
+      nodeSelector: {lsm/role: service}
+      tolerations:
+        - {key: lsm/role, operator: Equal, value: service, effect: NoSchedule}
+      terminationGracePeriodSeconds: __GRACE_SECONDS__
+      containers:
+        - name: server
+          image: __IMAGE__
+          command: [/usr/bin/tini, --, lsm_compaction_server, --listen, "tcp://0.0.0.0:7471",
+                    --backend, __BACKEND__, --engines, "__ENGINES__", --scheduler, __POLICY__,
+                    --drain-seconds, "__DRAIN_SECONDS__"]
+          env:
+            - {name: LSM_SCHEDULER_LOG, value: "1"}
+          ports:
+            - {containerPort: 7471, name: rpc}
+          readinessProbe:
+            tcpSocket: {port: 7471}
+            periodSeconds: 2
+          resources:
+            requests: {cpu: "__SVC_CPUS__", memory: __SVC_MEMORY__}
+            limits: {cpu: "__SVC_CPUS__", memory: __SVC_MEMORY____GPU_LIMIT__}

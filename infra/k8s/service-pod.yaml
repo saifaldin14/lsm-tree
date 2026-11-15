@@ -1,0 +1,21 @@
+# The compaction service's node for experiments that restart the server every trial (C1, C2,
+# C4): an idle Guaranteed pod on the service node; the driver starts lsm_compaction_server in it
+# with kubectl exec and reaches it at the pod's IP. The GPU_LIMIT placeholder adds nvidia.com/gpu
+# on GPU nodes.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: svc
+  namespace: lsm
+  labels: {app: lsm-svc}
+spec:
+  nodeSelector: {lsm/role: service}
+  tolerations:
+    - {key: lsm/role, operator: Equal, value: service, effect: NoSchedule}
+  terminationGracePeriodSeconds: 5
+  containers:
+    - name: svc
+      image: __IMAGE__
+      resources:
+        requests: {cpu: "__SVC_CPUS__", memory: __SVC_MEMORY__}
+        limits: {cpu: "__SVC_CPUS__", memory: __SVC_MEMORY____GPU_LIMIT__}
