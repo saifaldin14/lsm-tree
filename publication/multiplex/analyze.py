@@ -4,7 +4,7 @@
   python3 publication/multiplex/analyze.py
 
 Reads publication/data/multiplex/{m0,m1,m2,m3,m4}, prints the tables and the outcome of
-hypotheses X1 to X5, and writes publication/figures/fig42 to fig47. Every number is computed
+hypotheses X1 to X5, and writes publication/figures/fig42 to fig48. Every number is computed
 from the raw records; a campaign whose data is missing is skipped.
 """
 
@@ -626,6 +626,44 @@ def m5_hypotheses() -> None:
                       f"{counts}: {max(good) if good else 'none'}.")
 
 
+def figure_m5() -> None:
+    """M5 capacity curve (fig48). Top: per-database writes/s counted to the end of the leftover
+    compaction, for the service (K = 4) and RocksDB on the same cores. Bottom: the GPU's mean
+    utilisation inside the window."""
+    path = DATA / "m5" / "r9-capacity.jsonl"
+    if not path.exists():
+        return
+    table = {key: row(runs) for key, runs in m2(path).items()}
+    fig, (ax, gpu_ax) = plt.subplots(2, 1, figsize=(DOUBLE_COLUMN * 0.5, 2.9), sharex=True,
+                                     gridspec_kw={"height_ratios": [2.6, 1]})
+    service = sorted(n for d, n in table if d == "service-fair")
+    for design in ("native", "service-fair"):
+        _, colour, marker = ARMS[design]
+        counts = sorted(n for d, n in table if d == design)
+        ax.plot(counts, [table[(design, n)]["with_backlog"] / 1e3 for n in counts], "--" if design == "native" else "-",
+                color=colour, marker=marker, markersize=4, linewidth=1.3,
+                label="RocksDB" if design == "native" else "Shared GPU service (4 engines)", zorder=3)
+    for n in service:
+        if ("native", n) in table:
+            gain = table[("service-fair", n)]["with_backlog"] / table[("native", n)]["with_backlog"]
+            ax.annotate(f"{gain:.2f}×", (n, table[("service-fair", n)]["with_backlog"] / 1e3), xytext=(0, 5),
+                        textcoords="offset points", ha="center", va="bottom", fontsize=7, fontweight="bold", color=INK)
+    ax.set_ylim(0, 1100)
+    finish_axis(ax, "Writes/s per database\n(thousands)")
+    ax.legend(fontsize=6.5, loc="lower left", frameon=False)
+    busy = [table[("service-fair", n)]["gpu"] for n in service]
+    gpu_ax.bar(service, busy, width=0.8, color="#D55E00", alpha=0.35)
+    for n, value in zip(service, busy):
+        gpu_ax.annotate(f"{value:.0f}%", (n, value), xytext=(0, 1), textcoords="offset points", ha="center",
+                        va="bottom", fontsize=6.5, color=INK)
+    gpu_ax.set_ylim(0, 130)
+    gpu_ax.set_yticks([0, 50, 100])
+    gpu_ax.set_xticks(service)
+    gpu_ax.set_xlabel("Databases sharing one remote GPU (4 cores each)")
+    finish_axis(gpu_ax, "GPU busy (%)")
+    fig.tight_layout()
+    save(fig, "fig48_capacity_m5")
+
 def main() -> int:
     capacity = m0()
     if capacity:
@@ -651,6 +689,7 @@ def main() -> int:
             print_m2(m2(capacity_path),
                      f"M5: remote capacity curve, {engines} engines, with GPU telemetry (medians of 3 repetitions)")
     m5_hypotheses()
+    figure_m5()
     isolation = print_m3(m3())
     figure_isolation(isolation)
     figure_burst(m4())
