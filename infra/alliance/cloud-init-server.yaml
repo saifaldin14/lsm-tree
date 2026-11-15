@@ -1,0 +1,8 @@
+#cloud-config
+# k3s server (control plane only: tainted, runs no experiment pods). __TOKEN__ is filled by up.sh.
+package_update: true
+packages: [curl]
+runcmd:
+  - curl -sfL https://get.k3s.io | INSTALL_K3S_CHANNEL=stable K3S_TOKEN=__TOKEN__ sh -s - server
+      --disable traefik --disable servicelb --write-kubeconfig-mode 644
+      --node-taint node-role.kubernetes.io/control-plane=true:NoSchedule --tls-san __PUBLIC_IP__

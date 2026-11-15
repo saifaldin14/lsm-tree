@@ -1,0 +1,63 @@
+# NVIDIA device plugin for the GPU (service) node, k3s with nvidia as the default runtime
+# (infra/alliance). The CONFIG placeholder selects the sharing mode from the ConfigMap:
+#   exclusive     one pod per GPU (nvidia.com/gpu: 1)
+#   time-slicing  the GPU advertised REPLICAS times; pods share it by time-slicing
+# Rendered by cloud_campaign.py or by hand (sed); re-apply to switch modes, then wait for the
+# node's nvidia.com/gpu capacity to change.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nvidia-device-plugin
+  namespace: kube-system
+data:
+  exclusive: |
+    version: v1
+    flags:
+      migStrategy: none
+  time-slicing: |
+    version: v1
+    flags:
+      migStrategy: none
+    sharing:
+      timeSlicing:
+        resources:
+          - name: nvidia.com/gpu
+            replicas: __REPLICAS__
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nvidia-device-plugin
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels: {name: nvidia-device-plugin}
+  updateStrategy: {type: RollingUpdate}
+  template:
+    metadata:
+      labels: {name: nvidia-device-plugin}
+      annotations: {lsm/config: __CONFIG__}
+    spec:
+      nodeSelector: {lsm/role: service}
+      tolerations:
+        - {key: lsm/role, operator: Exists, effect: NoSchedule}
+        - {key: nvidia.com/gpu, operator: Exists, effect: NoSchedule}
+      priorityClassName: system-node-critical
+      containers:
+        - name: plugin
+          image: nvcr.io/nvidia/k8s-device-plugin:v0.17.0
+          env:
+            - {name: CONFIG_FILE, value: /config/__CONFIG__}
+            - {name: NVIDIA_VISIBLE_DEVICES, value: all}
+            - {name: NVIDIA_DRIVER_CAPABILITIES, value: "compute,utility"}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: device-plugin, mountPath: /var/lib/kubelet/device-plugins}
+            - {name: config, mountPath: /config}
+      volumes:
+        - name: device-plugin
+          hostPath: {path: /var/lib/kubelet/device-plugins}
+        - name: config
+          configMap: {name: nvidia-device-plugin}

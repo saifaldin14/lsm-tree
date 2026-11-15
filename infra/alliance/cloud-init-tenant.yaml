@@ -1,0 +1,10 @@
+#cloud-config
+# k3s agent for database slots: static CPU manager so Guaranteed pods get whole vCPUs.
+package_update: true
+packages: [curl]
+runcmd:
+  - until curl -sk https://__SERVER_IP__:6443/ping >/dev/null; do sleep 5; done
+  - curl -sfL https://get.k3s.io | INSTALL_K3S_CHANNEL=stable K3S_URL=https://__SERVER_IP__:6443 K3S_TOKEN=__TOKEN__ sh -s - agent
+      --node-label lsm/role=tenant
+      --kubelet-arg=cpu-manager-policy=static --kubelet-arg=kube-reserved=cpu=500m,memory=1Gi
+      --kubelet-arg=system-reserved=cpu=500m,memory=1Gi
