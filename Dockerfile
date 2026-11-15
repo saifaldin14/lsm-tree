@@ -1,5 +1,6 @@
 # Container image for the cloud experiments (docs/cloud.md): the benchmark, the compaction server
-# and the compaction bench, built for x86-64-v3 (AVX2; every Azure v5 and Alliance cloud host).
+# and the compaction bench, built for -march=haswell (AVX2, SSE4.2 and PCLMUL, which RocksDB's
+# CRC32C needs; every Azure v5 and Alliance cloud host has them).
 #   CPU:  docker build -t lsm-lab:cpu .
 #   CUDA: docker build -t lsm-lab:cuda --build-arg VARIANT=cuda \
 #           --build-arg BUILD_BASE=nvidia/cuda:12.4.1-devel-ubuntu22.04 \
@@ -7,10 +8,8 @@
 ARG BUILD_BASE=ubuntu:24.04
 ARG RUN_BASE=ubuntu:24.04
 
-FROM ${BUILD_BASE} AS build
+FROM ${BUILD_BASE} AS deps
 ARG VARIANT=cpu
-ARG CUDA_ARCHITECTURES=70;75;80;86;89;90
-ARG COMMIT=unknown
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
       build-essential git curl ca-certificates zip unzip tar pkg-config python3 python3-pip python3-venv \
@@ -31,9 +30,15 @@ RUN --mount=type=cache,target=/root/.cache/vcpkg-downloads \
     VCPKG_DOWNLOADS=/root/.cache/vcpkg-downloads VCPKG_MAX_CONCURRENCY=$(nproc) bash scripts/bootstrap.sh \
     && rm -rf /root/.cache/lsm-lab/*/buildtrees /root/.cache/lsm-lab/*/packages
 RUN if [ "$VARIANT" = cuda ]; then bash scripts/bootstrap-cuda.sh; fi
+
+# Separate stage so CI can cache the dependencies even when a later step fails.
+FROM deps AS build
+ARG VARIANT=cpu
+ARG CUDA_ARCHITECTURES=70;75;80;86;89;90
+ARG COMMIT=unknown
 COPY . .
 RUN cuda=OFF; if [ "$VARIANT" = cuda ]; then cuda=ON; export CC=$CC_cuda CXX=$CXX_cuda CUDAHOSTCXX=$CXX_cuda; fi; \
-    cmake --preset dev -DLSM_ROCKSDB_PORTABLE=x86-64-v3 -DLSM_ENABLE_RDMA=OFF -DLSM_ENABLE_CUDA=$cuda \
+    cmake --preset dev -DLSM_ROCKSDB_PORTABLE=haswell -DLSM_ENABLE_RDMA=OFF -DLSM_ENABLE_CUDA=$cuda \
       "-DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHITECTURES}" \
     && cmake --build build/dev -j "$(nproc)" --target lsm_system_bench lsm_compaction_server \
          lsm_compaction_bench lsm_rpc_bench lsm_drain_tests lsm_scheduler_tests

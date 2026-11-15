@@ -1123,7 +1123,7 @@ Digital Research Alliance of Canada cloud will be registered separately, once it
   cores with their hyperthreads; on the lab cluster a database had 4 physical cores) and 16 GiB,
   at most 3 per tenant node, spread evenly, so N <= 6; its data is on a memory `emptyDir` (as
   `/dev/shm` on the lab cluster). The service pod has 14 whole vCPUs and 32 GiB. Image:
-  `ghcr.io/saifaldin14/lsm-tree:cpu-<commit>` (Dockerfile; RocksDB built for x86-64-v3), the
+  `ghcr.io/saifaldin14/lsm-tree:cpu-<commit>` (Dockerfile; RocksDB built for `-march=haswell`[^cloud-march]), the
   commit recorded with every trial. Pay-as-you-go prices archived in `prices-azure.json`.
 - **Protocol** (`publication/cloud/cloud_campaign.py`; records in the r9 format, analysed with
   `multiplex/analyze.py`): M5 settings (`R9_FLAGS`: tuned 4-core settings, batches of 100, WAL
@@ -1154,6 +1154,10 @@ Digital Research Alliance of Canada cloud will be registered separately, once it
 - **Cost (C5, not a hypothesis):** per billion writes, each database charged its 4/16 of its
   tenant node and 1/N of the service node, against RocksDB charged its 4/16; and the service node
   price at which the service breaks even with RocksDB.
+
+[^cloud-march]: Changed from `x86-64-v3` on 2026-11-15, before any cloud run: that level lacks
+    PCLMUL, which RocksDB's CRC32C code uses, so the image did not compile. `haswell` adds PCLMUL
+    and nothing the cloud hosts lack.
 
 Hypotheses (medians over repetitions; backlog-inclusive writes/s per database unless stated):
 

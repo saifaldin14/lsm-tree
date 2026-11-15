@@ -39,6 +39,17 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - id: name
         run: echo "image=ghcr.io/$(echo '${{ github.repository_owner }}' | tr A-Z a-z)/lsm-tree" >> "$GITHUB_OUTPUT"
+      - name: Dependencies stage (cached on its own)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: deps
+          build-args: |
+            VARIANT=${{ matrix.variant }}
+            BUILD_BASE=${{ matrix.build_base }}
+            RUN_BASE=${{ matrix.run_base }}
+          cache-from: type=gha,scope=deps-${{ matrix.variant }}
+          cache-to: type=gha,scope=deps-${{ matrix.variant }},mode=max
       - uses: docker/build-push-action@v6
         with:
           context: .
@@ -51,5 +62,7 @@ jobs:
           tags: |
             ${{ steps.name.outputs.image }}:${{ matrix.variant }}-${{ github.sha }}
             ${{ steps.name.outputs.image }}:${{ matrix.variant }}-latest
-          cache-from: type=gha,scope=${{ matrix.variant }}
+          cache-from: |
+            type=gha,scope=deps-${{ matrix.variant }}
+            type=gha,scope=${{ matrix.variant }}
           cache-to: type=gha,scope=${{ matrix.variant }},mode=max
