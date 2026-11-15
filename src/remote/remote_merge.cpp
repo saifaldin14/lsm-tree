@@ -100,6 +100,8 @@ namespace lsm_lab
                 return rocksdb::Status::InvalidArgument("remote: " + message);
             case Code::kIOError:
                 return rocksdb::Status::IOError("remote: " + message);
+            case Code::kBusy:
+                return rocksdb::Status::Busy("remote: " + message);
             default:
                 return rocksdb::Status::Aborted("remote: " + message);
             }
@@ -174,6 +176,8 @@ namespace lsm_lab
                 const char *configured = std::getenv("LSM_REMOTE_CONNECTIONS");
                 const auto parsed = configured == nullptr ? 0 : std::strtoull(configured, nullptr, 10);
                 limit_ = parsed == 0 ? 2 : static_cast<std::size_t>(parsed);
+                const char *retries = std::getenv("LSM_REMOTE_RETRIES");
+                retries_ = retries == nullptr ? 2 : std::max(0, std::atoi(retries));
                 // Connect once up front so a missing server fails fast.
                 idle_.push_back(connect_rpc(endpoint_));
                 created_ = 1;
@@ -182,6 +186,7 @@ namespace lsm_lab
 
             std::string name() const override { return "remote_merge"; }
             std::string device() const override { return description_; }
+            nlohmann::json extra_statistics() const override { return {{"merge_remote_retries", retried_.load()}}; }
 
         protected:
             rocksdb::Status execute(const std::string &input, const std::vector<BlockDescriptor> &blocks,
@@ -193,6 +198,24 @@ namespace lsm_lab
             rocksdb::Status execute_merge(const rocksdb::CompactionMergeRequest &request,
                                           std::unique_ptr<rocksdb::CompactionMergedInput> *output,
                                           MergeRunStats *stats) override
+            {
+                // A merge request carries all of its input, so a call that failed on its connection,
+                // or that a draining server refused, is retried on a new connection.
+                rocksdb::Status status;
+                for (int attempt = 0;; ++attempt)
+                {
+                    bool retry = false;
+                    status = attempt_merge(request, output, stats, &retry);
+                    if (!retry || attempt >= retries_)
+                        return status;
+                    retried_.fetch_add(1);
+                }
+            }
+
+        private:
+            rocksdb::Status attempt_merge(const rocksdb::CompactionMergeRequest &request,
+                                          std::unique_ptr<rocksdb::CompactionMergedInput> *output,
+                                          MergeRunStats *stats, bool *retry)
             {
                 auto client = acquire();
                 bool healthy = false;
@@ -231,9 +254,11 @@ namespace lsm_lab
                 std::size_t reply_bytes = 0;
                 status = client->call(total, &reply, &reply_bytes);
                 if (!status.ok())
+                {
+                    *retry = true;
                     return status;
+                }
                 const auto remote_ns = elapsed_ns(call_started);
-                healthy = true;
                 ReplyHeader answer;
                 if (reply_bytes < sizeof(answer))
                     return rocksdb::Status::Corruption("short remote merge reply");
@@ -241,6 +266,13 @@ namespace lsm_lab
                 if (answer.magic != ReplyHeader{}.magic)
                     return rocksdb::Status::Corruption("bad remote merge reply");
                 const std::string message(reply.get() + sizeof(answer), answer.message_bytes);
+                if (answer.status == static_cast<std::uint32_t>(rocksdb::Status::Code::kBusy))
+                {
+                    // The server is draining: drop this connection so the retry connects afresh.
+                    *retry = true;
+                    return make_status(answer.status, message);
+                }
+                healthy = true;
                 if (answer.status != 0)
                     return make_status(answer.status, message);
                 if (stats != nullptr)
@@ -258,7 +290,6 @@ namespace lsm_lab
                 return rocksdb::Status::OK();
             }
 
-        private:
             // LSM_REMOTE_RECORD_DIR: the first LSM_REMOTE_RECORD_LIMIT (default 64) requests are
             // written there as complete frames, for replay by lsm_rpc_bench --replay.
             static void record_request(const char *frame, std::size_t bytes)
@@ -311,17 +342,24 @@ namespace lsm_lab
             void release(std::unique_ptr<RpcClient> client, bool healthy)
             {
                 const std::lock_guard guard(mutex_);
-                // A connection that failed mid-call is dropped; the next job reconnects.
+                // A connection that failed mid-call, or whose server is draining, is dropped with
+                // every idle one (they lead to the same server); the next job reconnects.
                 if (healthy && client)
+                {
                     idle_.push_back(std::move(client));
-                else
-                    --created_;
-                ready_.notify_one();
+                    ready_.notify_one();
+                    return;
+                }
+                created_ -= 1 + idle_.size();
+                idle_.clear();
+                ready_.notify_all();
             }
 
             Endpoint endpoint_;
             std::string description_;
             std::size_t limit_ = 2;
+            int retries_ = 2;
+            std::atomic<std::uint64_t> retried_{0};
             std::mutex mutex_;
             std::condition_variable ready_;
             std::vector<std::unique_ptr<RpcClient>> idle_;
@@ -662,5 +700,52 @@ namespace lsm_lab
             reply.server_ns = elapsed_ns(started);
             return write_reply(sink, reply, {}, output.get());
         };
+    }
+
+    RpcHandler Drain::wrap(RpcHandler handler)
+    {
+        return [this, handler = std::move(handler)](const char *data, std::size_t bytes, ReplySink &sink) {
+            RequestHeader header;
+            const bool merge = bytes >= sizeof(header) &&
+                               (std::memcpy(&header, data, sizeof(header)), header.kind == RpcKind::merge);
+            if (!merge)
+                return handler(data, bytes, sink);
+            // Counted before the check, so wait() never misses a merge that passed it.
+            running_.fetch_add(1);
+            const auto finish = [this] {
+                if (running_.fetch_sub(1) == 1)
+                {
+                    const std::lock_guard guard(mutex_);
+                    idle_.notify_all();
+                }
+            };
+            if (draining_)
+            {
+                finish();
+                refused_.fetch_add(1);
+                ReplyHeader reply;
+                reply.status = static_cast<std::uint32_t>(rocksdb::Status::Code::kBusy);
+                return write_reply(sink, reply, "server draining", nullptr);
+            }
+            try
+            {
+                const auto answer = handler(data, bytes, sink);
+                finish();
+                return answer;
+            }
+            catch (...)
+            {
+                finish();
+                throw;
+            }
+        };
+    }
+
+    void Drain::begin() { draining_ = true; }
+
+    bool Drain::wait(std::chrono::milliseconds limit)
+    {
+        std::unique_lock lock(mutex_);
+        return idle_.wait_for(lock, limit, [this] { return running_ == 0; });
     }
 }

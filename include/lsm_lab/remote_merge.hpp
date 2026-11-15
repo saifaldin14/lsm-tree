@@ -10,10 +10,14 @@
 
 #include <rocksdb/compaction_block_transform.h>
 
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <string>
 
 namespace lsm_lab
@@ -161,4 +165,25 @@ namespace lsm_lab
 
     // Handles merge and statistics requests with the given local transform.
     RpcHandler make_merge_handler(std::shared_ptr<BatchTransform> transform);
+
+    // Lets a compaction server finish the merges it is running before it stops. Wrap the handler
+    // with wrap(); after begin(), new merge requests get a Busy reply, which a remote_merge client
+    // retries on a new connection (to another replica behind a load balancer), while running merges
+    // complete. Statistics requests are always served. The Drain must outlive the server.
+    class Drain
+    {
+    public:
+        RpcHandler wrap(RpcHandler handler);
+        void begin();
+        // Waits until no merge is running or the limit passes; true if none is running.
+        bool wait(std::chrono::milliseconds limit);
+        std::uint64_t refused() const { return refused_; }
+
+    private:
+        std::atomic<bool> draining_{false};
+        std::atomic<std::int64_t> running_{0};
+        std::atomic<std::uint64_t> refused_{0};
+        std::mutex mutex_;
+        std::condition_variable idle_;
+    };
 }

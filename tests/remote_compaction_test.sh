@@ -21,7 +21,7 @@ listen_on() {
     *) echo "$prefix:0" ;;
   esac
 }
-trap 'kill $pid $relay 2>/dev/null || true; wait 2>/dev/null || true; rm -rf "$work"' EXIT
+trap 'kill $pid $relay ${forward:-} ${drain_a_pid:-} ${drain_b_pid:-} 2>/dev/null || true; wait 2>/dev/null || true; rm -rf "$work"' EXIT
 
 "$server" --listen "$(listen_on server)" --backend "$backend" > "$work/server.out" 2> "$work/server.err" &
 pid=$!
@@ -107,6 +107,93 @@ for client in 1 2 3; do
 done
 [ "$failures" -eq 0 ] || { echo "$failures remote compaction case(s) failed"; exit 1; }
 echo "remote compaction: all cases (direct, relayed and 3 clients at once) match native RocksDB"
+
+# Drain (TCP only): the client reaches server A through a forwarder. Once A has answered a
+# merge, the forwarder sends A SIGTERM (A drains: running merges finish, new ones are refused)
+# and sends new connections to server B. The client must retry the refused jobs on B: no
+# fallbacks, and A must finish its drain.
+case "$prefix" in
+tcp://*)
+  start_server() {
+    "$server" --listen "$prefix:0" --backend "$backend" "${@:2}" > "$work/$1.out" 2> "$work/$1.err" &
+    eval "$1_pid=$!"
+    for _ in $(seq 1 100); do
+      grep -q '^listening ' "$work/$1.out" 2>/dev/null && break
+      sleep 0.1
+    done
+    eval "$1_endpoint=\$(awk '/^listening /{print \$2; exit}' \"\$work/$1.out\")"
+  }
+  start_server drain_a --drain-seconds 20
+  start_server drain_b
+  a_endpoint=$drain_a_endpoint
+  b_endpoint=$drain_b_endpoint
+  [ -n "$a_endpoint" ] && [ -n "$b_endpoint" ] || { echo "drain servers did not start"; exit 1; }
+  cat > "$work/forward.py" <<'PY'
+import os, signal, socket, sys, threading
+a, b, a_pid = sys.argv[1], sys.argv[2], int(sys.argv[3])
+target = [a]
+returned = [0]
+lock = threading.Lock()
+def address(endpoint):
+    host, port = endpoint.split("://", 1)[1].rsplit(":", 1)
+    return host, int(port)
+def pipe(source, sink, from_a):
+    try:
+        while data := source.recv(1 << 16):
+            sink.sendall(data)
+            if from_a:
+                with lock:
+                    returned[0] += len(data)
+                    # Large replies are merge results, not the connection handshake.
+                    if target[0] == a and returned[0] > (1 << 16):
+                        target[0] = b
+                        os.kill(a_pid, signal.SIGTERM)
+    except OSError:
+        pass
+    for s in (source, sink):
+        try:
+            s.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+listener = socket.create_server(("127.0.0.1", 0))
+print(f"listening tcp://127.0.0.1:{listener.getsockname()[1]}", flush=True)
+while True:
+    client, _ = listener.accept()
+    with lock:
+        chosen = target[0]
+    server = socket.create_connection(address(chosen))
+    for s in (client, server):
+        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+    threading.Thread(target=pipe, args=(client, server, False), daemon=True).start()
+    threading.Thread(target=pipe, args=(server, client, chosen == a), daemon=True).start()
+PY
+  python3 "$work/forward.py" "$a_endpoint" "$b_endpoint" "$drain_a_pid" > "$work/forward.out" 2> "$work/forward.err" &
+  forward=$!
+  for _ in $(seq 1 100); do
+    grep -q '^listening ' "$work/forward.out" 2>/dev/null && break
+    sleep 0.1
+  done
+  rm -rf "$work/db"
+  LSM_REMOTE_ENDPOINT=$(awk '/^listening /{print $2; exit}' "$work/forward.out") "$bench" --dir "$work/db" \
+    --modes native_cpu,remote_merge --records 50000 --l0-files 4 --target-file-bytes 1048576 --delete-fraction 0.05 \
+    --subcompactions 4 > "$work/run.json" 2> "$work/run.err" || { cat "$work/run.err"; exit 1; }
+  wait "$drain_a_pid" 2>/dev/null || true
+  kill "$forward" "$drain_b_pid" 2>/dev/null || true
+  wait "$forward" "$drain_b_pid" 2>/dev/null || true
+  forward=
+  python3 - "$work/run.json" "$work/drain_a.out" <<'PY'
+import json, sys
+run = [json.loads(line) for line in open(sys.argv[1])][-1]
+t = run["transform"]
+a = json.loads(open(sys.argv[2]).read().splitlines()[-1])
+print(f"drain: match={run['matches_reference']} jobs={t['merge_jobs']} fallbacks={t['merge_fallbacks']} "
+      f"retries={t.get('merge_remote_retries')} refused_by_a={a['drain_refused']} a_drained={a['drain_complete']}")
+sys.exit(0 if run["matches_reference"] and t["merge_fallbacks"] == 0 and t.get("merge_remote_retries", 0) >= 1
+         and a["drain_complete"] else 1)
+PY
+  echo "remote compaction: a draining server hands its jobs to the next one"
+  ;;
+esac
 
 # Fault injection: the server dies on its second request. Compaction must fall back to the
 # local path for that job and every later one, and still match native RocksDB.

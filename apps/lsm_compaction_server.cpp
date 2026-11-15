@@ -10,11 +10,15 @@
 // With --backend cuda_merge, one process serves every client from one set of GPU engines:
 // --engines K jobs run at once (LSM_GPU_MERGE_STREAMS) and --scheduler fifo|fair|stall decides
 // which waiting job runs next (LSM_GPU_SCHEDULER). unix://<path> serves clients on the same
-// machine through shared memory.
+// machine through shared memory. --drain-seconds S (default 0): on SIGTERM, new merge requests are
+// refused with Busy (clients retry them on another connection) while running merges finish, for at
+// most S seconds; then the server stops and prints its statistics, with "drain_refused" and
+// "drain_complete" added.
 
 #include "lsm_lab/remote_merge.hpp"
 
 #include <atomic>
+#include <chrono>
 #include <csignal>
 #include <cstdlib>
 #include <iostream>
@@ -30,6 +34,7 @@ int main(int argc, char **argv)
         std::string backend = "cpu_merge";
         long long crash_after = -1;
         std::string scheduler, engines;
+        double drain_seconds = 0;
         for (int index = 1; index < argc; ++index)
         {
             const std::string name = argv[index];
@@ -46,6 +51,8 @@ int main(int argc, char **argv)
                 scheduler = value;
             else if (name == "--engines")
                 engines = value;
+            else if (name == "--drain-seconds")
+                drain_seconds = std::stod(value);
             else
                 throw std::invalid_argument("unknown argument: " + name);
         }
@@ -63,7 +70,8 @@ int main(int argc, char **argv)
             setenv("LSM_GPU_MERGE_STREAMS", engines.c_str(), 1);
         auto transform = lsm_lab::make_transform(backend);
         auto endpoint = lsm_lab::parse_endpoint(listen);
-        auto handler = lsm_lab::make_merge_handler(transform);
+        lsm_lab::Drain drain;
+        auto handler = drain.wrap(lsm_lab::make_merge_handler(transform));
         if (crash_after >= 0)
             handler = [handler, crash_after, served = std::make_shared<std::atomic<long long>>(0)](
                           const char *data, std::size_t bytes, lsm_lab::ReplySink &sink) {
@@ -72,9 +80,15 @@ int main(int argc, char **argv)
                 return handler(data, bytes, sink);
             };
         auto server = lsm_lab::listen_rpc(endpoint, std::move(handler));
+        std::atomic<bool> drained{true};
         std::thread waiter([&] {
             int signal = 0;
             sigwait(&signals, &signal);
+            if (signal == SIGTERM && drain_seconds > 0)
+            {
+                drain.begin();
+                drained = drain.wait(std::chrono::milliseconds(static_cast<long long>(drain_seconds * 1000)));
+            }
             server->stop();
         });
         waiter.detach();
@@ -82,7 +96,10 @@ int main(int argc, char **argv)
         std::cout << "listening " << endpoint.text() << " backend " << backend << " device " << transform->device()
                   << std::endl;
         server->run();
-        std::cout << transform->statistics().dump() << std::endl;
+        auto statistics = transform->statistics();
+        statistics["drain_refused"] = drain.refused();
+        statistics["drain_complete"] = drained.load();
+        std::cout << statistics.dump() << std::endl;
         return 0;
     }
     catch (const std::exception &error)

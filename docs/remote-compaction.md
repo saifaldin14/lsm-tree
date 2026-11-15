@@ -38,6 +38,13 @@ Properties:
 - **Falls back on failure:** if the server fails, disconnects or times out, that job runs
   on the CPU in the database process and is counted in `merge_fallbacks`.
   `lsm_compaction_server --crash-after N` injects failures for testing.
+- **Retries and drain:** a merge request carries all of its input, so a call that fails
+  on its connection, or that a draining server refuses with Busy, is retried on a new
+  connection (`LSM_REMOTE_RETRIES`, default 2) before falling back; the failed connection
+  and the idle ones are dropped. `lsm_compaction_server --drain-seconds S` makes SIGTERM
+  refuse new merges, wait up to S seconds for running ones, then stop, so a replica behind
+  a load balancer (e.g. a Kubernetes Service) can be replaced without CPU fallbacks. Its
+  statistics then include `drain_refused` and `drain_complete`.
 - **Relays:** `lsm_compaction_server --backend remote_merge` forwards every job to the
   server at its own `LSM_REMOTE_ENDPOINT`, sending the blocks it received. This joins two
   networks, e.g. an RDMA network and a GPU host that only the relay can reach.
@@ -79,6 +86,7 @@ over RDMA, against about 0.7 over TCP.
 | `LSM_RDMA_PUSH` | `1` (default) pushes requests with RDMA WRITE; `0` lets the server pull them with RDMA READ. |
 | `LSM_RDMA_POLL` | `1` busy-polls completions instead of blocking. |
 | `LSM_REMOTE_TIMEOUT_MS` | Client timeout without progress (default 120000). |
+| `LSM_REMOTE_RETRIES` | Retries of a failed or refused remote merge on a new connection before CPU fallback (default 2); counted in `merge_remote_retries`. |
 | `LSM_TENANT` | Name of this database in a shared server's scheduler and statistics (default: the database path). |
 | `LSM_RDMA_CACHE_MB` | Registered RDMA buffers a process keeps for reuse between calls, shared by its connections; the oldest beyond this are deregistered (default: keep all). |
 | `LSM_RDMA_SERVER_BUDGET_MB` | Server only: bound on request buffers in use across connections; a connection waits for room before accepting a request, holding its client back (default: no bound). |
