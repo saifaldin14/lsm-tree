@@ -1,0 +1,12 @@
+.git
+.deps
+build
+artifacts
+.venv
+**/__pycache__
+publication/data
+publication/figures
+paper
+*.pdf
+.DS_Store
+vcpkg_installed

@@ -10,6 +10,7 @@
 #include <mutex>
 #include <stdexcept>
 #include <type_traits>
+#include <unordered_map>
 #include <unistd.h>
 #include <vector>
 
@@ -178,6 +179,8 @@ namespace lsm_lab
                 limit_ = parsed == 0 ? 2 : static_cast<std::size_t>(parsed);
                 const char *retries = std::getenv("LSM_REMOTE_RETRIES");
                 retries_ = retries == nullptr ? 2 : std::max(0, std::atoi(retries));
+                const char *per_connection = std::getenv("LSM_REMOTE_JOBS_PER_CONNECTION");
+                per_connection_ = per_connection == nullptr ? 0 : std::strtoull(per_connection, nullptr, 10);
                 // Connect once up front so a missing server fails fast.
                 idle_.push_back(connect_rpc(endpoint_));
                 created_ = 1;
@@ -186,7 +189,8 @@ namespace lsm_lab
 
             std::string name() const override { return "remote_merge"; }
             std::string device() const override { return description_; }
-            nlohmann::json extra_statistics() const override { return {{"merge_remote_retries", retried_.load()}}; }
+            nlohmann::json extra_statistics() const override { return {{"merge_remote_retries", retried_.load()},
+                                                                         {"merge_connections_recycled", recycled_.load()}}; }
 
         protected:
             rocksdb::Status execute(const std::string &input, const std::vector<BlockDescriptor> &blocks,
@@ -346,10 +350,24 @@ namespace lsm_lab
                 // every idle one (they lead to the same server); the next job reconnects.
                 if (healthy && client)
                 {
-                    idle_.push_back(std::move(client));
+                    // LSM_REMOTE_JOBS_PER_CONNECTION: a connection is closed after that many jobs,
+                    // so a load balancer in front of several servers (e.g. a Kubernetes Service)
+                    // spreads later jobs over servers added since.
+                    if (per_connection_ == 0 || ++uses_[client.get()] < per_connection_)
+                    {
+                        idle_.push_back(std::move(client));
+                        ready_.notify_one();
+                        return;
+                    }
+                    uses_.erase(client.get());
+                    recycled_.fetch_add(1);
+                    --created_;
                     ready_.notify_one();
                     return;
                 }
+                uses_.erase(client.get());
+                for (const auto &idle : idle_)
+                    uses_.erase(idle.get());
                 created_ -= 1 + idle_.size();
                 idle_.clear();
                 ready_.notify_all();
@@ -359,7 +377,10 @@ namespace lsm_lab
             std::string description_;
             std::size_t limit_ = 2;
             int retries_ = 2;
+            std::uint64_t per_connection_ = 0;
+            std::unordered_map<const RpcClient *, std::uint64_t> uses_;
             std::atomic<std::uint64_t> retried_{0};
+            std::atomic<std::uint64_t> recycled_{0};
             std::mutex mutex_;
             std::condition_variable ready_;
             std::vector<std::unique_ptr<RpcClient>> idle_;

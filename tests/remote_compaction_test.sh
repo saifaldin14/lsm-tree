@@ -105,6 +105,20 @@ done
 for client in 1 2 3; do
   python3 "$work/check_shared.py" "$work/shared$client.json" "$client" || failures=$((failures + 1))
 done
+# One job per connection (LSM_REMOTE_JOBS_PER_CONNECTION=1): every job reconnects.
+rm -rf "$work/db"
+LSM_REMOTE_JOBS_PER_CONNECTION=1 "$bench" --dir "$work/db" --modes native_cpu,remote_merge --records 50000 \
+  --l0-files 4 --target-file-bytes 1048576 --delete-fraction 0.05 --subcompactions 4 > "$work/run.json" 2> "$work/run.err" \
+  || { cat "$work/run.err"; failures=$((failures + 1)); }
+python3 - "$work/run.json" <<'PY' || failures=$((failures + 1))
+import json, sys
+run = [json.loads(line) for line in open(sys.argv[1])][-1]
+t = run["transform"]
+print(f"recycled connections: match={run['matches_reference']} jobs={t['merge_jobs']} "
+      f"fallbacks={t['merge_fallbacks']} recycled={t.get('merge_connections_recycled')}")
+sys.exit(0 if run["matches_reference"] and t["merge_fallbacks"] == 0
+         and t.get("merge_connections_recycled", 0) >= t["merge_jobs"] - 1 else 1)
+PY
 [ "$failures" -eq 0 ] || { echo "$failures remote compaction case(s) failed"; exit 1; }
 echo "remote compaction: all cases (direct, relayed and 3 clients at once) match native RocksDB"
 

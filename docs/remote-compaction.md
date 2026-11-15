@@ -86,6 +86,7 @@ over RDMA, against about 0.7 over TCP.
 | `LSM_RDMA_PUSH` | `1` (default) pushes requests with RDMA WRITE; `0` lets the server pull them with RDMA READ. |
 | `LSM_RDMA_POLL` | `1` busy-polls completions instead of blocking. |
 | `LSM_REMOTE_TIMEOUT_MS` | Client timeout without progress (default 120000). |
+| `LSM_REMOTE_JOBS_PER_CONNECTION` | Close a connection after this many jobs (default 0: never), so a load balancer in front of several servers spreads jobs over servers added later; counted in `merge_connections_recycled`. |
 | `LSM_REMOTE_RETRIES` | Retries of a failed or refused remote merge on a new connection before CPU fallback (default 2); counted in `merge_remote_retries`. |
 | `LSM_TENANT` | Name of this database in a shared server's scheduler and statistics (default: the database path). |
 | `LSM_RDMA_CACHE_MB` | Registered RDMA buffers a process keeps for reuse between calls, shared by its connections; the oldest beyond this are deregistered (default: keep all). |
