@@ -7,16 +7,18 @@
 #   infra/azure/aks.sh status  node pools and nodes
 #
 # Settings (environment): LSM_AZ_RG (lsm-cloud-aks), LSM_AZ_LOCATION (southcentralus),
-# LSM_AZ_HOURS (6: expiry tag read by guard.sh), and the VM sizes below.
+# LSM_AZ_HOURS (6: expiry tag read by guard.sh), LSM_KUBECONFIG (~/.kube/lsm-aks), and the VM sizes below.
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 rg=${LSM_AZ_RG:-lsm-cloud-aks}
 location=${LSM_AZ_LOCATION:-southcentralus}
 hours=${LSM_AZ_HOURS:-6}
 cluster=${LSM_AZ_CLUSTER:-lsm}
-system_size=${LSM_AZ_SYSTEM_SIZE:-Standard_B2s}
-service_size=${LSM_AZ_SERVICE_SIZE:-Standard_D16ads_v5}
-tenant_sizes=${LSM_AZ_TENANT_SIZES:-Standard_D16ds_v5,Standard_D16s_v5}
+# A separate kubeconfig, so the user's default kubectl context is not changed.
+export KUBECONFIG=${LSM_KUBECONFIG:-$HOME/.kube/lsm-aks}
+system_size=${LSM_AZ_SYSTEM_SIZE:-Standard_D2as_v6}
+service_size=${LSM_AZ_SERVICE_SIZE:-Standard_D16ads_v6}
+tenant_sizes=${LSM_AZ_TENANT_SIZES:-Standard_D16ds_v6,Standard_D16s_v6}
 
 up() {
   expires=$(date -u -v+"${hours}"H +%Y-%m-%dT%H:%MZ 2>/dev/null || date -u -d "+${hours} hours" +%Y-%m-%dT%H:%MZ)
@@ -36,7 +38,8 @@ up() {
     az aks nodepool add -g "$rg" --cluster-name "$cluster" -n "tenant$index" --node-count 1 --node-vm-size "$size" \
       --kubelet-config "$here/kubelet.json" --labels lsm/role=tenant --mode User -o none
   done
-  az aks get-credentials -g "$rg" -n "$cluster" --overwrite-existing -o none
+  az aks get-credentials -g "$rg" -n "$cluster" --file "$KUBECONFIG" --overwrite-existing -o none
+  echo "kubeconfig: $KUBECONFIG"
   kubectl get nodes -L lsm/role,node.kubernetes.io/instance-type
 }
 

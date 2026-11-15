@@ -17,7 +17,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-SIZES = ["Standard_B2s", "Standard_D16ads_v5", "Standard_D16ds_v5", "Standard_D16s_v5"]
+SIZES = ["Standard_D2as_v6", "Standard_D16ads_v6", "Standard_D16ds_v6", "Standard_D16s_v6"]
 OUT = Path(__file__).resolve().parents[2] / "publication" / "prices-azure.json"
 
 

@@ -106,7 +106,7 @@ def c1(directory: Path, name: str = "c1-k8s.jsonl") -> dict:
     return rows
 
 
-def c5(rows: dict, tenant_size: str = "Standard_D16ds_v5", service_size: str = "Standard_D16ads_v5") -> None:
+def c5(rows: dict, tenant_size: str = "Standard_D16ds_v6", service_size: str = "Standard_D16ads_v6") -> None:
     if not rows or not PRICES.exists():
         return
     print("\n## C5: cost per billion writes (pay-as-you-go prices, prices-azure.json)\n")

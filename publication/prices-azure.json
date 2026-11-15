@@ -1,36 +1,36 @@
 {
  "source": "https://prices.azure.com/api/retail/prices (Linux, pay-as-you-go)",
- "retrieved": "2026-11-15T15:00:23+00:00",
+ "retrieved": "2026-11-15T17:46:59+00:00",
  "region": "southcentralus",
  "aks_control_plane": "free tier, no charge",
  "sizes": {
-  "Standard_B2s": {
-   "usd_per_hour": 0.0499,
+  "Standard_D2as_v6": {
+   "usd_per_hour": 0.109,
    "currency": "USD",
-   "meter": "B2s",
-   "product": "Virtual Machines BS Series",
-   "effective": "2025-10-01T00:00:00Z"
+   "meter": "D2as v6",
+   "product": "Virtual Machines Dasv6 Series",
+   "effective": "2024-09-01T00:00:00Z"
   },
-  "Standard_D16ads_v5": {
-   "usd_per_hour": 0.989,
+  "Standard_D16ads_v6": {
+   "usd_per_hour": 1.093,
    "currency": "USD",
-   "meter": "D16ads v5",
-   "product": "Virtual Machines Dadsv5 Series",
-   "effective": "2021-11-01T00:00:00Z"
+   "meter": "D16ads v6",
+   "product": "Virtual Machines Dadsv6 Series",
+   "effective": "2024-09-01T00:00:00Z"
   },
-  "Standard_D16ds_v5": {
-   "usd_per_hour": 1.085,
+  "Standard_D16ds_v6": {
+   "usd_per_hour": 1.196,
    "currency": "USD",
-   "meter": "D16ds v5",
-   "product": "Virtual Machines Ddsv5 Series",
-   "effective": "2021-11-01T00:00:00Z"
+   "meter": "D16ds v6",
+   "product": "Virtual Machines Ddsv6 Series",
+   "effective": "2024-10-01T00:00:00Z"
   },
-  "Standard_D16s_v5": {
-   "usd_per_hour": 0.922,
+  "Standard_D16s_v6": {
+   "usd_per_hour": 0.968,
    "currency": "USD",
-   "meter": "D16s v5",
-   "product": "Virtual Machines Dsv5 Series",
-   "effective": "2021-11-01T00:00:00Z"
+   "meter": "D16s v6",
+   "product": "Virtual Machines Dsv6 Series",
+   "effective": "2024-10-01T00:00:00Z"
   }
  }
 }

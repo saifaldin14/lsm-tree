@@ -1117,8 +1117,8 @@ with the lab cluster is made (different CPUs, network and database size). A GPU 
 Digital Research Alliance of Canada cloud will be registered separately, once its GPU is known.
 
 - **Platform** (`infra/azure/aks.sh`, `infra/k8s`, docs/cloud.md): AKS, free control plane,
-  southcentralus. Service node Standard_D16ads_v5 (16 vCPUs, 64 GB), tenant nodes
-  Standard_D16ds_v5 and Standard_D16s_v5 (16 vCPUs each), system node Standard_B2s; kubelet
+  southcentralus. Service node Standard_D16ads_v6 (16 vCPUs, 64 GB), tenant nodes
+  Standard_D16ds_v6 and Standard_D16s_v6 (16 vCPUs each), system node Standard_D2as_v6[^cloud-sizes]; kubelet
   `cpuManagerPolicy: static`. Each database is a Guaranteed pod with 4 whole vCPUs (2 physical
   cores with their hyperthreads; on the lab cluster a database had 4 physical cores) and 16 GiB,
   at most 3 per tenant node, spread evenly, so N <= 6; its data is on a memory `emptyDir` (as
@@ -1154,6 +1154,12 @@ Digital Research Alliance of Canada cloud will be registered separately, once it
 - **Cost (C5, not a hypothesis):** per billion writes, each database charged its 4/16 of its
   tenant node and 1/N of the service node, against RocksDB charged its 4/16; and the service node
   price at which the service breaks even with RocksDB.
+
+[^cloud-sizes]: Changed from the v5 sizes (D16ads_v5, D16ds_v5, D16s_v5, B2s) on 2026-11-15, before any
+    cloud run: AKS rejected them ("not allowed in your subscription in location southcentralus";
+    the allowed x86 general-purpose sizes are v6 and v7). The v6 sizes keep the same roles: an AMD
+    service node and two tenant nodes with the same Intel CPU, one per VM family because each
+    family's quota is 20 vCPUs.
 
 [^cloud-march]: Changed from `x86-64-v3` on 2026-11-15, before any cloud run: that level lacks
     PCLMUL, which RocksDB's CRC32C code uses, so the image did not compile. `haswell` adds PCLMUL

@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import random
 import shlex
 import subprocess
@@ -50,6 +51,8 @@ class Platform:
     def __init__(self, config: dict):
         self.config = config
         self.backend = config["backend"]
+        if config.get("kubeconfig"):
+            os.environ["KUBECONFIG"] = os.path.expanduser(config["kubeconfig"])
 
     def command(self, target: str, command: str) -> list[str]:
         if self.backend == "local":
