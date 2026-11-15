@@ -9,7 +9,9 @@
 // the server at LSM_REMOTE_ENDPOINT (e.g. from an RDMA network to a GPU host on another one).
 // With --backend cuda_merge, one process serves every client from one set of GPU engines:
 // --engines K jobs run at once (LSM_GPU_MERGE_STREAMS) and --scheduler fifo|fair|stall decides
-// which waiting job runs next (LSM_GPU_SCHEDULER). unix://<path> serves clients on the same
+// which waiting job runs next (LSM_GPU_SCHEDULER). With --backend cpu_merge, --engines K bounds the
+// merges running at once on the CPU (LSM_CPU_MERGE_SLOTS; unbounded without it) and --scheduler
+// orders the waiting ones (LSM_CPU_MERGE_SCHEDULER). unix://<path> serves clients on the same
 // machine through shared memory. --drain-seconds S (default 0): on SIGTERM, new merge requests are
 // refused with Busy (clients retry them on another connection) while running merges finish, for at
 // most S seconds; then the server stops and prints its statistics, with "drain_refused" and
@@ -65,9 +67,9 @@ int main(int argc, char **argv)
         sigaddset(&signals, SIGTERM);
         pthread_sigmask(SIG_BLOCK, &signals, nullptr);
         if (!scheduler.empty())
-            setenv("LSM_GPU_SCHEDULER", scheduler.c_str(), 1);
+            setenv(backend == "cpu_merge" ? "LSM_CPU_MERGE_SCHEDULER" : "LSM_GPU_SCHEDULER", scheduler.c_str(), 1);
         if (!engines.empty())
-            setenv("LSM_GPU_MERGE_STREAMS", engines.c_str(), 1);
+            setenv(backend == "cpu_merge" ? "LSM_CPU_MERGE_SLOTS" : "LSM_GPU_MERGE_STREAMS", engines.c_str(), 1);
         auto transform = lsm_lab::make_transform(backend);
         auto endpoint = lsm_lab::parse_endpoint(listen);
         lsm_lab::Drain drain;

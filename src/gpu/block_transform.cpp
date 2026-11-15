@@ -1,6 +1,8 @@
 #include "lsm_lab/block_transform.hpp"
 #include "lsm_lab/remote_merge.hpp"
+#include "lsm_lab/merge_scheduler.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <future>
 #include <map>
@@ -158,7 +160,29 @@ namespace lsm_lab
         class CpuTransform final : public BatchTransform
         {
         public:
+            // LSM_CPU_MERGE_SLOTS (set by lsm_compaction_server --engines for cpu_merge): at most
+            // that many merges run at once, and LSM_CPU_MERGE_SCHEDULER (fifo, fair, stall; default
+            // fifo) orders the waiting ones, as the GPU engines do. Unset: every merge runs at once.
+            CpuTransform()
+            {
+                const char *slots = std::getenv("LSM_CPU_MERGE_SLOTS");
+                const auto parsed = slots == nullptr ? 0 : std::strtoull(slots, nullptr, 10);
+                if (parsed == 0)
+                    return;
+                const char *policy = std::getenv("LSM_CPU_MERGE_SCHEDULER");
+                scheduler_ = std::make_unique<MergeScheduler>(parse_schedule_policy(policy == nullptr ? "fifo" : policy),
+                                                              static_cast<std::size_t>(parsed));
+            }
+
             std::string name() const override { return "cpu_batched"; }
+
+            nlohmann::json extra_statistics() const override
+            {
+                static const bool log = std::getenv("LSM_SCHEDULER_LOG") != nullptr;
+                if (!scheduler_)
+                    return nlohmann::json::object();
+                return {{"scheduler", scheduler_->statistics(log)}};
+            }
 
         protected:
             rocksdb::Status execute(const std::string &input, const std::vector<BlockDescriptor> &blocks,
@@ -166,6 +190,26 @@ namespace lsm_lab
             {
                 return execute_cpu_batch(input, blocks, output);
             }
+
+            rocksdb::Status execute_merge(const rocksdb::CompactionMergeRequest &request,
+                                          std::unique_ptr<rocksdb::CompactionMergedInput> *output,
+                                          MergeRunStats *stats) override
+            {
+                if (!scheduler_)
+                    return execute_cpu_merge(request, output, stats);
+                MergeJobInfo job;
+                job.tenant = request.tenant.empty() ? "default" : request.tenant;
+                job.input_bytes = merge_serialized_bytes(request);
+                const bool reads_level0 = std::any_of(request.files.begin(), request.files.end(),
+                                                      [](const auto &file) { return file.level == 0; });
+                job.urgent = merge_job_urgent(request.write_stalled, reads_level0, request.level0_files,
+                                              request.level0_slowdown_trigger);
+                const auto grant = scheduler_->acquire(job);
+                return execute_cpu_merge(request, output, stats);
+            }
+
+        private:
+            std::unique_ptr<MergeScheduler> scheduler_;
         };
 
         class CompletedOutputSubmission final : public rocksdb::CompactionOutputSubmission

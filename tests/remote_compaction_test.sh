@@ -138,7 +138,8 @@ tcp://*)
     eval "$1_endpoint=\$(awk '/^listening /{print \$2; exit}' \"\$work/$1.out\")"
   }
   start_server drain_a --drain-seconds 20
-  start_server drain_b
+  # B also bounds its CPU merges with the scheduler (--engines with cpu_merge).
+  start_server drain_b --engines 2 --scheduler fair
   a_endpoint=$drain_a_endpoint
   b_endpoint=$drain_b_endpoint
   [ -n "$a_endpoint" ] && [ -n "$b_endpoint" ] || { echo "drain servers did not start"; exit 1; }
@@ -195,15 +196,18 @@ PY
   kill "$forward" "$drain_b_pid" 2>/dev/null || true
   wait "$forward" "$drain_b_pid" 2>/dev/null || true
   forward=
-  python3 - "$work/run.json" "$work/drain_a.out" <<'PY'
+  python3 - "$work/run.json" "$work/drain_a.out" "$work/drain_b.out" <<'PY'
 import json, sys
 run = [json.loads(line) for line in open(sys.argv[1])][-1]
 t = run["transform"]
 a = json.loads(open(sys.argv[2]).read().splitlines()[-1])
+b = json.loads(open(sys.argv[3]).read().splitlines()[-1])
+scheduled = sum(tenant["jobs"] for tenant in b["scheduler"]["tenants"].values())
 print(f"drain: match={run['matches_reference']} jobs={t['merge_jobs']} fallbacks={t['merge_fallbacks']} "
-      f"retries={t.get('merge_remote_retries')} refused_by_a={a['drain_refused']} a_drained={a['drain_complete']}")
+      f"retries={t.get('merge_remote_retries')} refused_by_a={a['drain_refused']} a_drained={a['drain_complete']} "
+      f"scheduled_by_b={scheduled}")
 sys.exit(0 if run["matches_reference"] and t["merge_fallbacks"] == 0 and t.get("merge_remote_retries", 0) >= 1
-         and a["drain_complete"] else 1)
+         and a["drain_complete"] and scheduled >= 1 else 1)
 PY
   echo "remote compaction: a draining server hands its jobs to the next one"
   ;;
