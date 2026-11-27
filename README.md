@@ -50,7 +50,7 @@ Compaction CPU per write falls from 3.5–4.2 µs to 0.8 µs. The CPU spent acce
 about 2.3 µs, is unchanged, so the whole database gains about 2×. Tuned
 runs, LZ4, median of 5:
 
-![CPU per write, split by job](publication/figures/fig39_cpu_per_write.png)
+![CPU per write, split by job](results/figures/fig39_cpu_per_write.png)
 
 ## Comparison with other work
 
@@ -75,7 +75,7 @@ RocksDB and run on the same machine. Where a design choice was open, the rebuild
 faster option (for example, decompression on 4 parallel threads). Every rebuild's output
 matches RocksDB's.
 
-![Earlier GPU and FPGA designs rebuilt in RocksDB](publication/figures/fig36_other_work.png)
+![Earlier GPU and FPGA designs rebuilt in RocksDB](results/figures/fig36_other_work.png)
 
 (a) One compaction, median of 3 runs. (b) Whole database, 4 cores, batched writes, the same
 settings for every design, median of 3–5 runs. The gains below are medians of each run
@@ -101,7 +101,7 @@ paired with its RocksDB run.
 - LUDA's own code is 2.6× faster than LevelDB 1.22, which it is built on, and slower than
   RocksDB. Different stores, so this does not compare the compaction designs.
 
-Details: [publication/RELATED-WORK.md](publication/RELATED-WORK.md).
+Details: [results/RELATED-WORK.md](results/RELATED-WORK.md).
 
 ## How it works
 
@@ -121,14 +121,14 @@ made a compaction 1.2–1.3× faster. Details: [docs/gpu-compaction.md](docs/gpu
 
 Data in memory on one server (4 × Intel Xeon Gold 5220, NVIDIA RTX A6000) unless stated.
 "Ours" in the figures is the GPU offload. All tables, setups and caveats are in
-[publication/FULL-RESULTS.md](publication/FULL-RESULTS.md).
+[results/FULL-RESULTS.md](results/FULL-RESULTS.md).
 
 ### 1. One compaction
 
 One full compaction of a bottom level plus 8 newer overlapping files (0.6–0.7 GiB),
 16-byte keys, median of 3 runs. Log scale.
 
-![One compaction, RocksDB against GPU offload](publication/figures/fig17_v3_compaction.png)
+![One compaction, RocksDB against GPU offload](results/figures/fig17_v3_compaction.png)
 
 | Workload | Time, RocksDB → GPU | CPU per GiB, RocksDB → GPU |
 |---|---|---|
@@ -144,7 +144,7 @@ With eight compactions running at once on 8 cores, the GPU processes 1.42 GiB/s 
 0.89 GiB/s with ZSTD, using 2.0 and 1.3 CPU cores. One RocksDB core processes 0.094 and
 0.050 GiB/s, so the GPU matches 15 and 18 cores.
 
-![Compaction throughput: one GPU against RocksDB on 8 cores](publication/figures/fig18_v3_cores.png)
+![Compaction throughput: one GPU against RocksDB on 8 cores](results/figures/fig18_v3_cores.png)
 
 ### 2. Whole database
 
@@ -152,7 +152,7 @@ With eight compactions running at once on 8 cores, the GPU processes 1.42 GiB/s 
 compressible), uniform keys, batches of 100 writes, write-ahead log off, data in memory
 (`/dev/shm`), 5 minutes measured, median of 5 runs.
 
-![Whole database, RocksDB against GPU offload](publication/figures/fig19_v3_database.png)
+![Whole database, RocksDB against GPU offload](results/figures/fig19_v3_database.png)
 
 - RocksDB slowed writers for up to 6% of the time because compaction fell behind. The GPU
   version did not slow writers.
@@ -166,7 +166,7 @@ level). The GPU version needs 1.3–2.6 s. Including this time, the GPU version 
 1.55–1.86× RocksDB's writes, against 1.51–1.79× counting only the writing period. All other
 throughputs in this README count only the writing period.
 
-![Postponed compaction after writing stops, and the gain including it](publication/figures/fig37_catch_up.png)
+![Postponed compaction after writing stops, and the gain including it](results/figures/fig37_catch_up.png)
 
 ### 3. Write latency at fixed loads
 
@@ -174,7 +174,7 @@ Writes arrive on a fixed schedule, and latency is measured from when each write 
 scheduled. 8 cores, median of 5 runs. Left: 99th percentile; right: 99.9th percentile. Log
 scale.
 
-![Write latency at fixed loads](publication/figures/fig20_v3_tail.png)
+![Write latency at fixed loads](results/figures/fig20_v3_tail.png)
 
 | Load | 99.9th percentile, RocksDB | GPU | Ratio |
 |---|---|---|---|
@@ -187,7 +187,7 @@ scale.
 Workloads modelled on RocksDB users ([docs/workloads.md](docs/workloads.md)), Meta's
 published production models (FAST'20), and YCSB. Median of 3 runs.
 
-![Gain over RocksDB per workload](publication/figures/fig32_workload_gains.png)
+![Gain over RocksDB per workload](results/figures/fig32_workload_gains.png)
 
 - Write-heavy workloads: 1.30–1.77×.
 - With another program using 40% or 80% of each of the database's 4 cores: 2.14× and 2.48×.
@@ -201,7 +201,7 @@ using ZSTD reduce RocksDB's throughput more than the GPU version's. Half reads a
 writes, 4 cores, the same untuned settings for both, median of 3 runs. Changing from LZ4 to
 ZSTD lowers RocksDB's throughput by 42% and the GPU version's by 9%.
 
-![Throughput with different compaction settings](publication/figures/fig40_settings.png)
+![Throughput with different compaction settings](results/figures/fig40_settings.png)
 
 ### 5. Drives
 
@@ -209,7 +209,7 @@ Data in memory and on the NVMe drive: a second server (10-core Intel Xeon Silver
 NVIDIA RTX PRO 6000 Blackwell), both designs tuned on it, 8 cores, median of 3 runs. SATA
 SSD: the first server, 8 cores, median of 3 runs. Every key verified in every run.
 
-![Throughput and CPU per write in memory, on NVMe and on a SATA SSD](publication/figures/fig33_storage.png)
+![Throughput and CPU per write in memory, on NVMe and on a SATA SSD](results/figures/fig33_storage.png)
 
 - Throughput: on both drives, the drive is the limit and the two designs reach about the
   same writes/s: 1.02× RocksDB on NVMe and 0.93× on the SATA SSD (1.04× on 16 cores). On
@@ -223,7 +223,7 @@ SSD: the first server, 8 cores, median of 3 runs. Every key verified in every ru
 - At a fixed 630k writes/s on NVMe, the 99th-percentile write latency is 17 ms with the GPU
   version and 503 ms with RocksDB (median of 2 runs per load; log scale):
 
-![NVMe write latency at fixed loads](publication/figures/fig30_nvme_latency.png)
+![NVMe write latency at fixed loads](results/figures/fig30_nvme_latency.png)
 
 ### 6. Remote GPU over RDMA
 
@@ -231,7 +231,7 @@ The database machine can send each compaction over a 100 Gb/s RDMA network to a 
 on another machine. Database machine: 96 cores; GPU server: the second server. Median of 3
 runs; every compaction matched RocksDB.
 
-![One compaction on a remote GPU over RDMA against RocksDB](publication/figures/fig31_rdma_direct.png)
+![One compaction on a remote GPU over RDMA against RocksDB](results/figures/fig31_rdma_direct.png)
 
 - One compaction is 4.0–6.5× faster than RocksDB on the database machine, and the database
   machine uses 5.6–11× less CPU for it. The network transfer takes about 0.2 s of the
@@ -244,7 +244,7 @@ runs; every compaction matched RocksDB.
   once and sending the files to the backups uses 3.4× less CPU across all three machines
   per write with batched writes, and 1.8× less with single writes.
 
-![CPU of all machines per write with 2 backups](publication/figures/fig41_replication.png)
+![CPU of all machines per write with 2 backups](results/figures/fig41_replication.png)
 
 Details: [docs/remote-compaction.md](docs/remote-compaction.md).
 
@@ -262,13 +262,13 @@ compared:
 Each database has its own cores, its own copy of the 50-million-key database and the tuned
 settings for its core count. 30 s warm-up plus 120 s, median of 3 runs, every key checked.
 The service has 4 GPU engines and 4 cores of its own, counted in its cost. Registered in
-advance ([publication/PREREGISTRATION.md](publication/PREREGISTRATION.md), "GPU
+advance ([results/PREREGISTRATION.md](results/PREREGISTRATION.md), "GPU
 multiplexing").
 
 **GPU on another machine.** Up to 8 databases of 4 cores each on the 96-core machine send
 their compactions over RDMA to one service on the GPU server.
 
-![Writes/s per database with 1 to 8 databases sharing a remote GPU](publication/figures/fig44_sharing_remote.png)
+![Writes/s per database with 1 to 8 databases sharing a remote GPU](results/figures/fig44_sharing_remote.png)
 
 - With 8 databases, each handles 842k writes/s against 401k for RocksDB on the same cores
   (2.10×): 6.7M writes/s in total against 3.2M. Each database keeps 89% of the throughput it
@@ -287,7 +287,7 @@ their compactions over RDMA to one service on the GPU server.
 
 **GPU on the same machine.**
 
-![Writes/s per database with 1 to 6 databases sharing the local GPU](publication/figures/fig42_sharing_local.png)
+![Writes/s per database with 1 to 6 databases sharing the local GPU](results/figures/fig42_sharing_local.png)
 
 - 4 databases of 8 cores: 1.11–1.15M writes/s each against 811k for RocksDB (1.36–1.42×),
   4.4–4.6M in total against 3.2M.
@@ -308,7 +308,7 @@ their compactions over RDMA to one service on the GPU server.
   hour.
 
 Isolation between databases, burst arrivals and the engine count:
-[publication/FULL-RESULTS.md](publication/FULL-RESULTS.md#11-several-databases-on-one-gpu).
+[results/FULL-RESULTS.md](results/FULL-RESULTS.md#11-several-databases-on-one-gpu).
 
 ### 8. Cost
 
@@ -317,7 +317,7 @@ on-demand prices: $0.089 per CPU core-hour and, for the GPU version, $1.68 per h
 GPU. The measured RTX A6000 is not rented by AWS, so it is priced as the cheapest AWS GPU with
 at least its memory and bandwidth, an NVIDIA L40S.
 
-![Cost per write at the same write rate and at the highest rate each design reaches](publication/figures/fig35_cost_cases.png)
+![Cost per write at the same write rate and at the highest rate each design reaches](results/figures/fig35_cost_cases.png)
 
 - Highest throughput: RocksDB reaches 1.60M writes/s on 32 cores ($25.0k a year, $0.50 per
   billion writes). The GPU version reaches 2.26M writes/s on 16 cores and a GPU ($27.2k a
@@ -331,7 +331,7 @@ For any write rate RocksDB can reach, RocksDB is the cheaper way to provision it
 version is the cheaper way to go beyond RocksDB's highest rate. Sharing the GPU brings the cost close to RocksDB's
 (4% more with 8 databases of 4 cores sharing a remote GPU, section 7) but not below it at
 these prices. All prices, configurations and the GPU price at which each comparison breaks
-even: [publication/FULL-RESULTS.md](publication/FULL-RESULTS.md#7-what-it-costs-and-what-it-saves).
+even: [results/FULL-RESULTS.md](results/FULL-RESULTS.md#7-what-it-costs-and-what-it-saves).
 
 ## Limitations
 
@@ -348,7 +348,7 @@ even: [publication/FULL-RESULTS.md](publication/FULL-RESULTS.md#7-what-it-costs-
   level 0 sooner, with fewer files waiting, so data is rewritten more often: raising its
   level-0 trigger from 4 to 24 lowered its write amplification from 6.36 to 3.09 in memory.
   About 13% remains unexplained (RocksDB at trigger 24: 2.17). Analysis and proposed
-  experiments: [publication/WRITE-AMPLIFICATION.md](publication/WRITE-AMPLIFICATION.md).
+  experiments: [results/WRITE-AMPLIFICATION.md](results/WRITE-AMPLIFICATION.md).
 - Shared GPU: the shared service does not isolate databases from each other. With one heavy
   and three light databases, the light databases on the service's NUMA node had 4.2–5.8×
   their solo 99.9th-percentile write latency under every scheduling policy (1.7× without
@@ -368,9 +368,9 @@ even: [publication/FULL-RESULTS.md](publication/FULL-RESULTS.md#7-what-it-costs-
   ([configs/system/tuned.json](configs/system/tuned.json)). Runs have a fixed duration and
   are run in random order.
 - Registration: hypotheses and thresholds were committed before the runs. Those not
-  met are reported as measured ([publication/PREREGISTRATION.md](publication/PREREGISTRATION.md)).
+  met are reported as measured ([results/PREREGISTRATION.md](results/PREREGISTRATION.md)).
 - Measurement problems found during the project, and their fixes, are listed in
-  [publication/AUDIT.md](publication/AUDIT.md).
+  [results/AUDIT.md](results/AUDIT.md).
 
 ## Repository
 
@@ -381,8 +381,8 @@ even: [publication/FULL-RESULTS.md](publication/FULL-RESULTS.md#7-what-it-costs-
 | `cmake/ApplyEnginePatch.cmake` | Version-locked patch that adds the offload hooks to RocksDB |
 | `apps/` | `lsm_compaction_bench`, `lsm_system_bench`, `lsm_compaction_server`, `lsm_replica_server`, `lsm_rpc_bench`, `lsm_burn`, and the harness services (`lsm_db`, `lsm_worker`, `lsm_loadgen`, `lsm_admin`, `lsm_telemetry`, `lsm_gpu_check`) |
 | `tools/` | `labctl` harness: plans, runs, audits and analysis |
-| `publication/` | Results, raw data, figures, and the scripts that produce them |
-| `paper/` | PVLDB paper draft (`main.tex`, `refs.bib`); build with `tectonic main.tex` |
+| `results/` | Results, raw data, figures, and the scripts that produce them |
+| `publish_paper/` | PVLDB paper draft (`main.tex`, `refs.bib`); build with `tectonic main.tex` |
 | `configs/` | Dataset and experiment configurations |
 | `docs/` | Design and operating documentation |
 | `tests/` | C++ (CTest) and Python tests |
@@ -407,24 +407,24 @@ at the commit pinned in [toolchains.lock.json](toolchains.lock.json).
 On a Linux machine with an NVIDIA GPU, after the GPU build:
 
 ```sh
-python3 publication/v3_grids.py configs/system/tuned.json   # experiment grids from the tuned settings
+python3 results/v3_grids.py configs/system/tuned.json   # experiment grids from the tuned settings
 ONLY="isolated headline bottomzstd openloop stream metadata timeseries mixgraph ssd" \
-  LSM_BUILD_DIR=build/dev publication/v3_chain.sh artifacts/v3   # about 30 hours
-python3 publication/make_figures_v3.py                       # figures 17-21 from publication/data/v3/
-python3 publication/make_figures.py                          # figures 10-16 and 22
-python3 publication/make_readme_figures.py                   # figures 32, 33, 35-37 (README summaries)
-python3 publication/make_readme_figures_more.py              # figures 38-41 (README summaries)
-python3 publication/rdma/analyze_r7.py                       # figures 23 and 31 (remote GPU over RDMA)
-python3 publication/multiplex/analyze.py                     # figures 42-47 (several databases on one GPU)
+  LSM_BUILD_DIR=build/dev results/v3_chain.sh artifacts/v3   # about 30 hours
+python3 results/make_figures_v3.py                       # figures 17-21 from results/data/v3/
+python3 results/make_figures.py                          # figures 10-16 and 22
+python3 results/make_readme_figures.py                   # figures 32, 33, 35-37 (README summaries)
+python3 results/make_readme_figures_more.py              # figures 38-41 (README summaries)
+python3 results/rdma/analyze_r7.py                       # figures 23 and 31 (remote GPU over RDMA)
+python3 results/multiplex/analyze.py                     # figures 42-47 (several databases on one GPU)
 ```
 
 ## Documentation
 
-- [publication/FULL-RESULTS.md](publication/FULL-RESULTS.md): every result in detail, with setups and caveats
+- [results/FULL-RESULTS.md](results/FULL-RESULTS.md): every result in detail, with setups and caveats
 - [docs/gpu-compaction.md](docs/gpu-compaction.md): what is offloaded, how it plugs into RocksDB, eligibility, configuration and limits
 - [docs/remote-compaction.md](docs/remote-compaction.md): remote compaction and replication over TCP and RDMA, and their results
-- [publication/RELATED-WORK.md](publication/RELATED-WORK.md): earlier GPU, FPGA and remote compaction designs, measured head to head on this harness
-- [publication/WRITE-AMPLIFICATION.md](publication/WRITE-AMPLIFICATION.md): why the GPU version writes more bytes per user byte, and the experiments to fix it
+- [results/RELATED-WORK.md](results/RELATED-WORK.md): earlier GPU, FPGA and remote compaction designs, measured head to head on this harness
+- [results/WRITE-AMPLIFICATION.md](results/WRITE-AMPLIFICATION.md): why the GPU version writes more bytes per user byte, and the experiments to fix it
 - [docs/runbook.md](docs/runbook.md): building, benchmarks, the `labctl` harness, hardware gates
 - [docs/telemetry.md](docs/telemetry.md): resource and energy telemetry
-- [publication/](publication/): results, methodology audit and data
+- [results/](results/): results, methodology audit and data

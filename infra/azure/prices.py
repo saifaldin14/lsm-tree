@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Archives Azure pay-as-you-go Linux VM prices (Azure Retail Prices API, no login needed) for the
-cloud experiments' cost analysis: publication/prices-azure.json.
+cloud experiments' cost analysis: results/prices-azure.json.
 
   python3 infra/azure/prices.py [--region southcentralus] [SIZE ...]
 """
@@ -18,7 +18,7 @@ import urllib.request
 from pathlib import Path
 
 SIZES = ["Standard_D2as_v6", "Standard_D16ads_v6", "Standard_D16ds_v6", "Standard_D16s_v6"]
-OUT = Path(__file__).resolve().parents[2] / "publication" / "prices-azure.json"
+OUT = Path(__file__).resolve().parents[2] / "results" / "prices-azure.json"
 
 
 def price(region: str, size: str) -> dict:

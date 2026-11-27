@@ -2,7 +2,7 @@
 
 The Azure subscription cannot create GPU VMs, so the GPU version of the cloud experiments runs
 on the Digital Research Alliance of Canada's Arbutus cloud. It uses the same image (`cuda-<commit>`),
-manifests ([infra/k8s](../k8s)) and driver ([publication/cloud/cloud_campaign.py](../../publication/cloud/cloud_campaign.py))
+manifests ([infra/k8s](../k8s)) and driver ([results/cloud/cloud_campaign.py](../../results/cloud/cloud_campaign.py))
 as the Azure track ([docs/cloud.md](../../docs/cloud.md)).
 
 ## What Arbutus offers (checked 2026-11-15, docs.alliancecan.ca)

@@ -1,6 +1,6 @@
 # Cloud experiments: the compaction service on Kubernetes
 
-Registered in [PREREGISTRATION.md](../publication/PREREGISTRATION.md), "Cloud: the compaction
+Registered in [PREREGISTRATION.md](../results/PREREGISTRATION.md), "Cloud: the compaction
 service on Kubernetes". Two tracks:
 
 - **Azure (CPU service):** AKS and plain VMs. The subscription cannot create GPU VMs, so the
@@ -18,9 +18,9 @@ Both use the same image, manifests and driver.
 | AKS cluster | [infra/azure/aks.sh](../infra/azure/aks.sh) (`up`, `status`, `down`), [kubelet.json](../infra/azure/kubelet.json) (static CPU manager) |
 | Plain VMs (C4) | [infra/azure/vms.sh](../infra/azure/vms.sh) (`up IMAGE`, `down`), writes `vms-hosts.json` for the driver |
 | Cost guard | [infra/azure/guard.sh](../infra/azure/guard.sh): `budget`, `list`, `sweep`, `watch`; every group is tagged `purpose=lsm-cloud` and `expires` |
-| Prices | [infra/azure/prices.py](../infra/azure/prices.py) writes [prices-azure.json](../publication/prices-azure.json) |
+| Prices | [infra/azure/prices.py](../infra/azure/prices.py) writes [prices-azure.json](../results/prices-azure.json) |
 | Manifests | [infra/k8s](../infra/k8s): database slots (`tenants.yaml`), service pod (`service-pod.yaml`), service Deployment and Service for C3 (`compaction-service.yaml`) |
-| Driver | [publication/cloud/cloud_campaign.py](../publication/cloud/cloud_campaign.py): `setup`, `preload`, `c1`–`c4`, over `kubectl exec`, ssh + `docker exec`, or locally |
+| Driver | [results/cloud/cloud_campaign.py](../results/cloud/cloud_campaign.py): `setup`, `preload`, `c1`–`c4`, over `kubectl exec`, ssh + `docker exec`, or locally |
 
 Each database slot is a Guaranteed pod (whole vCPUs) with the preloaded database in `/golden`
 and a memory volume `/work` that each trial copies it into. The driver starts
@@ -45,23 +45,23 @@ cat > /tmp/aks.json <<EOF
  "render": {"DB_SLOTS": 6, "DB_CPUS": 4, "DB_MEMORY": "16Gi", "WORK_SIZE": "8Gi",
             "SVC_CPUS": 14, "SVC_MEMORY": "32Gi"}}
 EOF
-D=publication/data/cloud/azure
-python3 publication/cloud/cloud_campaign.py --platform /tmp/aks.json --experiment setup --out $D
-python3 publication/cloud/cloud_campaign.py --platform /tmp/aks.json --experiment preload --out $D
+D=results/data/cloud/azure
+python3 results/cloud/cloud_campaign.py --platform /tmp/aks.json --experiment setup --out $D
+python3 results/cloud/cloud_campaign.py --platform /tmp/aks.json --experiment preload --out $D
 for K in 4 7 14; do                          # C0
-  python3 publication/cloud/cloud_campaign.py --platform /tmp/aks.json --experiment c1 --out $D \
+  python3 results/cloud/cloud_campaign.py --platform /tmp/aks.json --experiment c1 --out $D \
     --counts 6 --native-counts "" --engines $K --repetitions 1 --results-name c0-k$K.jsonl
 done
-python3 publication/cloud/cloud_campaign.py --platform /tmp/aks.json --experiment c1 --out $D --engines K
-python3 publication/cloud/cloud_campaign.py --platform /tmp/aks.json --experiment c2 --out $D \
+python3 results/cloud/cloud_campaign.py --platform /tmp/aks.json --experiment c1 --out $D --engines K
+python3 results/cloud/cloud_campaign.py --platform /tmp/aks.json --experiment c2 --out $D \
   --engines 2 --policies fair,fifo --light-rate RATE
-python3 publication/cloud/cloud_campaign.py --platform /tmp/aks.json --experiment c3 --out $D --counts 6 \
+python3 results/cloud/cloud_campaign.py --platform /tmp/aks.json --experiment c3 --out $D --counts 6 \
   --render '{"IMAGE": "'$IMAGE'", "GPU_LIMIT": "", "BACKEND": "cpu_merge", "ENGINES": K2, "POLICY": "fair",
              "DRAIN_SECONDS": 60, "GRACE_SECONDS": 90, "SVC_CPUS": 7, "SVC_MEMORY": "24Gi"}'
 infra/azure/aks.sh down
 infra/azure/vms.sh up $IMAGE 6              # C4 on plain VMs
-python3 publication/cloud/cloud_campaign.py --platform infra/azure/vms-hosts.json --experiment preload --out $D
-python3 publication/cloud/cloud_campaign.py --platform infra/azure/vms-hosts.json --experiment c4 --out $D \
+python3 results/cloud/cloud_campaign.py --platform infra/azure/vms-hosts.json --experiment preload --out $D
+python3 results/cloud/cloud_campaign.py --platform infra/azure/vms-hosts.json --experiment c4 --out $D \
   --counts 4 --native-counts 4 --engines K
 infra/azure/vms.sh down
 ```

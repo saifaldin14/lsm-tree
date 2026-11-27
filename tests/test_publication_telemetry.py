@@ -13,7 +13,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "publication"))
+sys.path.insert(0, str(ROOT / "results"))
 import make_figures_v3 as figures
 
 
@@ -357,7 +357,7 @@ class CpuAnalysisTests(TelemetryTestCase):
 
 class SavedTelemetryTests(unittest.TestCase):
     def test_all_six_local_n6_logs_supply_299_full_bins(self):
-        root = ROOT / "publication/data/malphite-nvme/followup/n6"
+        root = ROOT / "results/data/malphite-nvme/followup/n6"
         if not (root / "results.jsonl").exists():
             self.skipTest("N6 archive is not installed")
         series, excluded = figures.load_disk_runs(root)

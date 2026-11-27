@@ -4,8 +4,8 @@ build
 artifacts
 .venv
 **/__pycache__
-publication/data
-publication/figures
+results/data
+results/figures
 paper
 *.pdf
 .DS_Store

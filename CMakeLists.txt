@@ -219,7 +219,7 @@ add_test(NAME remote.replication
           "$<TARGET_FILE:lsm_system_bench>" "$<TARGET_FILE:lsm_replica_server>")
 set_tests_properties(remote.replication PROPERTIES TIMEOUT 300 LABELS "remote;integration")
 
-# Head-to-head with gParaKV (publication/gparakv/): RocksDB behind gParaKV's own YCSB driver.
+# Head-to-head with gParaKV (results/gparakv/): RocksDB behind gParaKV's own YCSB driver.
 set(LSM_YCSBC_DIR "" CACHE PATH "gParaKV's ycsbc source directory; builds lsm_ycsbc when set")
 if(LSM_YCSBC_DIR)
   add_executable(lsm_ycsbc bench/ycsbc/rocksdb_db.cc "${LSM_YCSBC_DIR}/ycsbc.cc"

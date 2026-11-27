@@ -71,7 +71,7 @@ build/dev/lsm_compaction_bench --dir /dev/shm/$USER/cb --modes native_cpu,gpu_ou
 Other options: `--key-bytes`, `--overwrite-fraction`, `--compression
 lz4|zstd|none`, `--target-file-bytes`, `--subcompactions`, `--no-base`,
 `--seed`, `--keep`. Repetition 0 includes GPU buffer allocation and should be
-excluded. [publication/compaction_sweep.sh](../publication/compaction_sweep.sh)
+excluded. [results/compaction_sweep.sh](../results/compaction_sweep.sh)
 runs the published sweep.
 
 ### Whole database: `lsm_system_bench` and `system_campaign.py`
@@ -100,14 +100,14 @@ throughput rewards a backend that postpones compaction. Other options:
 `--max-write-buffer-number`, `--subcompactions`, `--block-cache-bytes`,
 `--adaptive-yield` (on by default; keep one client thread per core), `--verify`.
 
-`publication/system_campaign.py` runs a grid in randomized blocks. Each trial
+`results/system_campaign.py` runs a grid in randomized blocks. Each trial
 copies a golden database, pins the benchmark to N physical cores of the GPU's
 NUMA node, and optionally runs `lsm_burn` background load on the same cores.
 It samples RAPL package and DRAM energy (`perf stat -a`) and GPU power
 (`nvidia-smi`) at 1 Hz.
 
 ```sh
-LSM_BUILD_DIR=build/dev python3 publication/system_campaign.py OUT \
+LSM_BUILD_DIR=build/dev python3 results/system_campaign.py OUT \
   --golden /dev/shm/$USER/sys/golden --grid configs/system/batched-ingest.json --blocks 5 --seed 41
 ```
 
@@ -118,8 +118,8 @@ events.
 
 ### Figures
 
-`python3 publication/make_figures.py` regenerates `publication/figures/` and
-`publication/data/summary.md` from the raw results in `publication/data/`. It
+`python3 results/make_figures.py` regenerates `results/figures/` and
+`results/data/summary.md` from the raw results in `results/data/`. It
 refuses data from a run that failed its correctness check.
 
 ### Running on Rift (Zyra)

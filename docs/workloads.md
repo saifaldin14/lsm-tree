@@ -15,7 +15,7 @@ at the end.
 - **Driver:** `lsm_db_bench`, RocksDB's `db_bench` built from the pinned source with one added
   line that installs our compaction transform (`LSM_DB_BENCH_MODE`, see
   `bench/db_bench/transform_hook.cc`). Configure with `-DLSM_BUILD_DB_BENCH=ON` and gflags.
-- **Runner:** `publication/mixgraph/run.sh`.
+- **Runner:** `results/mixgraph/run.sh`.
 - **Parameters:**
   - 50 M keys of 48 B; value sizes from the published Generalized Pareto model (k 0.2615,
     sigma 25.45, mean about 35 B);

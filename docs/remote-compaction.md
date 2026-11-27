@@ -7,7 +7,7 @@ process. This document covers two extensions:
 - **Replication:** replicate the database so compaction runs only once.
 
 Both use TCP or RDMA. The plan and hypotheses (H13–H17) are in
-[publication/PREREGISTRATION.md](../publication/PREREGISTRATION.md).
+[results/PREREGISTRATION.md](../results/PREREGISTRATION.md).
 
 ## Remote compaction
 
@@ -107,7 +107,7 @@ context and one set of engines, instead of each database process holding its own
 - `LSM_GPU_MEMORY_BUDGET_MB` and `LSM_GPU_MEMORY_PER_INPUT`: a job starts only if the summed
   estimates (input bytes times the factor) of running jobs fit the budget; a job always starts
   when none is running. Measured device memory per job is 11–17 times its compressed input
-  (6.4 times uncompressed); data in `publication/data/multiplex/memory`.
+  (6.4 times uncompressed); data in `results/data/multiplex/memory`.
 - Out of device memory: idle engines free their cached buffers and the job runs again once
   another job has finished (up to 8 times) instead of falling back to the CPU.
 - Statistics (printed on exit, and in `transform` statistics in process): per tenant jobs,
@@ -118,7 +118,7 @@ context and one set of engines, instead of each database process holding its own
 The same scheduler orders jobs when several databases share one process (`--shards`).
 
 Results with up to 8 databases, locally and over RDMA, against separate processes and CUDA
-MPS: [publication/FULL-RESULTS.md, section 11](../publication/FULL-RESULTS.md#11-several-databases-on-one-gpu).
+MPS: [results/FULL-RESULTS.md, section 11](../results/FULL-RESULTS.md#11-several-databases-on-one-gpu).
 `lsm_rpc_bench --replay DIR --clients C` replays compaction requests recorded with
 `LSM_REMOTE_RECORD_DIR` to measure the service alone.
 
@@ -162,7 +162,7 @@ compaction server, for the whole replica set.
 
 These were measured on two machines linked at 100 Gb/s (ConnectX-6 Dx, RoCE), with the
 compaction server running the CPU merge (`cpu_merge`). They are summarised in
-[publication/FULL-RESULTS.md, section 10](../publication/FULL-RESULTS.md#10-compaction-on-another-machine-over-rdma).
+[results/FULL-RESULTS.md, section 10](../results/FULL-RESULTS.md#10-compaction-on-another-machine-over-rdma).
 
 - **Transport:** RDMA push reaches 92 Gb/s (the `ib_write_bw` ceiling) and costs the
   client about 0.012 CPU-seconds per GiB. TCP reaches 6–7 Gb/s at about 1 CPU-second
@@ -176,7 +176,7 @@ compaction server running the CPU merge (`cpu_merge`). They are summarised in
 
 ### Remote compaction to a CPU server
 
-![Remote compaction to a CPU server](../publication/figures/fig15_rdma_isolated.png)
+![Remote compaction to a CPU server](../results/figures/fig15_rdma_isolated.png)
 
 One compaction per workload, run five ways: RocksDB on the database machine (dark grey);
 the server's reference merge run locally (light blue), to show how fast that merge is on
@@ -190,7 +190,7 @@ and TCP (dark blue). Median of 3 runs.
 
 ### Replication with 2 backups
 
-![Replication with 2 backups](../publication/figures/fig16_rdma_replication.png)
+![Replication with 2 backups](../results/figures/fig16_rdma_replication.png)
 
 Three ways to keep 2 backups in step: every copy compacts its own data (grey); the
 primary compacts once and ships the files (blue); a compaction server compacts once and
@@ -218,14 +218,14 @@ replication traffic per write. Median of 5 runs.
 ## Results: GPU compaction over RDMA (through a relay)
 
 This was the first GPU testbed, before a machine with both a GPU and an RDMA link was
-found; the direct-link results are in [publication/FULL-RESULTS.md](../publication/FULL-RESULTS.md#10-compaction-on-another-machine-over-rdma), section 10. Here `rdma_campaign.py r7` chains three machines: the
+found; the direct-link results are in [results/FULL-RESULTS.md](../results/FULL-RESULTS.md#10-compaction-on-another-machine-over-rdma), section 10. Here `rdma_campaign.py r7` chains three machines: the
 database node (AMD EPYC 7662, 4 cores) sends each job over RDMA (ConnectX-6 Dx, 100 Gb/s)
 to a relay (`--backend remote_merge`), which forwards it over TCP on 1 Gb/s Ethernet to a
 `cuda_merge` server on the A6000 host (8 cores of the GPU's NUMA node). The same
 workloads also run directly over TCP to the GPU host, over RDMA to a CPU server, and on the
 GPU host itself (local GPU, and a loopback server). Every run matched native RocksDB.
-Medians of 3 warm runs ([data](../publication/data/rdma/r7/summary.md),
-`publication/rdma/analyze_r7.py`):
+Medians of 3 warm runs ([data](../results/data/rdma/r7/summary.md),
+`results/rdma/analyze_r7.py`):
 
 | Workload | Native (database node) | Measured through the relay | Hops: database node / RDMA / relay / 1 GbE / GPU | GPU over RDMA, estimate | Database-node CPU (s/GiB): native → remote GPU |
 |---|---:|---:|---|---:|---|
@@ -255,7 +255,7 @@ Both testbeds side by side (rows above the dashed line: this relay testbed; belo
 direct link of FULL-RESULTS.md section 10, on different machines, so compare rows within a
 testbed):
 
-![GPU compaction over RDMA, relay and direct testbeds](../publication/figures/fig23_rdma_gpu.png)
+![GPU compaction over RDMA, relay and direct testbeds](../results/figures/fig23_rdma_gpu.png)
 
 ## Limits
 
@@ -276,6 +276,6 @@ testbed):
   file crosses the network twice: server to primary, then primary to each backup.
 - **GPU over RDMA was first estimated, then measured.** On the relay testbed, GPU-over-RDMA
   times were estimates from measured hops. On a second testbed with a direct 100 Gb/s link
-  they are measured (publication/FULL-RESULTS.md, section 10).
+  they are measured (results/FULL-RESULTS.md, section 10).
 - **GPUDirect RDMA is not used.** On the server, received data passes through host memory
   before the GPU. Data-center GPUs could receive directly with GPUDirect RDMA.
