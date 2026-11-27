@@ -1214,6 +1214,211 @@ Hypotheses (medians over blocks):
 - **Y-E1c (scans):** E's p99 scan latency is at most 1.10× RocksDB's. (GPU-built blocks use
   RocksDB's block size and restart interval, so scans should cost the same.)
 
+### Lab machines for E2 to E5 (checked 2026-11-26, before any of these runs)
+
+- **zyra** (RTX A6000, SATA SSD): busy with E1 until it ends; nothing else runs there.
+- **malphite** (10-core Xeon Silver 4210R, 20 threads; RTX PRO 6000 Blackwell; 477 GB NVMe,
+  49 GB free; 92 GB memory; 47 GB `/dev/shm`): GPU idle. Another user ran 3 single-thread
+  jobs at the first check and 14 an hour later, all free to run on any of the 20 threads.
+  Every trial records the load it saw. Reached through rift (`ssh rift ssh malphite...`).
+- **pyke** (2 × 24 cores, 186 GB, 94 GB `/dev/shm`, no GPU): idle. Its RoCE port and
+  malphite's share 192.168.100.0/24 at 100 Gb/s; its other link is 1 Gb/s.
+- **jax** and **nasus** (192 and 256 threads, no GPU): their RoCE ports are on
+  192.168.126.0/24, which does not reach pyke or malphite (pings fail), so neither can join
+  the RDMA pair.
+- **Builds:** M5's binaries (`build/zyra-*`, built 2026-11-14) predate the client's retry on
+  a new connection and the bound on concurrent CPU merges (both added 2026-11-15), which E4
+  and E5 test. So E2 to E5 use a fresh build of the sources at the commit that adds this
+  registration (unchanged since 240740c), in
+  its own checkout on malphite's disk (`/tmp/sa29ali/lsm-e`; E1 keeps running from the shared
+  checkout): `build/e-cuda` (CUDA and RDMA, for malphite) and `build/e-rdma` (RDMA only,
+  copied to pyke), with the same CMake options as `zyra-cuda` and `zyra-rdma` except CUDA 12.8
+  instead of 12.3 (12.3 does not accept malphite's gcc 13); sm_86 as before. Their sha256
+  sums are kept with the data (`build/SHA256SUMS`). The hosts file (`rdma-hosts-e.json`,
+  private) is M5's with `repo` set to this checkout and these two builds.
+- **Driver:** runs on malphite, as rift has no port on 192.168.100.0/24. pyke deletes a
+  user's files in `/dev/shm` when the user's last login ends (systemd `RemoveIPC`), so one
+  login to pyke is held open for the whole campaign.
+- **Smoke tests (not reported):** r10 and r11 were run once with 1 M keys, 2 databases and
+  windows under a minute, with M5's binaries, to check the driver. They found two driver bugs,
+  now fixed (the restarted server did not start; pyke's `/dev/shm` was cleared between
+  logins); their output is discarded.
+- **Order:** E4, E3, E2, then E5, one after another, as all use malphite. E5 is last because
+  its CPU-pool trials may wait for other users.
+
+### Failure of the shared service, E4 (registered 2026-11-26, before any E4 run)
+
+The client falls back to its own CPU when the service fails (`merge_fallbacks`), but no run
+has measured it. Service papers show what happens when a worker dies.
+
+- **Run** (`rdma_campaign.py r10`, client pyke, the M5 service on malphite: `cuda_merge`, 4
+  engines, fair scheduling, 4 server cores, RDMA; M5's 4-core settings `R9_FLAGS`; 50 M keys
+  per database on `/dev/shm`; every key verified): 4 databases (the first 4 M5 slots), 30 s
+  warm-up plus 240 s.
+  - **Arms, in shuffled order in each of 3 blocks (seed 1300 + block):** `service` (no
+    failure), `service-kill` (the server is killed with SIGKILL 60 s into the measurement and
+    restarted on the same endpoint 60 s later), and `native` (RocksDB, 4 databases).
+  - Clients use the defaults: 2 retries on a new connection, then CPU fallback; 120 s
+    without progress counts as a failure.
+  - Command: `python3 rdma_campaign.py --hosts rdma-hosts-e.json --experiment r10 --out
+    data/rdma/e4 --instances 4 --engines 4 --duration-seconds 240 --kill-at 60 --outage 60`.
+- **Reported:** per-second writes/s of every database (timelines) aligned to the kill and
+  restart times; CPU fallbacks and retries; write stalls; worst p99.9 write latency; every
+  database's exit code and verification.
+- **Recovery time:** seconds from the restart until the 5-second moving average of the
+  summed writes/s is back to 90% of its mean over measurement seconds 30 to 60.
+
+Hypotheses (medians over blocks):
+
+- **Y-E4a (no data lost):** in every `service-kill` trial every database exits normally and
+  verifies all 50 M keys.
+- **Y-E4b (degrades, does not stop):** while the server is down (measurement seconds 60 to
+  120), summed writes/s is at least 0.7× that of `native` in the same seconds.
+- **Y-E4c (recovers):** recovery time is at most 30 s.
+
+If Y-E4a fails, the paper reports the failure and the fallback is called unsafe until fixed.
+
+### A pool of CPU cores as the service, E5 (registered 2026-11-26, before any E5 run)
+
+Reviewers will ask why a GPU and not a pool of remote CPU cores, as in CaaS-LSM. E5 keeps
+everything as in M5 and changes only what the server computes with.
+
+- **Run** (`rdma_campaign.py r11`, client pyke, server on malphite over the same RDMA link,
+  M5's 4-core database settings, 50 M keys per database, 30 s warm-up plus 120 s, every key
+  verified): 8 databases (M5's first 8 slots).
+  - **Arms, in shuffled order in each of 3 blocks (seed 1400 + block):** `service-gpu` (M5:
+    `cuda_merge`, 4 engines, server pinned to threads 0-3); `service-cpu-4`, `-8` and `-16`
+    (`cpu_merge` on 2, 4 and 8 physical cores, pinned to both threads of each core: 0-1,10-11;
+    0-3,10-13; 0-7,10-17; one merge per thread); `native` (RocksDB, 8 databases).
+  - 8 of malphite's 10 cores is the largest pool on the RDMA pair (see "Lab machines").
+  - **Other users:** before each CPU-pool trial the driver waits, for at most 6 hours, until
+    other users' busy threads on malphite are at most 20 minus the pool's threads; what it saw
+    is recorded with the trial. A trial whose wait ran out is still run and reported, but left
+    out of the hypothesis tests; if every block of a pool is left out, that pool is reported
+    as not measured.
+  - Command: `python3 rdma_campaign.py --hosts rdma-hosts-e.json --experiment r11 --out
+    data/rdma/e5 --instances 8 --engines 4`.
+- **Reported** (as M5, `multiplex/analyze.py`): per-database writes/s in the window and
+  counted to the end of the leftover compaction ("backlog-inclusive", primary); leftover
+  compaction (s); server CPU-seconds; CPU fallbacks; worst p99.9 write latency; cost per write
+  at `prices.json` (a pool priced at `physical_core_hour` per physical core; the GPU arm as in
+  M5).
+- **Cores to match the GPU:** if no pool matches the GPU arm, the number of physical cores
+  needed is extrapolated from the pools' server CPU-seconds per GiB compacted and is reported
+  as an extrapolation, not a measurement.
+
+Hypotheses (medians over blocks):
+
+- **Y-E5a (a GPU does the work of many cores):** backlog-inclusive writes/s per database with
+  the 8-core pool is below 0.95× the GPU arm's.
+- **Y-E5b (cost):** at the cores needed to match the GPU (measured or extrapolated), the CPU
+  pool costs more per write than the GPU service.
+
+If Y-E5a fails, the paper says that at this load a pool of 8 cores does what the GPU does and
+compares the two on cost alone.
+
+### Kvrocks with its compactions sent to the service, E2 (registered 2026-11-26, before any E2 run)
+
+Every result so far uses our own benchmark. E2 runs a real key-value store with a network
+protocol, Kvrocks (Redis-compatible, on RocksDB), as peers do.
+
+- **Feasibility, checked on jax:** Kvrocks v2.17.0 pins RocksDB v11.8.1, the version we
+  patch, and builds on our patched RocksDB with g++ 11. Sending its compactions to the service
+  takes about 75 lines (`results/e2/kvrocks-lsm-hook.diff`): the transform is installed where
+  Kvrocks builds its table options. The service cannot take every compaction as Kvrocks is
+  configured by default, so the service's arm needs:
+  - **lz4 instead of snappy:** snappy stops the database ("session block codec is
+    unsupported").
+  - **no compaction filters:** Kvrocks puts one on every column family, and a compaction with
+    one stays local. Without them, expired and stale data is not cleaned up, which is
+    harmless here (plain SETs, no expiry).
+  - **table format 6, CRC32c checksums and binary-search data blocks** (Kvrocks uses format 5
+    and hash-indexed blocks); the hook sets these.
+
+  Even then, Kvrocks' two-level index and table-properties collectors keep the service from
+  building finished blocks: it returns the merged entries and Kvrocks compresses and writes
+  them. Only TCP is built into the hook, not RDMA.
+- **Run** (`results/e2/e2_campaign.py` on pyke; the service on malphite, reached over TCP on
+  the 100 Gb/s port; `build/e-cuda`; 3 blocks; arms shuffled with seed 1500 + block):
+  - **Kvrocks:** 4 physical cores of pyke's node 0 (threads 0-3 and 48-51), data in
+    `/dev/shm`, preloaded with every key of a 50 M-key space (100-byte values).
+  - **Load:** `redis-benchmark` on node 1: SETs to random keys (64 connections, pipeline 16,
+    8 threads), 60 s warm-up plus 300 s, then 60 s of GETs. Throughput and Kvrocks' CPU come
+    from its counters between benchmark runs of 2 M requests.
+  - **Check:** after leftover compaction, 1 M random keys are read back.
+  - **Arms:**
+    - `stock`: Kvrocks' own settings, local compaction (reference);
+    - `local`: the settings the service needs, local compaction (the baseline);
+    - `service`: as `local`, compactions sent to `cuda_merge` with 4 engines and 4 server cores.
+- **Reported:** SETs/s, Kvrocks CPU per SET, p99 SET latency (median and worst over
+  benchmark runs), GETs/s and p99, leftover compaction, CPU fallbacks and merge jobs from the
+  hook, and the check.
+
+Hypotheses (medians over blocks, `service` against `local`):
+
+- **Y-E2a (works in a real store):** in every `service` trial the check finds every key and
+  the hook reports no fallback to local compaction.
+- **Y-E2b (no loss):** SETs/s is at least 0.95× `local`'s.
+- **Y-E2c (CPU saved):** Kvrocks' CPU per SET is at least 1.2× lower.
+
+`stock` against `local` shows what the required settings cost; it is reported, not tested.
+
+### A dataset much larger than the cache, on NVMe, E3 (registered 2026-11-26, before any E3 run)
+
+The headline keeps the data in memory, and the earlier NVMe runs (`data/malphite-nvme`) had
+the 50 M-key database in the page cache. Peers use datasets larger than memory.
+
+- **Why not 500 M keys (~70 GB) as planned:** no GPU host has room. malphite's NVMe has 49 GB
+  free, which must hold the database while it grows, and zyra has a SATA drive.
+- **Instead:** 100 M keys (about 9.3 GB, 36× the 256 MiB block cache) with direct I/O for
+  reads, flushes and compaction, so reads that miss the block cache go to the drive. The golden
+  copy lives in `/dev/shm`; each trial's copy is on the NVMe drive.
+- **Run** (`system_campaign.py` on malphite, `build/e-cuda`, 3 blocks, seed 109): the
+  tuned 8-core settings of the NVMe confirmation (`malphite-nvme/followup/n6`) with
+  `records` 100 M, `use-direct-io` true, 60 s warm-up plus 300 s, every key verified.
+  - **Workloads:** write-only (batches of 100, WAL off, as n6), and YCSB A, uniform keys
+    (E1's 8-core settings: one operation per write, 50% reads, 4 background jobs, 8 threads,
+    adaptive yield).
+  - Grid `configs/system/e3-nvme-large.json`; script `results/e3_run.sh` (builds the golden
+    copy, then `system_campaign.py OUT --golden /dev/shm/$USER/e3/golden-100m --grid
+    e3-nvme-large.json --blocks 3 --seed 109 --scratch /tmp/$USER/e3/scratch`; rerun to resume).
+- **Reported:** operations/s, CPU per operation, p99 read latency (YCSB A), write stalls,
+  drive bandwidth and busy time, both designs.
+
+Hypotheses (medians over blocks):
+
+- **Y-E3a (no loss on the drive, CPU saved):** write-only, our writes/s is at least 0.95×
+  RocksDB's and our CPU per write at least 1.3× lower.
+- **Y-E3b (reads from the drive):** YCSB A, our operations/s is at least 0.95× RocksDB's and
+  our p99 read latency at most 1.10× RocksDB's.
+
+### Energy counted to the end of leftover compaction, E6 (registered 2026-11-26, analysis only)
+
+The measured window ends while compaction is still pending, which flatters whichever design
+leaves more of it. Every archived single-database trial also integrated RAPL package and DRAM
+energy and the GPU's board power from the first operation to the end of that leftover
+compaction (`energy_joules_end_to_end`, with all operations in `ingest_and_compact.ops`).
+These have not been analysed.
+
+- **Analysis** (`energy_e2e.py`, no new runs): energy per operation, end to end, ours (`full`)
+  against RocksDB (`native`), paired within block and cell, in `v3-headline` and
+  `v3-headline-more` (the headline, 4/8/16 cores) and in the `main`, `equal-cost`, `ycsb`,
+  `contention`, `prior-lz4`, `prior-zstd`, `prior-none` and `prior-equal-cost` campaigns.
+  `read-tradeoff` is left out because its two designs use different settings.
+- **Two accountings, both reported:** (i) the same machine, everything measured, including
+  the idle GPU during RocksDB's runs; (ii) RocksDB on a machine without a GPU, so its GPU
+  energy is left out. (ii) is the primary measure, because it is the less favourable to us.
+- **Not counted:** fans, power supply and drive, which RAPL and the GPU sensor do not see.
+
+Hypotheses (medians over blocks, headline):
+
+- **Y-E6a:** under (ii), ours uses at most as much energy per write as RocksDB at 4, 8 and
+  16 cores.
+- **Y-E6b:** under (i), ours uses less energy per write than RocksDB at 4, 8 and 16 cores.
+
+Whatever the result, the paper states energy under both accountings and drops "no energy
+claim" only if Y-E6a holds.
+
 ## Changes after data collection
 
 - **Cost analysis repriced (2026-11-14; analysis change only, no new runs).** Every cost

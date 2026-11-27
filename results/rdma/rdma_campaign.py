@@ -27,6 +27,12 @@ Experiments:
   r8  whole database over the r7 chain: lsm_system_bench on the database node (batched writes,
       WAL off, full verification) with native compaction, remote_merge to the server's CPU over
       RDMA, and remote_merge through the relay to the GPU host
+  r9  several databases on the client sharing one GPU compaction server (M2, M5)
+  r10 failure of the shared service (E4): N databases use the GPU service; in "service-kill"
+      trials the server is killed with SIGKILL partway through the measurement and restarted
+      on the same endpoint later; per-second timelines are kept
+  r11 CPU pool against the GPU (E5): N databases use the server on the GPU host with either
+      its GPU or a pool of its physical cores (cpu_merge), on the same RDMA link
 Results are JSON lines in OUT_DIR; every run is resumable (finished files are skipped).
 """
 
@@ -100,6 +106,32 @@ class Cluster:
     def load(self, host: str) -> dict:
         out = self.run(host, "cat /proc/loadavg; who | wc -l", check=False).split()
         return {"load_1m": float(out[0]), "users": int(out[-1])} if out else {}
+
+    def busy_threads(self, host: str, seconds: int = 5) -> float | None:
+        """Hardware threads busy on the host over a few seconds, from /proc/stat (all users)."""
+        out = self.run(host, f"head -1 /proc/stat; sleep {seconds}; head -1 /proc/stat; nproc", check=False).split("\n")
+        try:
+            first, second = ([int(v) for v in line.split()[1:]] for line in out[:2])
+            threads = int(out[2])
+        except (ValueError, IndexError):
+            return None
+        total = sum(second) - sum(first)
+        idle = (second[3] + second[4]) - (first[3] + first[4])
+        return threads * (total - idle) / total if total > 0 else None
+
+    def wait_for_free_threads(self, host: str, needed: int, limit_seconds: int = 6 * 3600) -> dict:
+        """Waits until at most nproc - needed threads are busy (nothing of ours runs between trials),
+        polling every minute for at most limit_seconds; returns what was seen."""
+        threads = int(self.run(host, "nproc").strip())
+        waited = 0
+        while True:
+            busy = self.busy_threads(host)
+            if busy is not None and busy <= threads - needed:
+                return {"busy_threads": busy, "waited_seconds": waited, "met": True}
+            if waited >= limit_seconds:
+                return {"busy_threads": busy, "waited_seconds": waited, "met": False}
+            time.sleep(60)
+            waited += 60
 
     def cpu_seconds(self, host: str, pid: int) -> float | None:
         """User + system CPU of a process and its waited-for children, from /proc. Retries an
@@ -444,6 +476,47 @@ R9_FLAGS = {
 }
 
 
+def database_copy_lines(scratch: str, golden: str, n: int) -> list[str]:
+    """Shell lines that make N fresh copies of the golden database on the client."""
+    return [f"set -u; D={scratch}/r9; rm -rf $D; mkdir -p $D"] + [f"cp -a {golden} $D/db{i}" for i in range(n)]
+
+
+def database_run_lines(cluster: Cluster, scratch: str, n: int, env: str, mode: str, options: str, records: int,
+                       seconds: tuple[int, int]) -> list[str]:
+    """Shell lines that run N databases at once on the client's db_slots, wait for them, print each one's
+    exit code, JSON result and last error output, and delete the copies."""
+    slots = cluster.config["client"]["db_slots"]
+    lines = [f"set -u; D={scratch}/r9"]
+    for index in range(n):
+        cores, node = slots[index]
+        lines.append(f"(LSM_TENANT=db{index} {env} numactl --physcpubind={cores} --preferred={node} "
+                     f"{cluster.build}/lsm_system_bench --phase run --mode {mode} --dir $D/db{index} "
+                     f"--records {records} --warmup-seconds {seconds[0]} --duration-seconds {seconds[1]} "
+                     f"{options} > $D/db{index}.json 2> $D/db{index}.err; echo $? > $D/db{index}.rc) &")
+    lines.append("wait")
+    lines.append("for f in $D/db*.rc; do echo rc $(basename $f .rc) $(cat $f); done")
+    lines.append("for f in $D/db*.json; do printf 'json %s %s\\n' \"$(basename $f .json)\" \"$(tr -d '\\n' < $f)\"; done")
+    lines.append("for f in $D/db*.err; do printf 'err %s %s\\n' \"$(basename $f .err)\" \"$(tail -c 300 $f | tr '\\n' ' ')\"; done")
+    lines.append("rm -rf $D")
+    return lines
+
+
+def parse_database_output(text: str, record: dict, keep_timeline: bool = False) -> None:
+    record["results"], record["exit_codes"], record["errors"] = {}, {}, {}
+    for line in text.splitlines():
+        kind, _, rest = line.partition(" ")
+        name, _, value = rest.partition(" ")
+        if kind == "rc":
+            record["exit_codes"][name] = int(value or -1)
+        elif kind == "json" and value.startswith("{"):
+            result = json.loads(value)
+            if not keep_timeline:
+                result.pop("timeline", None)
+            record["results"][name] = result
+        elif kind == "err" and value.strip():
+            record["errors"][name] = value
+
+
 def experiment_r9(cluster: Cluster, out: Path, repetitions: int, records: int, seconds: tuple[int, int],
                   counts: list[int], engines: int, policies: list[str], seed_base: int = 900,
                   gpu_telemetry: bool = False, results_name: str = "r9-sharing.jsonl",
@@ -489,44 +562,20 @@ def experiment_r9(cluster: Cluster, out: Path, repetitions: int, records: int, s
                     mode, flags = "remote_merge", R9_FLAGS["service"]
                     record["server_cpu_before"] = cluster.cpu_seconds(g["host"], server[0])
                 options = " ".join(f"--{k} {str(v).lower() if isinstance(v, bool) else v}" for k, v in flags.items())
-                copy = [f"set -u; D={scratch}/r9; rm -rf $D; mkdir -p $D"]
-                for index in range(n):
-                    copy.append(f"cp -a {golden} $D/db{index}")
-                lines = [f"set -u; D={scratch}/r9"]
-                for index in range(n):
-                    cores, node = c["db_slots"][index]
-                    lines.append(f"(LSM_TENANT=db{index} {env} numactl --physcpubind={cores} --preferred={node} "
-                                 f"{cluster.build}/lsm_system_bench --phase run --mode {mode} --dir $D/db{index} "
-                                 f"--records {records} --warmup-seconds {seconds[0]} --duration-seconds {seconds[1]} "
-                                 f"{options} > $D/db{index}.json 2> $D/db{index}.err; echo $? > $D/db{index}.rc) &")
+                copy = database_copy_lines(scratch, golden, n)
+                lines = database_run_lines(cluster, scratch, n, env, mode, options, records, seconds)
                 if gpu_telemetry and server:
                     # Copy first, so the GPU samples cover only the databases' run.
                     cluster.run(c["host"], "bash -c " + shlex.quote("\n".join(copy)))
                     sampler = cluster.start_gpu_sampler(g["host"], sampler_log)
                 else:
                     lines = copy + lines[1:]
-                lines.append("wait")
-                lines.append("for f in $D/db*.rc; do echo rc $(basename $f .rc) $(cat $f); done")
-                lines.append("for f in $D/db*.json; do printf 'json %s %s\\n' \"$(basename $f .json)\" \"$(tr -d '\\n' < $f)\"; done")
-                lines.append("for f in $D/db*.err; do printf 'err %s %s\\n' \"$(basename $f .err)\" \"$(tail -c 300 $f | tr '\\n' ' ')\"; done")
-                lines.append("rm -rf $D")
                 text = cluster.run(c["host"], "bash -c " + shlex.quote("\n".join(lines)))
                 if server:
                     after = cluster.cpu_seconds(g["host"], server[0])
                     before = record.pop("server_cpu_before")
                     record["server_cpu_seconds"] = after - before if None not in (after, before) else None
-                record["results"], record["exit_codes"], record["errors"] = {}, {}, {}
-                for line in text.splitlines():
-                    kind, _, rest = line.partition(" ")
-                    name, _, value = rest.partition(" ")
-                    if kind == "rc":
-                        record["exit_codes"][name] = int(value or -1)
-                    elif kind == "json" and value.startswith("{"):
-                        result = json.loads(value)
-                        result.pop("timeline", None)
-                        record["results"][name] = result
-                    elif kind == "err" and value.strip():
-                        record["errors"][name] = value
+                parse_database_output(text, record)
             finally:
                 if sampler:
                     cluster.stop(g["host"], sampler)
@@ -540,10 +589,157 @@ def experiment_r9(cluster: Cluster, out: Path, repetitions: int, records: int, s
                   f"{[round(o / 1e3) for o in ops]} k ops/s, exits {record['exit_codes']}", flush=True)
 
 
+def ensure_golden(cluster: Cluster, records: int) -> str:
+    c, scratch = cluster.config["client"], cluster.config["scratch"]
+    golden = f"{scratch}/rdma-golden-{records}"
+    if "done" not in cluster.run(c["host"], f"test -f {golden}.done && echo done || true"):
+        cluster.run(c["host"], f"mkdir -p {scratch} && rm -rf {golden} && {cluster.build}/lsm_system_bench --phase preload "
+                               f"--dir {golden} --records {records} --threads 8 > {golden}.json 2>&1 && touch {golden}.done")
+    return golden
+
+
+def server_threads(cores: str) -> int:
+    """Hardware threads in a cpu list such as "0-3,10-13"."""
+    count = 0
+    for part in cores.split(","):
+        low, _, high = part.partition("-")
+        count += int(high or low) - int(low) + 1
+    return count
+
+
+def experiment_r10(cluster: Cluster, out: Path, repetitions: int, records: int, seconds: tuple[int, int], n: int,
+                   engines: int, kill_at: int, outage: int, seed_base: int = 1300, port: int = 7471) -> None:
+    """E4: N databases share the GPU service (M5 settings); in "service-kill" trials the server is killed
+    with SIGKILL kill_at seconds into the measurement window and restarted on the same endpoint outage
+    seconds later. "service" (no failure) and "native" (RocksDB) run in the same blocks. Every database
+    keeps its per-second timeline; the kill and restart times are recorded as Unix times."""
+    c, g = cluster.config["client"], cluster.config["gpu"]
+    gpu_build = g.get("build", cluster.build)
+    scratch = cluster.config["scratch"]
+    golden = ensure_golden(cluster, records)
+    results = out / "r10-failure.jsonl"
+    done = {(r["repetition"], r["design"]) for r in map(json.loads, results.open())} if results.exists() else set()
+    log, restart_log = "/tmp/lsm-r10-server.log", "/tmp/lsm-r10-restart.log"
+    command = (f"{GPU_SERVER_ENV} LSM_SCHEDULER_LOG=1 {pin(g)} {gpu_build}/lsm_compaction_server "
+               f"--listen rdma://{g['rdma_address']}:{port} --backend cuda_merge --engines {engines} --scheduler fair")
+    for repetition in range(1, repetitions + 1):
+        order = ["service", "service-kill", "native"]
+        random.Random(seed_base + repetition).shuffle(order)
+        for design in order:
+            if (repetition, design) in done:
+                continue
+            record = {"experiment": "r10", "repetition": repetition, "design": design, "instances": n,
+                      "engines": engines if design != "native" else None,
+                      "kill_at_measurement_second": kill_at if design == "service-kill" else None,
+                      "outage_seconds": outage if design == "service-kill" else None,
+                      "load_before": {"client": cluster.load(c["host"]), "gpu": cluster.load(g["host"])}}
+            server, killer = None, None
+            try:
+                env, mode, flags = "", "native_cpu", R9_FLAGS["native"]
+                if design != "native":
+                    server = cluster.start(g["host"], command, log)
+                    env = f"LSM_RDMA_PUSH=1 LSM_REMOTE_ENDPOINT={server[1]} LSM_REMOTE_CONNECTIONS=4"
+                    mode, flags = "remote_merge", R9_FLAGS["service"]
+                    record["endpoint"] = server[1]
+                options = " ".join(f"--{k} {str(v).lower() if isinstance(v, bool) else v}" for k, v in flags.items())
+                cluster.run(c["host"], "bash -c " + shlex.quote("\n".join(database_copy_lines(scratch, golden, n))))
+                if design == "service-kill":
+                    # Started just before the databases; the restarted server replaces this shell (exec), so
+                    # stopping the killer's PID stops the restarted server.
+                    script = (f"sleep {seconds[0] + kill_at}; echo killed $(date +%s.%N); kill -9 {server[0]}; "
+                              f"sleep {outage}; echo restarted $(date +%s.%N); exec env {command}")
+                    wrapped = f"nohup setsid bash -c {shlex.quote(script)} > {restart_log} 2>&1 < /dev/null & echo $!"
+                    killer = int(cluster.run(g["host"], wrapped).strip().splitlines()[-1])
+                record["databases_started_unix"] = time.time()
+                text = cluster.run(c["host"], "bash -c " + shlex.quote(
+                    "\n".join(database_run_lines(cluster, scratch, n, env, mode, options, records, seconds))))
+                parse_database_output(text, record, keep_timeline=True)
+            finally:
+                if killer:
+                    cluster.stop(g["host"], killer)
+                    events = {}
+                    for line in cluster.run(g["host"], f"cat {restart_log}", check=False).splitlines():
+                        word, _, stamp = line.partition(" ")
+                        if word in ("killed", "restarted"):
+                            events[f"{word}_unix"] = float(stamp)
+                        elif word == "listening":
+                            events["restart_endpoint"] = stamp.split()[0]
+                    record["failure"] = events
+                    record["server_statistics"] = cluster.statistics(g["host"], restart_log)
+                if server:
+                    cluster.stop(g["host"], server[0])
+                    if not killer:
+                        record["server_statistics"] = cluster.statistics(g["host"], log)
+            append(results, record)
+            ops = [r["throughput"]["ops_per_second"] for r in record["results"].values()]
+            print(f"r10 repetition {repetition} {design} N={n}: per-database {[round(o / 1e3) for o in ops]} k ops/s, "
+                  f"exits {record['exit_codes']}, failure {record.get('failure')}", flush=True)
+
+
+def experiment_r11(cluster: Cluster, out: Path, repetitions: int, records: int, seconds: tuple[int, int], n: int,
+                   engines: int, pools: list[str], seed_base: int = 1400) -> None:
+    """E5: N databases share the compaction server on the GPU host, backed by its GPU (cuda_merge, the M5
+    service: `engines` engines, the host's "cores") or by a pool of its CPU threads (cpu_merge, one merge
+    per thread). pools lists the cpu lists of the CPU pools; RocksDB runs in the same blocks. Before a
+    CPU-pool trial the driver waits until other users leave the pool's threads free."""
+    c, g = cluster.config["client"], cluster.config["gpu"]
+    gpu_build = g.get("build", cluster.build)
+    scratch = cluster.config["scratch"]
+    golden = ensure_golden(cluster, records)
+    results = out / "r11-cpu-pool.jsonl"
+    done = {(r["repetition"], r["design"]) for r in map(json.loads, results.open())} if results.exists() else set()
+    log = "/tmp/lsm-r11-server.log"
+    arms = {"service-gpu": ("cuda_merge", g["cores"], engines), "native": (None, None, None)}
+    for cores in pools:
+        arms[f"service-cpu-{server_threads(cores)}"] = ("cpu_merge", cores, server_threads(cores))
+    for repetition in range(1, repetitions + 1):
+        order = list(arms)
+        random.Random(seed_base + repetition).shuffle(order)
+        for design in order:
+            if (repetition, design) in done:
+                continue
+            backend, cores, slots = arms[design]
+            record = {"experiment": "r11", "repetition": repetition, "design": design, "instances": n,
+                      "backend": backend, "server_cores": cores, "engines": slots,
+                      "load_before": {"client": cluster.load(c["host"]), "gpu": cluster.load(g["host"])}}
+            if backend == "cpu_merge":
+                record["free_threads_wait"] = cluster.wait_for_free_threads(g["host"], slots)
+            else:
+                record["gpu_host_busy_threads"] = cluster.busy_threads(g["host"])
+            server = None
+            try:
+                env, mode, flags = "", "native_cpu", R9_FLAGS["native"]
+                if backend:
+                    server_env = GPU_SERVER_ENV if backend == "cuda_merge" else GPU_ENV
+                    server = cluster.start(g["host"], f"{server_env} LSM_SCHEDULER_LOG=1 numactl --physcpubind={cores} "
+                                                      f"--membind={g['node']} {gpu_build}/lsm_compaction_server "
+                                                      f"--listen rdma://{g['rdma_address']}:0 --backend {backend} "
+                                                      f"--engines {slots} --scheduler fair", log)
+                    env = f"LSM_RDMA_PUSH=1 LSM_REMOTE_ENDPOINT={server[1]} LSM_REMOTE_CONNECTIONS=4"
+                    mode, flags = "remote_merge", R9_FLAGS["service"]
+                    record["server_cpu_before"] = cluster.cpu_seconds(g["host"], server[0])
+                options = " ".join(f"--{k} {str(v).lower() if isinstance(v, bool) else v}" for k, v in flags.items())
+                lines = database_copy_lines(scratch, golden, n) + \
+                    database_run_lines(cluster, scratch, n, env, mode, options, records, seconds)[1:]
+                text = cluster.run(c["host"], "bash -c " + shlex.quote("\n".join(lines)))
+                if server:
+                    after, before = cluster.cpu_seconds(g["host"], server[0]), record.pop("server_cpu_before")
+                    record["server_cpu_seconds"] = after - before if None not in (after, before) else None
+                parse_database_output(text, record)
+            finally:
+                if server:
+                    cluster.stop(g["host"], server[0])
+                    record["server_statistics"] = cluster.statistics(g["host"], log)
+            append(results, record)
+            ops = [r["throughput"]["ops_per_second"] for r in record["results"].values()]
+            print(f"r11 repetition {repetition} {design} N={n}: per-database {[round(o / 1e3) for o in ops]} k ops/s, "
+                  f"exits {record['exit_codes']}", flush=True)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--hosts", type=Path, required=True)
-    parser.add_argument("--experiment", choices=["r1", "r2", "r6", "r7", "r8", "r9"], required=True)
+    parser.add_argument("--experiment", choices=["r1", "r2", "r6", "r7", "r8", "r9", "r10", "r11"], required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--repetitions", type=int, default=None)
     parser.add_argument("--records", type=int, default=50_000_000)
@@ -560,6 +756,11 @@ def main() -> int:
     parser.add_argument("--native-counts", help="r9: database counts for RocksDB (default: smallest and largest)")
     parser.add_argument("--server-env", default="", help="r9: extra environment for the compaction server")
     parser.add_argument("--client-env", default="", help="r9: extra environment for the databases using the server")
+    parser.add_argument("--instances", type=int, default=4, help="r10 and r11: databases sharing the server")
+    parser.add_argument("--kill-at", type=int, default=60, help="r10: measurement second at which the server is killed")
+    parser.add_argument("--outage", type=int, default=60, help="r10: seconds before the server is restarted")
+    parser.add_argument("--pools", default="0-1,10-11;0-3,10-13;0-7,10-17",
+                        help="r11: semicolon-separated cpu lists of the CPU pools on the GPU host")
     arguments = parser.parse_args()
     cluster = Cluster(json.loads(arguments.hosts.read_text()))
     arguments.out.mkdir(parents=True, exist_ok=True)
@@ -576,6 +777,14 @@ def main() -> int:
                       arguments.seed_base, arguments.gpu_telemetry, arguments.results_name,
                       [int(n) for n in arguments.native_counts.split(",")] if arguments.native_counts else None,
                       arguments.server_env, arguments.client_env)
+    elif arguments.experiment == "r10":
+        experiment_r10(cluster, arguments.out, arguments.repetitions or 3, arguments.records,
+                       (arguments.warmup_seconds, arguments.duration_seconds), arguments.instances,
+                       arguments.engines, arguments.kill_at, arguments.outage)
+    elif arguments.experiment == "r11":
+        experiment_r11(cluster, arguments.out, arguments.repetitions or 3, arguments.records,
+                       (arguments.warmup_seconds, arguments.duration_seconds), arguments.instances,
+                       arguments.engines, arguments.pools.split(";"))
     elif arguments.experiment == "r8":
         experiment_r8(cluster, arguments.out, arguments.repetitions or 3, arguments.records,
                       (arguments.warmup_seconds, arguments.duration_seconds),

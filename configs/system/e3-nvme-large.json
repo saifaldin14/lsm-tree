@@ -1,0 +1,76 @@
+{
+ "_comment": "E3 (PREREGISTRATION.md): 100 M keys with direct I/O on malphite's NVMe; write-only with the n6 settings and YCSB A uniform with E1's 8-core settings.",
+ "common": {
+  "records": 100000000,
+  "verify": true,
+  "warmup-seconds": 60,
+  "duration-seconds": 300,
+  "use-direct-io": true
+ },
+ "trials": [
+  {
+   "design": "native",
+   "mode": "native_cpu",
+   "cores": 8,
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 8,
+    "threads": 16,
+    "subcompactions": 8,
+    "pipelined-write": true,
+    "adaptive-yield": false,
+    "allow-fallocate": false,
+    "read-percent": 0
+   },
+   "workload": "write-only"
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 8,
+   "flags": {
+    "batch-size": 100,
+    "disable-wal": true,
+    "background-jobs": 8,
+    "threads": 16,
+    "subcompactions": 4,
+    "pipelined-write": true,
+    "adaptive-yield": false,
+    "allow-fallocate": false,
+    "read-percent": 0
+   },
+   "workload": "write-only"
+  },
+  {
+   "design": "native",
+   "mode": "native_cpu",
+   "cores": 8,
+   "flags": {
+    "batch-size": 1,
+    "read-percent": 50,
+    "distribution": "uniform",
+    "background-jobs": 4,
+    "threads": 8,
+    "adaptive-yield": true
+   },
+   "workload": "A",
+   "distribution": "uniform"
+  },
+  {
+   "design": "full",
+   "mode": "cuda_merge",
+   "cores": 8,
+   "flags": {
+    "batch-size": 1,
+    "read-percent": 50,
+    "distribution": "uniform",
+    "background-jobs": 4,
+    "threads": 8,
+    "adaptive-yield": true
+   },
+   "workload": "A",
+   "distribution": "uniform"
+  }
+ ]
+}
