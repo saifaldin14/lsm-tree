@@ -176,7 +176,13 @@ E8 came from the first critique round and are proposed, not yet approved. Each r
   has 49 GB free, not 70 GB); E5's CPU pool is capped at 8 cores; E2 runs over TCP without
   compaction filters, with LZ4, merged stream only.
   Blocker: another user's unpinned jobs keep Malphite at full load, including cores 0–3,
-  where the GPU server is pinned.
+  where the GPU server is pinned. **Postponed** (2026-11-26, Saif's decision): nothing has
+  been run. To resume: check Malphite is quiet (`uptime`, `ps -eo user,pcpu --sort=-pcpu`),
+  check `/tmp/sa29ali/e_build.log` ends in `BUILD-OK` (`/tmp` may have been cleared; if so,
+  rebuild with `~/rdma-private/e_build.sh`), copy E2's Kvrocks to Pyke `/tmp/sa29ali/e2/`
+  and the E2 run files (see the E2 registration), post in the Teams long-experiments
+  channel, then `tmux new -d -s echain 'bash /tmp/sa29ali/lsm-e/results/e_chain.sh >
+  /tmp/sa29ali/echain.log 2>&1'` on Malphite.
 - E6: done (analysis of archived runs). Neither hypothesis holds: at the headline, ours uses
   1.03×, 1.20× and 1.16× RocksDB's energy per write at 4, 8 and 16 cores (RocksDB without a
   GPU). Energy saved only where RocksDB is short of CPU. In the paper (Q6) and limitations.
