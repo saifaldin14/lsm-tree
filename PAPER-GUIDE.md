@@ -164,6 +164,12 @@ E8 came from the first critique round and are proposed, not yet approved. Each r
 | E7 | **Offload at matched level-0 depth** | Our faster compactions start with fewer level-0 files, so some of the stall and latency gain may come from compacting earlier, not from the GPU | Critique round 1 (PC reviewer) | Trigger grid for ours only (WRITE-AMPLIFICATION.md) | RocksDB and ours at level-0 triggers 4, 8, 16, both designs, same tuned threads; compare throughput, stalls, p99.9 and write amplification at equal mean level-0 depth |
 | E8 | **Long run near saturation** | 5-minute runs with leftover compaction show finite-run throughput, not a steady state | Critique round 1 (PC reviewer) | M5: 5-minute runs, N = 6 and 8 | N = 6 and 8 for 30 minutes; pending compaction bytes, queue length, stalls and throughput over time |
 
+**Run status:**
+- E1: registered (commit 0243b26, pushed), running on Zyra since 2026-11-26 in tmux session
+  `e1` (`~/lsm-tree/e1_run.sh`, output `/tmp/sa29ali/campaigns/ycsb-full`, 162 runs). To
+  resume after an interruption, rerun the script. Archive to `results/data/campaigns/` when done.
+- E2–E8: not started.
+
 Not proposed: a new value-size sweep or a second GPU model (already covered or out of scope).
 
 ---
