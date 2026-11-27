@@ -1184,6 +1184,36 @@ compaction over commodity cloud networking helps. If Z4 fails because of fallbac
 does not claim drain-safe scaling. A trial that fails for an infrastructure reason (node lost,
 image pull, quota) is rerun and reported.
 
+### YCSB A to F at 4, 8 and 16 cores, E1 (registered 2026-11-26, before any E1 run)
+
+The `ycsb` campaign ran A, B, F and a write-only mix on 4 cores. Reviewers of papers in this
+area expect all six YCSB workloads, including scans (E) and reads of recent keys (D), and
+results beyond 4 cores.
+
+- **Run** (`system_campaign.py`, zyra's RTX A6000, data on `/dev/shm`, grid
+  `configs/system/ycsb-full.json`, 3 blocks, seed 108): the `ycsb` campaign's settings
+  (50 M keys, 30 s warm-up plus 90 s, one operation per write, every read checked, adaptive
+  yield, the same environment), with `threads` equal to cores and `background-jobs` half the
+  cores (at least 2).
+  - **Workloads:** A (50% reads, 50% updates), B (95% reads), C (100% reads), D (95% reads,
+    5% writes, `--distribution latest`), E (95% scans of 50 keys, 5% updates), F (50%
+    read-modify-write). A, B, C, E and F with uniform and Zipfian keys; D with "latest" only.
+  - **Cells:** 4 cores for C, D and E (A, B and F are archived); 8 and 16 cores for all six.
+    54 cells, both designs, 162 runs.
+  - Command: `python3 results/system_campaign.py OUT --golden GOLDEN --grid
+    configs/system/ycsb-full.json --blocks 3 --seed 108`.
+- **Reported:** operations/s, p50/p99 read latency (scans for E), CPU per operation and write
+  stalls, both designs, every cell; ratios paired within blocks.
+
+Hypotheses (medians over blocks):
+
+- **Y-E1a (no harm to reads):** for B, C, D and E at every core count, our operations/s is
+  at least 0.95× RocksDB's and our p99 read latency at most 1.10× RocksDB's.
+- **Y-E1b (write-heavy gain persists with more cores):** for A and F, uniform keys, our
+  operations/s is at least 1.2× RocksDB's at 8 and at 16 cores.
+- **Y-E1c (scans):** E's p99 scan latency is at most 1.10× RocksDB's. (GPU-built blocks use
+  RocksDB's block size and restart interval, so scans should cost the same.)
+
 ## Changes after data collection
 
 - **Cost analysis repriced (2026-11-14; analysis change only, no new runs).** Every cost
