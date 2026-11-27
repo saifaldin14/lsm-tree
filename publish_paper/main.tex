@@ -5,48 +5,48 @@
 \section{Introduction}
 \label{sec:intro}
 
-In same-harness RocksDB 11.8 rebuilds of selected GPU and FPGA designs, our full per-byte
-offload uses 2.0--6.5$\times$ less compaction CPU per GiB than the best earlier stage
-placement for compressed values from 32 bytes to 1 KB. With compression disabled, CPU costs
-are nearly identical: 1.81 CPU-s/GiB for the earlier-design rebuild and 1.80 for ours. In
-these tests, compression—not GPU merge or checksum work alone—accounts for much of the CPU
-reduction.
+A write-optimized database can acknowledge an update before paying the full cost of
+organizing it on storage. Log-structured merge trees (LSM-trees) defer that work: they
+buffer writes, flush them into sorted files, and merge those files in the background to
+keep reads efficient~\cite{oneil1996lsm}. This maintenance competes with incoming writes
+for CPU time; when it falls behind, later writes can stall~\cite{silk2019,adoc2023}.
+RocksDB is a widely used LSM-tree store, and in our in-memory benchmark with batched writes
+and 128-byte values, it spends 3.5--5.5\,\textmu s of CPU time per write on compaction,
+compared with about 2.3\,\textmu s to accept the write.
 
-This matters because, in an in-memory RocksDB workload with 128-byte values, compaction
-uses 3.5--5.5\,\textmu s of CPU per write, compared with about 2.3\,\textmu s for write
-acceptance. When compaction falls behind, RocksDB slows writers and increases write latency
-~\cite{silk2019,adoc2023}; compaction therefore competes for foreground CPU and leaves a
-backlog after writes stop.
+Moving the merge to a GPU does not necessarily free the CPU from compaction. With
+compression enabled, the merged records must still be packed into blocks and compressed
+before RocksDB writes the new files. LUDA, for example, builds blocks on the GPU but leaves
+Snappy compression for future work~\cite{luda2020}. The question is not just how fast an
+accelerator merges records, but how much work it leaves on the CPU.
 
-GPU and FPGA systems accelerate sorting, merging, block construction, and data movement,
-often in different engines or data layouts~\cite{fpga2020,luda2020,glsm2024,zhou2024msst,
-gparakv2025}. LUDA targets LevelDB, gLSM uses key--value separation, and D$^2$Comp already
-uses a DPU compression accelerator~\cite{luda2020,glsm2024,d2comp2024}. Their reported
-results do not isolate the CPU contribution of moving the full per-byte path into RocksDB.
-CaaS-LSM provides a stateless compaction service on remote CPU workers~\cite{caaslsm2024}.
-This leaves two questions: how much does GPU offload help the whole RocksDB database, and
-can a shared GPU service deliver that benefit to multiple instances?
+We extend RocksDB to run the record and block processing stages together on the GPU, from
+decompressing input blocks to merging records, building and compressing output blocks,
+and computing checksums and Bloom-filter hashes. The CPU need not take back merged records
+just to compress them. RocksDB still chooses which files to compact, sets output-file
+boundaries, and manages metadata and file installation.
 
-We move all per-byte compaction processing to the GPU while keeping tree and file management
-in RocksDB. The GPU performs input decompression, merging, output-block construction and
-compression, checksum calculation, and Bloom-filter hashing; RocksDB retains output-file
-boundaries, index and filter sizing, metadata, and file installation. This boundary
-accelerates data processing without changing RocksDB's tree policy or giving the service
-access to database files. Each request carries input blocks and returns completed output
-blocks, allowing a shared service to schedule work from multiple databases across GPU
-engines and requeue jobs when GPU memory is insufficient. We also rebuild selected earlier
-GPU and FPGA stages inside RocksDB to compare CPU and accelerator placement in a common
-harness.
+To measure what partial offload leaves behind, we recreate selected GPU and FPGA stage
+placements in RocksDB 11.8, using our GPU kernels rather than running the original
+systems~\cite{fpga2020,luda2020,glsm2024,zhou2024msst,gparakv2025}. For 128-byte values,
+our design uses 2.6$\times$ less compaction CPU time per GiB than the best rebuild with
+LZ4 and 6.5$\times$ less with ZSTD. That rebuild packs blocks on the GPU but compresses
+them on the CPU. With compression disabled, the two designs use nearly the same CPU time
+per GiB.
 
-On the primary RTX A6000 system, a 50-million-key, in-memory workload with 128-byte values,
-batched writes, and the write-ahead log disabled completes 1.5--1.8$\times$ more writes and
-uses 1.8--2.2$\times$ less CPU per write than tuned RocksDB at 4, 8, and 16 CPU cores.
+The offload also improves whole-database performance. On an RTX A6000, our extension
+achieves 1.5--1.8$\times$ the write throughput of tuned RocksDB and uses
+1.8--2.2$\times$ less CPU time per write at the same core counts (4, 8, or 16). The
+benchmark uses 50 million keys in memory, batched writes of 128-byte values, and the
+write-ahead log disabled.
 
-In a separate five-minute run, eight four-core databases sharing an RTX PRO 6000 Blackwell
-over 100-Gb/s RDMA achieve 2.01$\times$ the per-database write rate of local RocksDB after
-counting catch-up compaction. The four engines average 86\% busy by device-time; GPU
-utilization was not recorded. At modeled AWS pricing, this configuration costs 4\% more per
-write than local RocksDB.
+Does each database need its own GPU? CaaS-LSM pools remote CPU workers for
+compaction~\cite{caaslsm2024}. Our GPU worker takes input blocks and returns output blocks
+without opening database files, so multiple databases can send work to it. In a separate
+experiment, eight four-core databases share an RTX PRO 6000 Blackwell over 100-Gb/s RDMA.
+They achieve 2.01$\times$ the per-database write throughput of local RocksDB, counting
+both the five-minute writing window and the time to finish remaining compactions. At
+modeled AWS pricing, this configuration costs 4\% more per write than local RocksDB.
 
 The gains are workload-dependent: read-heavy and drive-bound runs gain little throughput.
 Tenant isolation is also unresolved: in a separate co-tenancy test, light databases on the
@@ -54,14 +54,12 @@ service's NUMA node see 4.2--5.8$\times$ their solo p99.9 write latency beside a
 
 The paper makes three contributions:
 \begin{itemize}
-  \item A RocksDB-integrated offload of all per-byte compaction processing to the GPU
-        while retaining tree-shaping and file-management decisions in RocksDB.
+  \item A RocksDB integration that offloads record and block processing, including
+        compression, while keeping compaction policy and file management in RocksDB.
   \item A shared GPU compaction service that schedules work from multiple databases and
         requeues jobs when GPU memory is insufficient.
-  \item A controlled comparison of tuned RocksDB, full offload, and selected
-        GPU/FPGA stage placements that isolates compression's CPU contribution and measures
-        whole-database throughput, tail latency, resource use, modeled cost, and catch-up
-        compaction.
+  \item A controlled comparison of compaction stage placements with and without compression,
+        and an evaluation of throughput, tail latency, and cost for local and shared offload.
 \end{itemize}
 
 \section{Related Work}
