@@ -121,10 +121,8 @@ def start_kvrocks(directory: Path, env: dict, overrides: dict, log: Path) -> sub
 
 
 def stop_kvrocks(process: subprocess.Popen) -> int:
-    try:
-        Client().call("SHUTDOWN")
-    except (OSError, ConnectionError, RuntimeError):
-        pass
+    """SIGTERM, the clean exit on which the hook prints its statistics (numactl execs Kvrocks)."""
+    process.terminate()
     try:
         return process.wait(timeout=600)
     except subprocess.TimeoutExpired:
@@ -219,10 +217,10 @@ def verify(records: int, sample: int, seed: int) -> dict:
 
 
 def hook_statistics(log: Path) -> dict | None:
-    """The hook's last JSON statistics line (printed when Kvrocks exits)."""
+    """The hook's exit line, {"event":"lsm_kvrocks_exit",...}; its "statistics" is null without a transform."""
     for line in reversed(log.read_text(errors="replace").splitlines()):
         start = line.find("{")
-        if start >= 0 and "merge" in line:
+        if start >= 0 and '"lsm_kvrocks_exit"' in line:
             try:
                 return json.loads(line[start:])
             except json.JSONDecodeError:

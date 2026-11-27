@@ -1,0 +1,227 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index b074b52..a2487eb 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -225,6 +225,24 @@ list(APPEND EXTERNAL_LIBS pegtl)
+ list(APPEND EXTERNAL_LIBS range-v3)
+ list(APPEND EXTERNAL_LIBS cpptrace::cpptrace)
+ 
++# lsm-lab compaction transforms (remote_merge etc.), built against the same patched RocksDB.
++set(LSM_LAB_DIR "" CACHE PATH "lsm-lab source tree whose compaction transforms are built into kvrocks")
++set(LSM_LAB_NLOHMANN_INCLUDE "" CACHE PATH "directory containing nlohmann/json.hpp (>= 3.11)")
++if(LSM_LAB_DIR)
++  add_library(lsm_blocks STATIC
++    ${LSM_LAB_DIR}/src/gpu/block_transform.cpp ${LSM_LAB_DIR}/src/gpu/merge_cpu.cpp
++    ${LSM_LAB_DIR}/src/gpu/merge_scheduler.cpp ${LSM_LAB_DIR}/src/remote/remote_merge.cpp
++    ${LSM_LAB_DIR}/src/remote/replication.cpp ${LSM_LAB_DIR}/src/remote/transport.cpp
++    ${LSM_LAB_DIR}/src/remote/transport_tcp.cpp ${LSM_LAB_DIR}/src/remote/transport_unix.cpp
++    ${PROJECT_SOURCE_DIR}/lsm_lab/kvrocks_transform.cc)
++  target_compile_features(lsm_blocks PRIVATE cxx_std_20)
++  target_include_directories(lsm_blocks PRIVATE ${LSM_LAB_DIR}/include)
++  target_include_directories(lsm_blocks SYSTEM PRIVATE ${rocksdb_SOURCE_DIR} ${rocksdb_BINARY_DIR} ${LSM_LAB_NLOHMANN_INCLUDE})
++  target_compile_definitions(lsm_blocks PRIVATE $<TARGET_PROPERTY:rocksdb,COMPILE_DEFINITIONS>)
++  target_link_libraries(lsm_blocks PUBLIC rocksdb_with_headers PRIVATE lz4 zstd Threads::Threads)
++  list(APPEND EXTERNAL_LIBS lsm_blocks)
++endif()
++
+ # Add git sha to version.h
+ find_package(Git REQUIRED)
+ execute_process(COMMAND sh -c "cat src/VERSION.txt"
+@@ -283,6 +301,9 @@ endif()
+ target_link_libraries(kvrocks_objs PUBLIC -fno-omit-frame-pointer)
+ target_link_libraries(kvrocks_objs PUBLIC ${EXTERNAL_LIBS})
+ target_compile_definitions(kvrocks_objs PUBLIC KVROCKS_STORAGE_ENGINE=RocksDB)
++if(LSM_LAB_DIR)
++  target_compile_definitions(kvrocks_objs PUBLIC KVROCKS_LSM_LAB=1)
++endif()
+ if(ENABLE_OPENSSL)
+     target_compile_definitions(kvrocks_objs PUBLIC ENABLE_OPENSSL)
+ endif()
+diff --git a/lsm_lab/kvrocks_transform.cc b/lsm_lab/kvrocks_transform.cc
+new file mode 100644
+index 0000000..c0359fa
+--- /dev/null
++++ b/lsm_lab/kvrocks_transform.cc
+@@ -0,0 +1,95 @@
++// lsm-lab hook for Kvrocks: one compaction transform shared by every column family.
++//
++// Environment:
++//   LSM_KVROCKS_TRANSFORM=<name>        install lsm_lab::make_transform(name) (e.g. remote_merge, which
++//                                       reads LSM_REMOTE_ENDPOINT) and the table format it needs
++//   LSM_KVROCKS_TABLE_FORMAT=lsm        only the table format (format_version 6, CRC32C, binary-search
++//                                       data blocks), no transform: the local-compaction baseline
++//   LSM_KVROCKS_NO_COMPACTION_FILTERS=1 do not install Kvrocks' compaction filter factories
++//
++// When the transform or the table format is enabled, one JSON line is written to stderr at exit:
++//   {"event":"lsm_kvrocks_exit","transform":<name|null>,"table_format":<"lsm"|null>,
++//    "compaction_filters":<bool>,"statistics":<BatchTransform::statistics()|null>}
++#include "lsm_lab/block_transform.hpp"
++
++#include <nlohmann/json.hpp>
++
++#include <cstdio>
++#include <cstdlib>
++#include <cstring>
++#include <exception>
++#include <memory>
++#include <string>
++
++namespace engine {
++
++bool LsmLabKeepCompactionFilters() { return std::getenv("LSM_KVROCKS_NO_COMPACTION_FILTERS") == nullptr; }
++
++namespace {
++
++struct LsmLabState {
++  std::string transform_name;
++  std::shared_ptr<lsm_lab::BatchTransform> transform;
++  bool table_format = false;
++};
++
++// Never destroyed, so the exit handler can still read it.
++const LsmLabState *g_state = nullptr;
++
++void LsmLabPrintExitStatistics() {
++  nlohmann::json line = {{"event", "lsm_kvrocks_exit"},
++                         {"transform", nullptr},
++                         {"table_format", nullptr},
++                         {"compaction_filters", LsmLabKeepCompactionFilters()},
++                         {"statistics", nullptr}};
++  if (g_state->table_format) line["table_format"] = "lsm";
++  if (g_state->transform) {
++    line["transform"] = g_state->transform_name;
++    line["statistics"] = g_state->transform->statistics();
++  }
++  const auto text = line.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace) + "\n";
++  std::fwrite(text.data(), 1, text.size(), stderr);
++  std::fflush(stderr);
++}
++
++const LsmLabState &LsmLabStateInstance() {
++  static const LsmLabState *state = [] {
++    auto *created = new LsmLabState;
++    if (const char *format = std::getenv("LSM_KVROCKS_TABLE_FORMAT"); format != nullptr && *format != '\0') {
++      if (std::strcmp(format, "lsm") != 0) {
++        std::fprintf(stderr, "LSM_KVROCKS_TABLE_FORMAT must be \"lsm\" or unset (got \"%s\")\n", format);
++        std::exit(2);
++      }
++      created->table_format = true;
++    }
++    if (const char *mode = std::getenv("LSM_KVROCKS_TRANSFORM"); mode != nullptr && *mode != '\0') {
++      try {
++        created->transform = lsm_lab::make_transform(mode);
++      } catch (const std::exception &error) {
++        std::fprintf(stderr, "LSM_KVROCKS_TRANSFORM=%s: %s\n", mode, error.what());
++        std::exit(2);
++      }
++      if (!created->transform) {
++        std::fprintf(stderr, "LSM_KVROCKS_TRANSFORM=%s selects no transform\n", mode);
++        std::exit(2);
++      }
++      created->transform_name = mode;
++      created->table_format = true;
++    }
++    g_state = created;
++    if (created->table_format) std::atexit(LsmLabPrintExitStatistics);
++    return created;
++  }();
++  return *state;
++}
++
++}  // namespace
++
++std::shared_ptr<rocksdb::CompactionBlockTransform> LsmLabCompactionTransform() {
++  return LsmLabStateInstance().transform;
++}
++
++// Set by LSM_KVROCKS_TRANSFORM (merged-input offload reads only this format) or LSM_KVROCKS_TABLE_FORMAT=lsm.
++bool LsmLabTableFormat() { return LsmLabStateInstance().table_format; }
++
++}  // namespace engine
+diff --git a/src/storage/storage.cc b/src/storage/storage.cc
+index f328b04..7ed7aea 100644
+--- a/src/storage/storage.cc
++++ b/src/storage/storage.cc
+@@ -135,6 +135,14 @@ rocksdb::ReadOptions Storage::DefaultMultiGetOptions() const {
+   return read_options;
+ }
+ 
++#ifdef KVROCKS_LSM_LAB
++std::shared_ptr<rocksdb::CompactionBlockTransform> LsmLabCompactionTransform();
++bool LsmLabTableFormat();
++bool LsmLabKeepCompactionFilters();
++#else
++static bool LsmLabKeepCompactionFilters() { return true; }
++#endif
++
+ rocksdb::BlockBasedTableOptions Storage::InitTableOptions() {
+   rocksdb::BlockBasedTableOptions table_options;
+   table_options.format_version = 5;
+@@ -146,6 +154,16 @@ rocksdb::BlockBasedTableOptions Storage::InitTableOptions() {
+   table_options.data_block_index_type = rocksdb::BlockBasedTableOptions::DataBlockIndexType::kDataBlockBinaryAndHash;
+   table_options.data_block_hash_table_util_ratio = 0.75;
+   table_options.block_size = static_cast<size_t>(config_->rocks_db.block_size);
++#ifdef KVROCKS_LSM_LAB
++  table_options.compaction_block_transform = LsmLabCompactionTransform();
++  if (LsmLabTableFormat()) {
++    // Merged-input offload reads only format_version 6, CRC32C, binary-search data blocks;
++    // LSM_KVROCKS_TABLE_FORMAT=lsm applies the same format without a transform.
++    table_options.format_version = 6;
++    table_options.checksum = rocksdb::kCRC32c;
++    table_options.data_block_index_type = rocksdb::BlockBasedTableOptions::DataBlockIndexType::kDataBlockBinarySearch;
++  }
++#endif
+   return table_options;
+ }
+ 
+@@ -321,7 +339,7 @@ Status Storage::Open(DBOpenMode mode) {
+ 
+   rocksdb::ColumnFamilyOptions metadata_opts(options);
+   metadata_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(metadata_table_opts));
+-  metadata_opts.compaction_filter_factory = std::make_shared<MetadataFilterFactory>(this);
++  if (LsmLabKeepCompactionFilters()) metadata_opts.compaction_filter_factory = std::make_shared<MetadataFilterFactory>(this);
+   metadata_opts.disable_auto_compactions = config_->rocks_db.disable_auto_compactions;
+   // Enable whole key bloom filter in memtable
+   metadata_opts.memtable_whole_key_filtering = true;
+@@ -337,7 +355,7 @@ Status Storage::Open(DBOpenMode mode) {
+   subkey_table_opts.cache_index_and_filter_blocks_with_high_priority = true;
+   rocksdb::ColumnFamilyOptions subkey_opts(options);
+   subkey_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(subkey_table_opts));
+-  subkey_opts.compaction_filter_factory = std::make_shared<SubKeyFilterFactory>(this);
++  if (LsmLabKeepCompactionFilters()) subkey_opts.compaction_filter_factory = std::make_shared<SubKeyFilterFactory>(this);
+   subkey_opts.disable_auto_compactions = config_->rocks_db.disable_auto_compactions;
+   subkey_opts.table_properties_collector_factories.emplace_back(
+       NewCompactOnExpiredTableCollectorFactory(std::string(kPrimarySubkeyColumnFamilyName), 0.3));
+@@ -346,28 +364,28 @@ Status Storage::Open(DBOpenMode mode) {
+   rocksdb::BlockBasedTableOptions pubsub_table_opts = InitTableOptions();
+   rocksdb::ColumnFamilyOptions pubsub_opts(options);
+   pubsub_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(pubsub_table_opts));
+-  pubsub_opts.compaction_filter_factory = std::make_shared<PubSubFilterFactory>();
++  if (LsmLabKeepCompactionFilters()) pubsub_opts.compaction_filter_factory = std::make_shared<PubSubFilterFactory>();
+   pubsub_opts.disable_auto_compactions = config_->rocks_db.disable_auto_compactions;
+   SetBlobDB(&pubsub_opts);
+ 
+   rocksdb::BlockBasedTableOptions propagate_table_opts = InitTableOptions();
+   rocksdb::ColumnFamilyOptions propagate_opts(options);
+   propagate_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(propagate_table_opts));
+-  propagate_opts.compaction_filter_factory = std::make_shared<PropagateFilterFactory>();
++  if (LsmLabKeepCompactionFilters()) propagate_opts.compaction_filter_factory = std::make_shared<PropagateFilterFactory>();
+   propagate_opts.disable_auto_compactions = config_->rocks_db.disable_auto_compactions;
+   SetBlobDB(&propagate_opts);
+ 
+   rocksdb::BlockBasedTableOptions search_table_opts = InitTableOptions();
+   rocksdb::ColumnFamilyOptions search_opts(options);
+   search_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(search_table_opts));
+-  search_opts.compaction_filter_factory = std::make_shared<SearchFilterFactory>(this);
++  if (LsmLabKeepCompactionFilters()) search_opts.compaction_filter_factory = std::make_shared<SearchFilterFactory>(this);
+   search_opts.disable_auto_compactions = config_->rocks_db.disable_auto_compactions;
+   SetBlobDB(&search_opts);
+ 
+   rocksdb::BlockBasedTableOptions index_table_opts = InitTableOptions();
+   rocksdb::ColumnFamilyOptions index_opts(options);
+   index_opts.table_factory.reset(rocksdb::NewBlockBasedTableFactory(index_table_opts));
+-  index_opts.compaction_filter_factory = std::make_shared<IndexFilterFactory>(this);
++  if (LsmLabKeepCompactionFilters()) index_opts.compaction_filter_factory = std::make_shared<IndexFilterFactory>(this);
+   index_opts.disable_auto_compactions = config_->rocks_db.disable_auto_compactions;
+   SetBlobDB(&index_opts);
+ 

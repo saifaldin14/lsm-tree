@@ -1325,7 +1325,11 @@ protocol, Kvrocks (Redis-compatible, on RocksDB), as peers do.
 - **Feasibility, checked on jax:** Kvrocks v2.17.0 pins RocksDB v11.8.1, the version we
   patch, and builds on our patched RocksDB with g++ 11. Sending its compactions to the service
   takes about 75 lines (`results/e2/kvrocks-lsm-hook.diff`): the transform is installed where
-  Kvrocks builds its table options. The service cannot take every compaction as Kvrocks is
+  Kvrocks builds its table options. Final hook (+140/−6 lines in 3 files, against Kvrocks
+  commit 185d4221df20, our sources at 240740c, built with g++ 11.5 for Haswell and later):
+  `LSM_KVROCKS_TABLE_FORMAT=lsm` gives the local arm the same table format without the
+  transform, and Kvrocks prints the transform's statistics as one JSON line when stopped
+  with SIGTERM. sha256: diff `5575da04…87b2`, binary `1a868336…80a4`, config `23c34680…e208`. The service cannot take every compaction as Kvrocks is
   configured by default, so the service's arm needs:
   - **lz4 instead of snappy:** snappy stops the database ("session block codec is
     unsupported").

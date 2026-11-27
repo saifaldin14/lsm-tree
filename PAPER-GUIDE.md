@@ -179,8 +179,10 @@ E8 came from the first critique round and are proposed, not yet approved. Each r
   where the GPU server is pinned. **Postponed** (2026-11-26, Saif's decision): nothing has
   been run. To resume: check Malphite is quiet (`uptime`, `ps -eo user,pcpu --sort=-pcpu`),
   check `/tmp/sa29ali/e_build.log` ends in `BUILD-OK` (`/tmp` may have been cleared; if so,
-  rebuild with `~/rdma-private/e_build.sh`), copy E2's Kvrocks to Pyke `/tmp/sa29ali/e2/`
-  and the E2 run files (see the E2 registration), post in the Teams long-experiments
+  rebuild with `~/rdma-private/e_build.sh`), check Pyke `/tmp/sa29ali/e2/` still has
+  `bin/kvrocks` and `kvrocks.conf` (copied 2026-11-26; if `/tmp` was cleared, copy them again
+  from jax `/tmp/sa29ali/e2/`, sha256 in the E2 registration), copy the E2 run files to Pyke
+  `/tmp/sa29ali/lsm-e` (see the E2 registration), post in the Teams long-experiments
   channel, then `tmux new -d -s echain 'bash /tmp/sa29ali/lsm-e/results/e_chain.sh >
   /tmp/sa29ali/echain.log 2>&1'` on Malphite.
 - E6: done (analysis of archived runs). Neither hypothesis holds: at the headline, ours uses
