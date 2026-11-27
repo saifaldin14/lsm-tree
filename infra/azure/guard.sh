@@ -14,7 +14,9 @@ groups() {
 sweep() {
   now=$(date -u +%Y-%m-%dT%H:%MZ)
   groups | while read -r name expires; do
-    if [[ -z "$expires" || "$expires" < "$now" ]]; then
+    # Groups without an expiry (e.g. AKS's node group, which can inherit the purpose tag) are left
+    # alone; deleting the cluster's own group removes them.
+    if [[ -n "$expires" && "$expires" != None && "$expires" < "$now" ]]; then
       echo "$now: deleting expired $name (expires $expires)"
       az group delete -n "$name" --yes --no-wait
     fi

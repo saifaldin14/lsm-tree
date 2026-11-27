@@ -1,9 +1,12 @@
 \documentclass[sigconf, nonacm]{acmart}
 \settopmatter{printfolios=true, printacmref=false}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta}
 
 \newcommand{\yes}{\checkmark}
 \newcommand{\no}{$\times$}
 \newcommand{\nd}{n.d.}
+\newcommand{\unverified}{?}
 \setlength{\emergencystretch}{1.5em}
 
 \begin{document}
@@ -25,23 +28,22 @@ falls behind, the engine deliberately slows writers down~\cite{silk2019,adoc2023
 core spent rewriting files is a core not serving requests, so compaction caps the write
 rate a server of a given size can sustain.
 
-The cost is large. RocksDB, a widely deployed LSM-tree engine~\cite{dong2021rocksdb}, spends
-3.5--5.5\,\textmu s of CPU time per write on compaction in our in-memory benchmark with
-batched writes of 128-byte values---1.5--2.4$\times$ the roughly 2.3\,\textmu s it spends
-accepting the write. Compaction is also a natural fit for an accelerator: it streams through
-gigabytes of data with simple, regular operations. Running eight compactions at once, one
-RTX A6000 GPU in our system processes compaction input 15 (LZ4) to 18 (ZSTD) times as fast as
-one CPU core running RocksDB, while using 1.3--2.0 host cores to drive it.
+In RocksDB, a widely deployed LSM-tree engine~\cite{dong2021rocksdb}, compaction takes
+3.5--5.5\,\textmu s of CPU time per write in our in-memory benchmark with batched writes
+of 128-byte values, against about 2.3\,\textmu s to accept the write. Accelerating the
+merge is one way to reduce that cost~\cite{fpga2020,luda2020,glsm2024,zhou2024msst,gparakv2025},
+but it can leave a substantial CPU bill: LUDA, for example, builds data blocks on the
+GPU but leaves Snappy compression for future work~\cite{luda2020}. The question is not
+just how fast the GPU merges, but which stages must move with the merge to free up
+host CPU time.
 
-Several systems have therefore moved compaction to GPUs and FPGAs and report large merge
-speedups~\cite{fpga2020,luda2020,glsm2024,zhou2024msst,gparakv2025}. But a faster merge does
-not necessarily mean a cheaper compaction. Most of these designs offload sorting and merging
-and leave other per-byte work on the CPU---most consequentially, compressing the output.
-LUDA, for example, builds blocks on the GPU but leaves Snappy compression for future
-work~\cite{luda2020}. RocksDB deployments normally enable block compression, and once the
-merge is offloaded, compression is the most expensive stage that remains. The question that matters to an operator is therefore not
-how fast an accelerator merges, but how much CPU time it leaves behind
-(Figure~\ref{fig:teaser}).
+We compare stage placements in one RocksDB~11.8 build, using our GPU kernels for offloaded
+stages and RocksDB's code for host stages. This comparison does not reproduce prior
+systems' hardware, data layout, or storage paths. In Figure~\ref{fig:teaser}, the GPU
+pipeline that merges and builds blocks uses nearly the same host CPU time as full offload
+with compression disabled (1.81 vs.\ 1.80\,CPU-s/GiB). When compression is enabled and
+the pipeline leaves codec and associated checksum work on the host, it uses 2.6$\times$
+as much host CPU time per GiB with LZ4 and 6.5$\times$ as much with ZSTD.
 
 \begin{figure}[t]
   \centering
@@ -51,122 +53,90 @@ how fast an accelerator merges, but how much CPU time it leaves behind
   kernels; bold numbers give the pipeline placement's CPU time divided by ours. Without
   compression, the two cost the same; with
   compression, the CPU time left by the pipeline placement grows with codec cost while ours
-  stays near 2\,s/GiB. Medians of three runs; every run matches native RocksDB.}
+  stays near 2\,CPU-s/GiB. Medians of three runs; all outputs pass the differential
+  check against native RocksDB.}
   \label{fig:teaser}
 \end{figure}
 
-Moving all per-byte work to the GPU is harder than moving the merge, for four reasons.
-First, RocksDB cuts output blocks sequentially: a block ends when an estimate of its encoded
-size crosses a threshold, so where one block ends depends on every entry before it. Second,
-the output must remain an ordinary RocksDB table, yet parts of it are decided by the engine
-only after the GPU finishes: RocksDB chooses file boundaries, and each block's checksum
-depends on the block's offset within its file. Third, the GPU must drop overwritten versions
-and deletions exactly as RocksDB's compaction iterator does, including for keys still
-visible to open snapshots, or reads return different results. Fourth, a compaction job needs 11--17$\times$ its compressed
-input in GPU memory, so concurrent jobs can exhaust the device.
+We build and compress output blocks on the GPU so the host need not reconstruct
+them from merged records.
+RocksDB normally chooses each block boundary based on the encoded size so far, making
+it dependent on preceding entries. Our extension adds periodic cuts so groups of
+entries can be processed independently. It also preserves the key versions visible to
+snapshots and returns compressed blocks, not complete table files: RocksDB still decides
+where to cut files, finalizes offset-dependent checksums, writes, and installs its tables.
+The output remains readable in RocksDB's format without requiring identical block
+boundaries or compressed bytes.
 
-We extend RocksDB~11.8 so that a GPU pipeline performs the per-byte compaction work:
-it verifies and decompresses input blocks, merges records and drops obsolete entries, cuts
-and encodes output blocks, compresses them with LZ4 or ZSTD, and computes their checksums
-and Bloom-filter hashes. Three design decisions address the obstacles above. (i) The GPU
-replays RocksDB's own block-size rule but also ends a block every 2,048 entries, so that
-blocks can be cut in parallel; we accept block boundaries that may differ from RocksDB's.
-(ii) The GPU returns finished blocks, each followed by a gap for its trailer. RocksDB keeps
-its own file-cut decision, fills in each trailer and checksum once the block's offset is
-known, and writes the index, filter and file itself, so compaction policy, metadata and
-recovery are unchanged. (iii) The GPU worker receives input blocks and returns output blocks
-without opening database files. Because it holds no per-database state, one GPU service can
-serve many databases, locally or over RDMA; it admits jobs by their estimated GPU memory and
-retries a job that runs out of memory once other jobs free theirs. In every isolated
-compaction we tested, the output held the same key versions and answered the same lookups as
-native RocksDB; every whole-database run verified each read and every final key and value.
+In a whole-database benchmark on four host cores, the extension with an RTX A6000
+sustains 748{,}000 writes/s versus 480{,}000 for tuned RocksDB, with LZ4, 50 million
+keys in memory, batches of 100 writes of 128-byte values, and the write-ahead log
+disabled. Across 4, 8 and 16 cores, the measured throughput gain is 1.5--1.8$\times$.
 
-The design has costs. Each concurrent GPU compaction stream holds gigabytes of pinned host
-memory as well as GPU memory. Write amplification can be higher: in one NVMe comparison it was 3.79 with our
-offload against 2.65 for RocksDB, under different level-0 trigger settings. GPU ZSTD does not
-reproduce the compression ratio of RocksDB's configured level. Full offload covers bytewise
-keys, Put and Delete records and LZ4, ZSTD or no compression; compactions with merge
-operators, compaction filters, range tombstones or blob files run partly or entirely on the
-CPU. And a dedicated GPU is not cheaper: to reach 1.26 million writes/s, our design with
-8 cores and a GPU costs 68\% more per hour at AWS prices than RocksDB on 16 cores.
+These gains do not imply lower cost or identical storage behavior. In one NVMe comparison,
+write amplification was 2.65 for RocksDB at a level-0 trigger of 8 and 3.79 with offload
+at a trigger of 12; this does not isolate the effect of offload. GPU ZSTD can produce a
+different compression ratio, and concurrent GPU compactions require pinned host buffers
+and device memory. Full offload supports a subset of RocksDB configurations.
+At about 1.26 million writes/s, eight cores and a dedicated GPU cost 68\% more per hour
+than 16 CPU cores alone in our AWS on-demand model, which prices the GPU as an L40S.
 
-\paragraph{What partial offload leaves behind.} To isolate the effect of stage placement, we
-emulate the placements of earlier GPU and FPGA designs inside RocksDB~11.8, using our GPU
-kernels for the stages each design offloads and RocksDB's code for the rest. These
-emulations isolate placement; they do not reproduce the original systems' sorting, storage
-paths or data layouts~\cite{fpga2020,luda2020,glsm2024,zhou2024msst,gparakv2025}. The
-strongest is the pipeline placement, which merges and builds blocks on the GPU but
-compresses them on the CPU, as in LUDA and the MSST'24 design. With compression disabled,
-it and our design use the same CPU time (1.81 and 1.80\,CPU-s per GiB). With compression
-enabled, our design uses 2.6$\times$ less CPU per GiB than the pipeline placement with LZ4
-and 6.5$\times$ less with ZSTD. Our advantage over earlier placements therefore comes from
-the compression stage.
+\paragraph{Sharing one GPU across databases.} Because the block-processing worker does
+not open or install database files, one worker can serve multiple databases. In a
+separate in-memory LZ4 experiment, eight four-core databases share an RTX PRO 6000
+Blackwell over 100-Gb/s RDMA. Over the 120-second write window they achieve
+2.10$\times$ the per-database write throughput of local RocksDB at 4\% higher modeled
+cost per write. Including time to finish pending compaction, the throughput gain is
+2.01$\times$. These results compare with local RocksDB, not with a matched shared CPU
+pool.
 
-\paragraph{Whole-database effect.} On an RTX A6000, with 50 million keys in memory, batched
-writes of 128-byte values and the write-ahead log disabled, our extension achieves
-1.5--1.8$\times$ the write throughput of tuned RocksDB and uses 1.8--2.2$\times$ less CPU
-time per write at 4, 8 and 16 cores.
-
-\paragraph{Sharing one GPU across databases.} Does each database need its own GPU? CaaS-LSM shows that
-compaction can be pooled on remote CPU workers~\cite{caaslsm2024}. We ask whether one GPU
-can be pooled the same way. In a separate experiment, eight four-core databases share an
-RTX PRO 6000 Blackwell over 100-Gb/s RDMA. Over a 120-second write window, each database
-sustains 2.10$\times$ the write throughput of local RocksDB at 4\% higher modeled AWS cost
-per write; counting the time to finish the compaction left when writing stops, the gain is
-2.01$\times$. Sharing thus brings GPU offload close to RocksDB's cost per write while roughly
-doubling each database's write rate. It does not make offload cheaper, and we do not compare
-it with an equally sized shared CPU pool.
-
-\paragraph{Where it does not help.} The gain tracks how much compaction a workload creates:
-read-heavy runs gain little (1.05$\times$ for Meta's read-heavy mix), and when the drive is
-the bottleneck, throughput is capped by the drive and the benefit is mainly CPU saved.
+\paragraph{Where it does not help.} The gain is small on Meta's read-heavy mix
+(1.05$\times$), and in our buffered NVMe runs the benefit is mainly CPU saved.
 Isolation on a shared GPU is unresolved: beside a heavy tenant, light databases on the
 service's NUMA node see 4.2--5.8$\times$ their solo p99.9 write latency under every
 scheduling policy we tried.
 
 \paragraph{Contributions.}
 \begin{itemize}
-  \item A RocksDB extension that runs all per-byte compaction work, including compression,
-        on the GPU while leaving compaction policy, table format and file management to
-        RocksDB.
-  \item A shared GPU compaction service that schedules jobs from many databases, admits
-        them by estimated GPU memory and retries jobs that run out of memory.
-  \item A controlled study of compaction stage placement showing that, for compressed
-        data, the CPU work left on the host is dominated by compression, and that with
-        compression disabled full offload uses no less CPU than the pipeline placement.
-  \item An evaluation of throughput, CPU, tail latency and modeled cost for local and
-        shared offload, including the workloads and tenancy settings where it does not help.
+  \item A controlled comparison of stage placements in RocksDB that quantifies the
+        host CPU time left behind when compression stays on the CPU.
+  \item A format-compatible GPU block pipeline that moves output compression with the
+        merge while RocksDB retains file management and compaction policy.
+  \item A shared GPU service that admits requests based on estimated device memory,
+        and an evaluation of its throughput, modeled cost and limits on tenant isolation.
 \end{itemize}
 
 \section{Related Work}
 \label{sec:related}
 
-Work on compaction cost falls into four lines: moving compaction onto accelerators, moving
-it to other machines, reducing how much compaction is needed, and avoiding repeated
-compaction on replicas. Table~\ref{tab:related} compares the closest systems by where
-compaction runs, whether output compression leaves the host CPU, whether the data layout
-changes, and whether the resource is shared across databases.
+We compare prior work along five questions: where compaction stages run, how bytes reach
+the accelerator, how databases share compaction workers, how much compaction runs and when,
+and whether replicas repeat it. Table~\ref{tab:related} focuses on systems that move
+compaction work off the database CPU.
 
 \begin{table}[t]
   \centering
   \footnotesize
   \setlength{\tabcolsep}{2.5pt}
-  \caption{Closest systems, as described in their papers. \emph{Merge}, \emph{Comp.}:
-  merging and output compression run off the database host's CPU (\yes) or not (\no).
-  \emph{Layout}: values stored inline in the sorted files or separated (KV sep.).
-  \emph{Shared}: one resource serves several databases. \nd: not described.}
+  \caption{Stage placement and sharing in prior compaction systems. \emph{Merge} and
+  \emph{Comp.} indicate whether merging and output block compression run off the
+  database host's CPU (\yes) or stay on it (\no). \emph{Values} refers only to where
+  values are stored: inline in the sorted files or separately (sep.).
+  \emph{Shared} means a worker serves multiple databases. \nd{} means the paper
+  does not describe the feature; \unverified{} means we could not verify it.}
   \label{tab:related}
   \begin{tabular}{@{}lllcccc@{}}
     \toprule
-    System & Engine & Device & Merge & Comp. & Layout & Shared \\
+    System & Engine & Device & Merge & Comp. & Values & Shared \\
     \midrule
     Zhang et al.~\cite{fpga2020}      & X-Engine & FPGA        & \yes & \nd  & inline        & \no \\
-    Sun et al.~\cite{fpgacompaction2020} & \nd & FPGA       & \yes & \nd  & KV sep.     & \no \\
+    Sun et al.~\cite{fpgacompaction2020} & \nd & FPGA       & \yes & \nd  & sep.        & \no \\
     LUDA~\cite{luda2020}              & LevelDB  & GPU         & \yes & \no  & inline      & \no \\
     MSST'24~\cite{zhou2024msst}       & LevelDB  & GPU         & \yes & \nd  & inline      & \no \\
-    GPComp~\cite{gpcomp2025}          & LevelDB  & GPU         & \yes & \nd  & inline      & \no \\
-    gLSM~\cite{glsm2024}              & \nd     & GPU         & \yes & \nd  & KV sep.     & \no \\
-    gParaKV~\cite{gparakv2025}        & LevelDB  & GPU         & \yes & \nd  & KV sep.     & \no \\
+    GPComp~\cite{gpcomp2025}          & LevelDB  & GPU         & \yes & \unverified & inline & \no \\
+    GCLComp~\cite{gclcomp2025}        & \unverified & GPU      & \unverified & \unverified & \unverified & \unverified \\
+    gLSM~\cite{glsm2024}              & \nd     & GPU         & \yes & \nd  & sep.        & \no \\
+    gParaKV~\cite{gparakv2025}        & LevelDB  & GPU         & \yes & \nd  & sep.        & \no \\
     D$^2$Comp~\cite{d2comp2024}       & \nd     & DPU         & \yes & \yes & \nd         & \nd \\
     CaaS-LSM~\cite{caaslsm2024}       & RocksDB  & remote CPU & \yes & \yes & inline      & \yes \\
     \textbf{Ours}                     & RocksDB  & GPU         & \yes & \yes & inline      & \yes \\
@@ -175,29 +145,32 @@ changes, and whether the resource is shared across databases.
 \end{table}
 
 \paragraph{Accelerating compaction.}
-Accelerator designs differ mainly in which stages they offload and whether they change the
-data. Zhang et al.\ integrate an FPGA merge pipeline into X-Engine~\cite{fpga2020}, and Sun
-et al.\ build an FPGA compaction engine that separates keys from values and index blocks
-from data blocks to pipeline the merge~\cite{fpgacompaction2020}. LUDA moves LevelDB's
-sorting, merging, block construction and checksums to a GPU but leaves Snappy compression for
-future work~\cite{luda2020}. gLSM and gParaKV pair GPU merge sorting with key--value
-separation, and gParaKV adds parallel garbage collection~\cite{glsm2024,gparakv2025}. Keeping values out of the sorted files shrinks the
-bytes compaction moves, and it pays off: under its own YCSB driver with 128-byte values,
-gParaKV outperforms RocksDB with our offload. Key--value separation is complementary to our
-work rather than an alternative stage placement. Kirin couples compaction with learned-index training on a
-computational-storage device~\cite{kirin2026}. Among accelerator designs, D$^2$Comp is the one we found that
-offloads compression: it runs compaction on a DPU in disaggregated storage and uses the DPU's
-compression engine~\cite{d2comp2024}. On GPUs, LUDA defers compression, and the MSST'24,
-gLSM and gParaKV papers do not describe compressing output blocks on the device; for GPComp
-and GCLComp, the papers do not establish it either. Our design moves the per-byte stages,
-including LZ4 and ZSTD compression, to the GPU while keeping RocksDB's table format, and we
-measure what each earlier placement leaves on the CPU under the same inputs, hardware and
-codec settings.
+Zhang et al.\ integrate an FPGA merge pipeline into X-Engine~\cite{fpga2020}. Sun
+et al.\ separate keys from values and index blocks from data blocks to pipeline
+compaction on an FPGA~\cite{fpgacompaction2020}. LUDA uses the GPU for sorting, merging,
+block construction and checksums, but explicitly defers Snappy compression~\cite{luda2020}.
+The MSST'24 LevelDB design builds prefix-encoded blocks on the GPU; its paper does not
+describe compressing those blocks there~\cite{zhou2024msst}. Kirin couples compaction with
+learned-index training on a computational-storage device~\cite{kirin2026}, while D$^2$Comp
+offloads output compression to a DPU's compression engine~\cite{d2comp2024}.
+Our GPU pipeline compresses output blocks with LZ4 or ZSTD without changing RocksDB's
+table format. The controlled comparison measures the host CPU work attributable to
+different placements, rather than comparing published speedups across systems.
+
+gLSM and gParaKV pair GPU merging with key--value separation; gParaKV also accelerates
+garbage collection~\cite{glsm2024,gparakv2025}. With both systems run under gParaKV's
+YCSB A driver with one client, four cores and 128-byte values, gParaKV achieves
+238\,kops/s versus 182\,kops/s for RocksDB with our LZ4 offload. This is a same-driver
+comparison of different engines and storage layouts, not a controlled test of stage
+placement. Separating values reduces the bytes compaction must move and is complementary
+to our offload.
 
 \paragraph{GPUs and the data path.}
-A second line targets moving data to the GPU. The MSST'24 design accelerates compaction for
-NVMe-backed LevelDB~\cite{zhou2024msst}; GPComp adds an SPDK-based SSD--GPU peer-to-peer I/O
-stack~\cite{gpcomp2025}, and GCLComp lets the GPU initiate storage I/O~\cite{gclcomp2025}.
+The MSST'24 design accelerates compaction for NVMe-backed LevelDB~\cite{zhou2024msst};
+GPComp adds an SPDK-based SSD--GPU peer-to-peer I/O stack~\cite{gpcomp2025}, and GCLComp
+lets the GPU initiate storage I/O~\cite{gclcomp2025}. The available descriptions of
+GPComp and GCLComp do not establish where output blocks are compressed; neither
+serves as a placement baseline in our experiments.
 In analytical databases, Shanbhag et al.\ characterize when GPUs outperform CPUs on query
 processing~\cite{crystal2020}, Lutz et al.\ show that fast interconnects let GPUs process
 data larger than device memory~\cite{pumpvolume2020}, and tile-based integer compression
@@ -209,18 +182,55 @@ in our setting.
 
 \paragraph{Disaggregated and shared execution.}
 Nova-LSM is a distributed, component-based LSM store, and dLSM builds an LSM index on
-disaggregated memory~\cite{novalsm2021,dlsm2023}. CaaS-LSM is the closest service design: it
-makes RocksDB compaction stateless, schedules jobs from multiple databases across remote CPU
-workers and tolerates worker and service failures~\cite{caaslsm2024}. O$^3$-LSM extends
-offloading to memtables and flushes~\cite{o3lsm2026}. Our GPU service applies the same
-stateless principle to a GPU, adding admission under a GPU-memory budget. NVIDIA's Multi-Process Service lets kernels from
-several processes run on one GPU concurrently~\cite{cudamps}, and deep-learning systems add
-preemption and dynamic resource scaling~\cite{reef2022,antman2020}. Our service instead
-schedules storage jobs, some with writers stalled behind them, and admits them by GPU memory;
-on one machine, however, it is no faster than MPS. Our multi-database
-results compare against local RocksDB, and our remote-CPU baseline covers isolated
-compactions rather than an equally sized CPU pool, so we do not claim that GPU pooling
-outperforms CPU pooling.
+disaggregated memory~\cite{novalsm2021,dlsm2023}. CaaS-LSM is the closest service design:
+its control plane schedules compactions across stateless CPU workers, chooses between
+local and remote execution, and handles worker and service failures~\cite{caaslsm2024}.
+O$^3$-LSM extends offloading to memtables and flushes~\cite{o3lsm2026}. Our service
+instead shares a GPU and admits subcompactions by estimated device memory; it does not
+implement CaaS-LSM's adaptive local-versus-remote scheduling. We compare the shared GPU
+with local RocksDB, not a matched pool of remote CPU workers.
+
+NVIDIA's Multi-Process Service (MPS) lets kernels from several processes run concurrently
+on a GPU~\cite{cudamps}; deep-learning schedulers also provide preemption or dynamic
+resource scaling~\cite{reef2022,antman2020}. Our service queues whole subcompactions and
+can prioritize those that may unblock writers. In our same-host tests, its write
+throughput is within run-to-run variation of using MPS.
+
+\begin{figure*}[t]
+  \centering
+  \begin{tikzpicture}[
+      font=\footnotesize,
+      box/.style={draw, rounded corners=2pt, align=left, inner sep=5pt},
+      flow/.style={-{Stealth[length=4pt]}, semithick},
+    ]
+    \node[box,text width=3.7cm] (input) at (0,0)
+      {\textbf{RocksDB: prepare input}\\
+       Read blocks; attach bounds, snapshots and output options.};
+    \node[box,text width=3.7cm] (output) at (0,-2.65)
+      {\textbf{RocksDB: finish SSTs}\\
+       Cut files, finalize trailers, write metadata and install files.};
+    \node[box,text width=4.1cm] (direct) at (5.55,.25)
+      {\textbf{Direct: database host}\\
+       Call the CUDA pipeline in process.};
+    \node[box,text width=4.1cm] (service) at (5.55,-1.45)
+      {\textbf{Shared: worker host}\\
+       Receive via shared memory, TCP or RDMA; queue and admit by estimated GPU memory.};
+    \node[box,text width=4.15cm] (gpu) at (11.15,-.6)
+      {\textbf{GPU: common CUDA pipeline}\\
+       Verify and decode input; merge and prune versions; build, compress and checksum
+       output blocks; hash keys.};
+    \draw[flow] (input.east) -- ++(.5,0) |- (direct.west);
+    \draw[flow] (input.east) -- ++(.5,0) |- (service.west);
+    \draw[flow] (direct.east) -- ++(.5,0) |- ([yshift=7pt]gpu.west);
+    \draw[flow] (service.east) -- ++(.5,0) |- ([yshift=-7pt]gpu.west);
+    \draw[flow] (gpu.south) |- node[pos=.73,below]
+      {Output blocks, boundary keys and filter hashes} (output.east);
+  \end{tikzpicture}
+  \caption{Full offload moves data-block processing, not table ownership. The same CUDA
+  pipeline runs on the database host's GPU in the direct path or on the worker's GPU in
+  the shared path. The result comes back over the path used to send the input.}
+  \label{fig:design}
+\end{figure*}
 
 \paragraph{Reducing or scheduling compaction.}
 Another line reduces how much compaction is needed or controls when it runs. WiscKey
@@ -242,12 +252,102 @@ to replicas over NVMe-oF~\cite{rubbledb2023}. These designs remove duplicated wo
 replica group; they do not pool compaction resources across independent databases.
 
 \paragraph{Summary.}
-Across these lines, one gap recurs. Accelerator papers center on merge speed and their own
-store, and the GPU designs leave output compression on the CPU or do not describe it; none
-measures, under the same engine and codec settings, how much CPU work each stage placement
-leaves on the host. We offload compression along with the other per-byte stages, measure
-what earlier placements leave behind, and test whether the resulting GPU worker can be shared
-across databases.
+Prior work changes the amount of data to compact, how it reaches the accelerator, or
+where compaction runs. We hold the engine, input and codec settings fixed to measure how
+much host CPU time remains when merging and block building move to the GPU but output
+compression does not. We then test whether the same block-processing pipeline can serve
+multiple databases.
+
+\section{System Design}
+\label{sec:design}
+
+The unit of offload is a \emph{subcompaction}: the part of a compaction assigned to one
+key range. RocksDB chooses that range and the input files, and it alone writes and
+installs the replacement sorted table files (SSTs). Between those steps, the GPU
+transforms input data blocks into output data blocks. Figure~\ref{fig:design} follows
+one subcompaction through that boundary. A database can invoke the CUDA pipeline in
+process or send its input to a shared worker; neither path hands over file ownership.
+
+\subsection{From subcompaction to GPU work}
+
+RocksDB enumerates the input data blocks that overlap the subcompaction's key range.
+It supplies the key bounds, snapshot sequence numbers, and output-level and table
+options. The in-process path reads the bytes into pinned host buffers. The service
+request carries the bytes themselves, so the worker can feed the same CUDA pipeline
+without opening a database file or mounting a shared filesystem.
+
+The GPU verifies each block's CRC32C, decompresses LZ4 or ZSTD input as needed, and
+parses restart intervals in parallel. Each level-0 file supplies a sorted run; at deeper
+levels, the nonoverlapping files of a level form one run. Pairwise merge-path kernels
+combine these runs in internal-key order without sorting all records from scratch.
+
+The GPU must preserve the answers that RocksDB would give at every active snapshot.
+For a given key, two versions in the same interval between snapshot boundaries
+are eligible for the same snapshots by sequence number; only the newer can be
+returned. For example, with one active snapshot at sequence 20 and values written
+at 30, 19 and 17, a current read returns version 30 and the snapshot returns 19;
+version 17 is hidden. Tombstones
+need a separate check: the GPU cannot discard one just because no older value appears
+in the input. A deeper file may still contain a value the tombstone suppresses, so the
+full block-building path also checks the output level and deeper file ranges before
+dropping obsolete tombstones.
+
+To cut output blocks, the GPU replays RocksDB's size-based rule inside groups of
+2,048 entries and forces a cut at each group boundary. This removes the dependency
+between groups at the cost of possibly different block boundaries. The GPU encodes the
+records, uses nvCOMP~\cite{nvcomp} for RocksDB-compatible LZ4 or ZSTD block compression
+when configured, and computes block checksums and filter hashes. The reply contains the
+blocks, the first and last key of each block, and the hashes if filtering is enabled.
+
+\subsection{RocksDB owns the table file}
+
+RocksDB applies its file-cut policy to the returned block boundaries, cutting only
+between user keys. The GPU leaves a five-byte gap after each block for the trailer.
+Once RocksDB knows the destination file and offset, it writes the block type and,
+for format 6, adds the file context and offset modifier to the precomputed checksum.
+RocksDB can then append a run of blocks in one write. It builds the index, chooses the
+filter parameters and fills the filter from the returned hashes (using the GPU where
+supported), and writes the properties and footer before installing the file. The
+same file format and snapshot rules apply even if the final block and file boundaries
+or the compressed bytes differ from those of a native compaction.
+
+\paragraph{Eligibility and partial offload.}
+GPU merging requires bytewise key ordering, format-6 input with CRC32C and
+binary-search data blocks, supported compression (LZ4, ZSTD or none), and internal
+keys of at most 512 bytes. It does not handle range tombstones, blob files, merge
+operators or arbitrary compaction filters; a specific TTL filter is supported.
+Full block building has additional table-option restrictions and accepts only Put
+and Delete entries with user keys of at most 240 bytes. A subcompaction that can
+merge on the GPU but cannot build blocks there can return a merged entry stream;
+RocksDB then builds the table on the host. This is distinct from CPU fallback,
+which abandons the offloaded merge and uses the native input iterators.
+
+\subsection{Sharing the GPU across databases}
+
+Several databases can send requests to one worker over shared memory on the same
+host, or over TCP or RDMA across hosts. RDMA transfers terminate in host memory,
+not GPU memory. The worker uses one CUDA context and a pool of GPU engines (each a
+CUDA stream with its own buffers). The scheduler can serve requests in arrival order,
+use fair queuing across tenants with input bytes as the charge, or prioritize
+subcompactions that may unblock writers before applying fair queuing.
+
+The scheduler estimates each request's device-memory demand by multiplying its input
+size by a configured factor. When a budget is set, the selected request can start on
+a free engine only if the sum of its estimate and those of running requests fits.
+An idle worker can start one request even if it exceeds the budget. Admission
+limits estimated demand; it does not reserve memory.
+
+\paragraph{Failure handling.}
+On device OOM, the worker releases cached buffers from idle engines and requeues the
+request up to eight times. A requeued request waits for a completion only while
+other work is running. If the final attempt fails, the worker returns an error and
+RocksDB falls back to native CPU compaction.
+
+Separately, after a transport failure or a Busy reply from a draining worker, the
+client can resubmit on a new connection (two retries by default) before falling back.
+Resubmission is safe because only RocksDB installs the completed SSTs. A corruption
+status, such as an input checksum or parse failure, fails the compaction instead of
+triggering CPU fallback.
 
 \bibliographystyle{ACM-Reference-Format}
 \bibliography{refs}

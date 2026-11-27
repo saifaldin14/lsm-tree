@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "tieline": {
+      "type": "http",
+      "url": "https://run.tieline.tools/mcp",
+      "tools": ["*"]
+    }
+  }
+}

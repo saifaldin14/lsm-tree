@@ -189,13 +189,37 @@ def flags_text(flags: dict) -> str:
     return " ".join(f"--{k} {str(v).lower() if isinstance(v, bool) else v}" for k, v in flags.items())
 
 
+ORDER: list[str] = []
+
+
 def slots(n: int) -> list[str]:
-    return [f"db-{index}" for index in range(n)]
+    """The first n database slots, alternating between tenant nodes (set by order_slots)."""
+    return (ORDER or [f"db-{index}" for index in range(n)])[:n]
+
+
+def order_slots(platform: Platform) -> None:
+    """k8s: interleave the database pods across their nodes, so N databases spread evenly."""
+    if platform.backend != "k8s":
+        return
+    pods = kubectl(["get", "pods", "-l", "app=lsm-db", "-o",
+                    "jsonpath={range .items[*]}{.metadata.name} {.spec.nodeName}{\"\\n\"}{end}"], platform.config)
+    by_node: dict[str, list[str]] = {}
+    for line in pods.split("\n"):
+        if line.strip():
+            name, node = line.split()
+            by_node.setdefault(node, []).append(name)
+    queues = [sorted(names, key=lambda x: int(x.split("-")[1])) for _, names in sorted(by_node.items())]
+    ORDER.clear()
+    while any(queues):
+        for queue in queues:
+            if queue:
+                ORDER.append(queue.pop(0))
 
 
 def preload(platform: Platform, records: int, count: int) -> None:
     def one(target: str) -> str:
-        return platform.run(target, f"test -f {GOLDEN}.done && echo done && exit 0; rm -rf {GOLDEN}; "
+        return platform.run(target, f"[ \"$(cat {GOLDEN}.done 2>/dev/null)\" = {records} ] && echo done && exit 0; "
+                                    f"rm -rf {GOLDEN} {GOLDEN}.done; "
                                     f"lsm_system_bench --phase preload --dir {GOLDEN} --records {records} --threads 4 "
                                     f"> {GOLDEN}.json 2>&1 && echo {records} > {GOLDEN}.done && echo preloaded",
                             timeout=7200).strip()
@@ -476,6 +500,9 @@ def main() -> int:
     config = json.loads(arguments.platform.read_text())
     platform = Platform(config)
     arguments.out.mkdir(parents=True, exist_ok=True)
+    if arguments.experiment != "setup":
+        order_slots(platform)
+        print(f"database slots in order: {slots(64)}", flush=True)
     seconds = (arguments.warmup_seconds, arguments.duration_seconds)
     counts = [int(x) for x in arguments.counts.split(",")]
     native_counts = [int(x) for x in arguments.native_counts.split(",")] if arguments.native_counts else []
