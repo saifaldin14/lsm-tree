@@ -193,9 +193,8 @@ runs.
   under heavy competition.
 - **Ours barely notices.** Going from 40% to 80% stolen CPU costs RocksDB 11% of its
   throughput and ours nothing measurable, because its compaction is not on those cores.
-- **This is the one place energy clearly favours the GPU:** 0.58–0.68× RocksDB's energy per
-  operation here, against 0.69–1.19× in the `main`, `equal-cost`, `ycsb` and prior-design
-  campaigns.
+- **This is one of the few places energy favours the GPU:** 0.60–0.77× RocksDB's energy per
+  write here, counted to the end of catch-up compaction (E6, section on limits).
 
 ## 7. What it costs, and what it saves
 
@@ -734,11 +733,13 @@ The light databases kept their 363k writes/s throughout under both policies.
 - **Compaction without compression.** Our advantage over earlier designs comes from moving
   compression to the GPU. With compression off, which production RocksDB rarely runs,
   ours and the best earlier design use the same CPU.
-- **Energy.** Energy is recorded per trial, but no claim is made. Whole-run energy per
-  operation ranges from 0.69× to 1.19× RocksDB's across the `main`, `equal-cost`, `ycsb`
-  and prior-design campaigns, depending on codec and write pattern, and the measurement
-  window ends before RocksDB's 68 s of catch-up compaction, which favours RocksDB. A fair
-  figure needs energy integrated to the end of catch-up.
+- **Energy (E6, counted to the end of catch-up compaction).** At the headline setting ours
+  uses 1.03×, 1.20× and 1.16× RocksDB's energy per write at 4, 8 and 16 cores when RocksDB
+  runs on a machine without a GPU, and 0.91×, 1.06× and 1.03× when the idle GPU is counted
+  for both. Counting catch-up did not favour ours as expected. Ours saves energy only where
+  RocksDB is short of CPU for compaction: 0.37–0.46× with 2 background jobs on 4 cores,
+  0.60–0.77× under CPU contention, 0.77× for YCSB uniform writes. Against RocksDB on 2× or
+  4× the cores it uses 1.65–1.80×. Analysis: `energy_e2e.py`, output in `data/energy-e2e`.
 - **Remote compaction, one pair of machines.** The whole database over direct RDMA was run
   on one pair of machines with 4-core databases and LZ4. RDMA against TCP on the direct
   link is untested.

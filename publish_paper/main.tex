@@ -816,7 +816,14 @@ NUMA node.}
 \end{itemize}
 % cost_model.py; multiplex/analyze.py (M5 break-even); FULL-RESULTS 7 and 11
 
-\todo{E6: energy per write counted to the end of the leftover compaction.}
+\paragraph{Energy.} Counted from the first write to the end of the leftover compaction (RAPL
+package and memory plus the GPU's board power), ours uses 1.03$\times$, 1.20$\times$ and
+1.16$\times$ RocksDB's energy per write at 4, 8 and 16 cores if RocksDB runs on a machine
+without a GPU. Counting the idle GPU for both (the same machine), the ratios are 0.91$\times$,
+1.06$\times$ and 1.03$\times$. The GPU saves energy only where RocksDB is short of CPU for
+compaction: 0.37--0.46$\times$ with two background jobs on 4 cores, and 0.60--0.77$\times$
+under CPU contention. We registered the opposite prediction for the headline; it does not hold.
+% PREREGISTRATION.md E6; energy_e2e.py; data/energy-e2e
 
 \takeaway{A GPU is the cheaper way to reach write rates RocksDB cannot. Shared by eight
 databases it costs about the same per write as RocksDB (5\% more at the measured card's
@@ -847,8 +854,11 @@ price) and is cheaper below \$2.73 an hour.}
   \item \textbf{Coverage.} We do not offload merge operators, compaction filters, range
         tombstones or blob files, which fall back to RocksDB. Without compression our design
         has no advantage over the pipeline design.
+  \item \textbf{Energy.} Ours does not save energy at the headline setting (3--20\% more per
+        write against RocksDB on a machine without a GPU); it saves energy only when RocksDB
+        is short of CPU. Fans, power supply and drive are not measured.
   \item \textbf{Scope.} Two GPU models, one RocksDB version, one RDMA machine pair and one
-        database machine; we make no energy claim yet.
+        database machine.
   \item \textbf{Missed predictions.} Registered predictions not met: tail latency at 50\%
         load; tenant isolation; eight engines over four; the service beating MPS on one
         machine; its cost per write with four local databases; and two replication

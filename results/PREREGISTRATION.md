@@ -1419,6 +1419,28 @@ Hypotheses (medians over blocks, headline):
 Whatever the result, the paper states energy under both accountings and drops "no energy
 claim" only if Y-E6a holds.
 
+**Outcome (2026-11-26; `energy_e2e.py`, `data/energy-e2e`).** Neither hypothesis holds.
+Headline energy per write, ours / RocksDB, medians over 5 blocks:
+
+| Cores | (ii) RocksDB without a GPU (primary) | (i) same machine |
+|---|---|---|
+| 4 | 1.03× (1.03–1.06) | 0.91× |
+| 8 | 1.20× (1.20–1.21) | 1.06× |
+| 16 | 1.16× (1.16–1.18) | 1.03× |
+
+- **Y-E6a: not supported** (ours uses 3–20% more).
+- **Y-E6b: not supported** (only 4 cores is below 1).
+- **Where ours saves energy under (ii):** where RocksDB is short of CPU for compaction:
+  - 2 background jobs on 4 cores with batched writes: 0.46× (LZ4), 0.37× (zstd);
+  - CPU contention: 0.60–0.77×;
+  - YCSB uniform writes: 0.77×.
+- **Where it costs energy:** with 4 jobs and single writes, 1.16×; against RocksDB on 2× or
+  4× the cores (equal cost), 1.65–1.80×.
+
+The script's first version paired every trial of a cell with every other within a block,
+mixing the two background-job settings; it was fixed to pair matching settings (jobs per core)
+before these numbers were recorded. The headline has one trial per cell and was not affected.
+
 ## Changes after data collection
 
 - **Cost analysis repriced (2026-11-14; analysis change only, no new runs).** Every cost

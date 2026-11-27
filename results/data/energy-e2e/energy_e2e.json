@@ -1,0 +1,829 @@
+{
+ "headline": [
+  {
+   "cell": {
+    "background_jobs": 16,
+    "cores": 16,
+    "rocksdb_cores": 16,
+    "writes": "batched"
+   },
+   "blocks": 5,
+   "ours_uj": 200.06491568425866,
+   "rocksdb_uj_i": 194.0816801631478,
+   "rocksdb_uj_ii": 172.06983584182072,
+   "ratio_i": 1.029188493549729,
+   "ratio_ii": 1.1624487327924675,
+   "ratio_ii_range": [
+    1.1545167458603067,
+    1.1764721261216768
+   ]
+  },
+  {
+   "cell": {
+    "background_jobs": 4,
+    "cores": 4,
+    "rocksdb_cores": 4,
+    "writes": "batched"
+   },
+   "blocks": 5,
+   "ours_uj": 459.35048529149043,
+   "rocksdb_uj_i": 505.08586660116123,
+   "rocksdb_uj_ii": 445.52439582251026,
+   "ratio_i": 0.9075540123447758,
+   "ratio_ii": 1.0288835114545296,
+   "ratio_ii_range": [
+    1.0262549121778732,
+    1.0551777741357051
+   ]
+  },
+  {
+   "cell": {
+    "background_jobs": 8,
+    "cores": 8,
+    "rocksdb_cores": 8,
+    "writes": "batched"
+   },
+   "blocks": 5,
+   "ours_uj": 306.35307309124465,
+   "rocksdb_uj_i": 288.50451483815107,
+   "rocksdb_uj_ii": 255.56332875571258,
+   "ratio_i": 1.0589908148987357,
+   "ratio_ii": 1.2017941511340644,
+   "ratio_ii_range": [
+    1.1967836064039912,
+    1.2062030808870297
+   ]
+  }
+ ],
+ "main": [
+  {
+   "cell": {
+    "background_jobs": 2,
+    "cores": 4,
+    "rocksdb_cores": 4,
+    "writes": "batched"
+   },
+   "blocks": 5,
+   "ours_uj": 672.3436898138586,
+   "rocksdb_uj_i": 1651.3439779279063,
+   "rocksdb_uj_ii": 1442.646620862615,
+   "ratio_i": 0.4019884829522578,
+   "ratio_ii": 0.4617361031771155,
+   "ratio_ii_range": [
+    0.4316069507032522,
+    0.47234170495023237
+   ]
+  },
+  {
+   "cell": {
+    "background_jobs": 2,
+    "cores": 4,
+    "rocksdb_cores": 4,
+    "writes": "single"
+   },
+   "blocks": 5,
+   "ours_uj": 1317.9892333505295,
+   "rocksdb_uj_i": 1842.8700241964355,
+   "rocksdb_uj_ii": 1617.1243122717751,
+   "ratio_i": 0.7185394931102808,
+   "ratio_ii": 0.8197296071811384,
+   "ratio_ii_range": [
+    0.7804643244473976,
+    0.8631255677678743
+   ]
+  },
+  {
+   "cell": {
+    "background_jobs": 4,
+    "cores": 4,
+    "rocksdb_cores": 4,
+    "writes": "batched"
+   },
+   "blocks": 5,
+   "ours_uj": 562.5127432177194,
+   "rocksdb_uj_i": 655.9905335351888,
+   "rocksdb_uj_ii": 571.9888223456105,
+   "ratio_i": 0.8504134439696356,
+   "ratio_ii": 0.975304318968078,
+   "ratio_ii_range": [
+    0.8807902636745939,
+    1.0449986603150039
+   ]
+  },
+  {
+   "cell": {
+    "background_jobs": 4,
+    "cores": 4,
+    "rocksdb_cores": 4,
+    "writes": "single"
+   },
+   "blocks": 5,
+   "ours_uj": 1300.5763391211487,
+   "rocksdb_uj_i": 1294.2117519053281,
+   "rocksdb_uj_ii": 1128.926463059804,
+   "ratio_i": 1.0068265617722982,
+   "ratio_ii": 1.1553641681932274,
+   "ratio_ii_range": [
+    1.1315353562668402,
+    1.1610435978427798
+   ]
+  }
+ ],
+ "equal-cost": [
+  {
+   "cell": {
+    "background_jobs": 4,
+    "cores": 8,
+    "rocksdb_cores": 16,
+    "writes": "batched"
+   },
+   "blocks": 5,
+   "ours_uj": 377.4456214301354,
+   "rocksdb_uj_i": 253.53659581798172,
+   "rocksdb_uj_ii": 224.55336853423597,
+   "ratio_i": 1.5042173636122247,
+   "ratio_ii": 1.6963229913605558,
+   "ratio_ii_range": [
+    1.629465693083294,
+    1.767126239499539
+   ]
+  },
+  {
+   "cell": {
+    "background_jobs": 4,
+    "cores": 8,
+    "rocksdb_cores": 32,
+    "writes": "batched"
+   },
+   "blocks": 5,
+   "ours_uj": 377.4456214301354,
+   "rocksdb_uj_i": 251.03528777391773,
+   "rocksdb_uj_ii": 221.41366140715795,
+   "ratio_i": 1.521225732918079,
+   "ratio_ii": 1.7099482743219776,
+   "ratio_ii_range": [
+    1.6705978099856895,
+    1.7477005221682504
+   ]
+  },
+  {
+   "cell": {
+    "background_jobs": 4,
+    "cores": 8,
+    "rocksdb_cores": 8,
+    "writes": "batched"
+   },
+   "blocks": 5,
+   "ours_uj": 377.4456214301354,
+   "rocksdb_uj_i": 346.12037709171614,
+   "rocksdb_uj_ii": 305.30007744192864,
+   "ratio_i": 1.0902488790359612,
+   "ratio_ii": 1.2360211510510513,
+   "ratio_ii_range": [
+    1.2134403271314718,
+    1.2625932599966212
+   ]
+  },
+  {
+   "cell": {
+    "background_jobs": 8,
+    "cores": 8,
+    "rocksdb_cores": 16,
+    "writes": "batched"
+   },
+   "blocks": 5,
+   "ours_uj": 373.3517994545248,
+   "rocksdb_uj_i": 254.81708543956017,
+   "rocksdb_uj_ii": 225.9332997612047,
+   "ratio_i": 1.4625621925905004,
+   "ratio_ii": 1.651724164467786,
+   "ratio_ii_range": [
+    1.6340133567410688,
+    1.6675412293952612
+   ]
+  },
+  {
+   "cell": {
+    "background_jobs": 8,
+    "cores": 8,
+    "rocksdb_cores": 32,
+    "writes": "batched"
+   },
+   "blocks": 5,
+   "ours_uj": 373.3517994545248,
+   "rocksdb_uj_i": 246.1485236759956,
+   "rocksdb_uj_ii": 218.73617894784832,
+   "ratio_i": 1.5120249145378861,
+   "ratio_ii": 1.7038143254704143,
+   "ratio_ii_range": [
+    1.6884522477592967,
+    1.7327977202018983
+   ]
+  },
+  {
+   "cell": {
+    "background_jobs": 8,
+    "cores": 8,
+    "rocksdb_cores": 8,
+    "writes": "batched"
+   },
+   "blocks": 5,
+   "ours_uj": 373.3517994545248,
+   "rocksdb_uj_i": 359.1620852995995,
+   "rocksdb_uj_ii": 315.16092521384064,
+   "ratio_i": 1.0428895952391015,
+   "ratio_ii": 1.1884925185734334,
+   "ratio_ii_range": [
+    1.172798400498189,
+    1.2008257494805419
+   ]
+  }
+ ],
+ "ycsb": [
+  {
+   "cell": {
+    "background_jobs": 2,
+    "cores": 4,
+    "distribution": "uniform",
+    "rocksdb_cores": 4,
+    "workload": "A"
+   },
+   "blocks": 3,
+   "ours_uj": 1091.4651935284714,
+   "rocksdb_uj_i": 1182.3569337079996,
+   "rocksdb_uj_ii": 1035.9219041996312,
+   "ratio_i": 0.923126648486357,
+   "ratio_ii": 1.053617255416328,
+   "ratio_ii_range": [
+    0.9992379339949571,
+    1.0645931126748633
+   ]
+  },
+  {
+   "cell": {
+    "background_jobs": 2,
+    "cores": 4,
+    "distribution": "uniform",
+    "rocksdb_cores": 4,
+    "workload": "B"
+   },
+   "blocks": 3,
+   "ours_uj": 890.2450158538317,
+   "rocksdb_uj_i": 831.4096286068705,
+   "rocksdb_uj_ii": 729.2402397775423,
+   "ratio_i": 1.070765823755911,
+   "ratio_ii": 1.220784272855547,
+   "ratio_ii_range": [
+    1.1854840550825283,
+    1.2274312316276066
+   ]
+  },
+  {
+   "cell": {
+    "background_jobs": 2,
+    "cores": 4,
+    "distribution": "uniform",
+    "rocksdb_cores": 4,
+    "workload": "F"
+   },
+   "blocks": 3,
+   "ours_uj": 1750.7132050344837,
+   "rocksdb_uj_i": 2163.8907789157797,
+   "rocksdb_uj_ii": 1895.339809875114,
+   "ratio_i": 0.8090580273703467,
+   "ratio_ii": 0.9251789648676493,
+   "ratio_ii_range": [
+    0.9163923479545646,
+    0.9273699189029274
+   ]
+  },
+  {
+   "cell": {
+    "background_jobs": 2,
+    "cores": 4,
+    "distribution": "uniform",
+    "rocksdb_cores": 4,
+    "workload": "W"
+   },
+   "blocks": 3,
+   "ours_uj": 1270.1089541719396,
+   "rocksdb_uj_i": 1894.1883303482755,
+   "rocksdb_uj_ii": 1650.242472652011,
+   "ratio_i": 0.6774048038066284,
+   "ratio_ii": 0.7733825344992822,
+   "ratio_ii_range": [
+    0.7696499000724539,
+    0.7775865470091233
+   ]
+  },
+  {
+   "cell": {
+    "background_jobs": 2,
+    "cores": 4,
+    "distribution": "zipfian",
+    "rocksdb_cores": 4,
+    "workload": "A"
+   },
+   "blocks": 3,
+   "ours_uj": 758.5946699308444,
+   "rocksdb_uj_i": 715.1996676955862,
+   "rocksdb_uj_ii": 628.3465276600679,
+   "ratio_i": 1.0582642720601474,
+   "ratio_ii": 1.20454275211813,
+   "ratio_ii_range": [
+    1.1871159638994373,
+    1.2114320194533386
+   ]
+  },
+  {
+   "cell": {
+    "background_jobs": 2,
+    "cores": 4,
+    "distribution": "zipfian",
+    "rocksdb_cores": 4,
+    "workload": "B"
+   },
+   "blocks": 3,
+   "ours_uj": 484.39644094609235,
+   "rocksdb_uj_i": 452.0240590481581,
+   "rocksdb_uj_ii": 397.8304522736628,
+   "ratio_i": 1.0648243278895,
+   "ratio_ii": 1.2098735139418788,
+   "ratio_ii_range": [
+    1.1991128141870067,
+    1.2398616360482158
+   ]
+  },
+  {
+   "cell": {
+    "background_jobs": 2,
+    "cores": 4,
+    "distribution": "zipfian",
+    "rocksdb_cores": 4,
+    "workload": "F"
+   },
+   "blocks": 3,
+   "ours_uj": 1262.0012740812351,
+   "rocksdb_uj_i": 1268.7784863976829,
+   "rocksdb_uj_ii": 1109.7977557873614,
+   "ratio_i": 1.0137831238513126,
+   "ratio_ii": 1.1528853678003446,
+   "ratio_ii_range": [
+    1.1221476242987298,
+    1.1874611930591943
+   ]
+  },
+  {
+   "cell": {
+    "background_jobs": 2,
+    "cores": 4,
+    "distribution": "zipfian",
+    "rocksdb_cores": 4,
+    "workload": "W"
+   },
+   "blocks": 3,
+   "ours_uj": 1087.0865582265544,
+   "rocksdb_uj_i": 1048.327656747562,
+   "rocksdb_uj_ii": 911.6550885101542,
+   "ratio_i": 1.029646167265638,
+   "ratio_ii": 1.1840076004760567,
+   "ratio_ii_range": [
+    1.1373984922647975,
+    1.1961602229584136
+   ]
+  }
+ ],
+ "contention": [
+  {
+   "cell": {
+    "background_jobs": 2,
+    "burn_percent": 0,
+    "cores": 2,
+    "rocksdb_cores": 2,
+    "writes": "batched"
+   },
+   "blocks": 3,
+   "ours_uj": 931.9006205574026,
+   "rocksdb_uj_i": 1788.3031526400032,
+   "rocksdb_uj_ii": 1558.2523383249095,
+   "ratio_i": 0.5211796250579844,
+   "ratio_ii": 0.5974910668194674,
+   "ratio_ii_range": [
+    0.5924778136172817,
+    0.6088179310154674
+   ]
+  },
+  {
+   "cell": {
+    "background_jobs": 4,
+    "burn_percent": 0,
+    "cores": 16,
+    "rocksdb_cores": 16,
+    "writes": "batched"
+   },
+   "blocks": 3,
+   "ours_uj": 378.1269696841647,
+   "rocksdb_uj_i": 588.127980761034,
+   "rocksdb_uj_ii": 517.2671877576022,
+   "ratio_i": 0.648357997487613,
+   "ratio_ii": 0.7371770119920066,
+   "ratio_ii_range": [
+    0.7132610783464587,
+    0.7633738420777645
+   ]
+  },
+  {
+   "cell": {
+    "background_jobs": 4,
+    "burn_percent": 0,
+    "cores": 8,
+    "rocksdb_cores": 8,
+    "writes": "batched"
+   },
+   "blocks": 3,
+   "ours_uj": 367.89076204411083,
+   "rocksdb_uj_i": 582.7565125166972,
+   "rocksdb_uj_ii": 509.8020505383739,
+   "ratio_i": 0.6347771293848329,
+   "ratio_ii": 0.7226763971188483,
+   "ratio_ii_range": [
+    0.6954377479928202,
+    0.7256159635980529
+   ]
+  },
+  {
+   "cell": {
+    "background_jobs": 4,
+    "burn_percent": 40,
+    "cores": 4,
+    "rocksdb_cores": 4,
+    "writes": "batched"
+   },
+   "blocks": 3,
+   "ours_uj": 776.2401218582436,
+   "rocksdb_uj_i": 1150.1088680855723,
+   "rocksdb_uj_ii": 1005.735363853886,
+   "ratio_i": 0.6768195640112528,
+   "ratio_ii": 0.7697837894674545,
+   "ratio_ii_range": [
+    0.763756951985244,
+    0.8185080781367243
+   ]
+  },
+  {
+   "cell": {
+    "background_jobs": 4,
+    "burn_percent": 80,
+    "cores": 4,
+    "rocksdb_cores": 4,
+    "writes": "batched"
+   },
+   "blocks": 3,
+   "ours_uj": 756.4061138464161,
+   "rocksdb_uj_i": 1297.177392698905,
+   "rocksdb_uj_ii": 1136.8268543804104,
+   "ratio_i": 0.5831169415253522,
+   "ratio_ii": 0.6653661557446847,
+   "ratio_ii_range": [
+    0.64170308340332,
+    0.7196482455541524
+   ]
+  }
+ ],
+ "prior-lz4": [
+  {
+   "cell": {
+    "background_jobs": 2,
+    "cores": 4,
+    "distribution": "uniform",
+    "memory": "preferred",
+    "rocksdb_cores": 4,
+    "workload": "A"
+   },
+   "blocks": 5,
+   "ours_uj": 1097.1885039054978,
+   "rocksdb_uj_i": 1139.2219384639495,
+   "rocksdb_uj_ii": 1000.1172321987311,
+   "ratio_i": 0.9631033838629136,
+   "ratio_ii": 1.1014729649862713,
+   "ratio_ii_range": [
+    1.0081002579689244,
+    1.110532406952722
+   ]
+  },
+  {
+   "cell": {
+    "background_jobs": 2,
+    "cores": 4,
+    "memory": "preferred",
+    "rocksdb_cores": 4,
+    "writes": "batched"
+   },
+   "blocks": 5,
+   "ours_uj": 654.0677668386277,
+   "rocksdb_uj_i": 1573.7920701597623,
+   "rocksdb_uj_ii": 1374.5940076915267,
+   "ratio_i": 0.4170785840272754,
+   "ratio_ii": 0.47514403638909863,
+   "ratio_ii_range": [
+    0.46961317345919673,
+    0.4823093997606682
+   ]
+  },
+  {
+   "cell": {
+    "background_jobs": 2,
+    "cores": 4,
+    "memory": "preferred",
+    "rocksdb_cores": 4,
+    "writes": "single"
+   },
+   "blocks": 5,
+   "ours_uj": 1314.32937856662,
+   "rocksdb_uj_i": 1734.4413767898268,
+   "rocksdb_uj_ii": 1513.4121866659777,
+   "ratio_i": 0.7577825322636348,
+   "ratio_ii": 0.8684543379170655,
+   "ratio_ii_range": [
+    0.8535933068210934,
+    0.8862966891749099
+   ]
+  },
+  {
+   "cell": {
+    "background_jobs": 4,
+    "cores": 4,
+    "memory": "preferred",
+    "rocksdb_cores": 4,
+    "writes": "batched"
+   },
+   "blocks": 5,
+   "ours_uj": 555.2080676226258,
+   "rocksdb_uj_i": 640.2401304837899,
+   "rocksdb_uj_ii": 560.2165517013049,
+   "ratio_i": 0.8702444233445754,
+   "ratio_ii": 0.9973188650527921,
+   "ratio_ii_range": [
+    0.9457680998092104,
+    1.024132830899763
+   ]
+  },
+  {
+   "cell": {
+    "background_jobs": 4,
+    "cores": 4,
+    "memory": "preferred",
+    "rocksdb_cores": 4,
+    "writes": "single"
+   },
+   "blocks": 5,
+   "ours_uj": 1305.4285449570757,
+   "rocksdb_uj_i": 1274.8472003485304,
+   "rocksdb_uj_ii": 1113.0494921237457,
+   "ratio_i": 1.024632383051821,
+   "ratio_ii": 1.17357739630039,
+   "ratio_ii_range": [
+    1.1233701884960974,
+    1.1972666963156622
+   ]
+  }
+ ],
+ "prior-zstd": [
+  {
+   "cell": {
+    "background_jobs": 2,
+    "cores": 4,
+    "memory": "preferred",
+    "rocksdb_cores": 4,
+    "writes": "batched"
+   },
+   "blocks": 3,
+   "ours_uj": 775.9964108357266,
+   "rocksdb_uj_i": 2423.5278592583877,
+   "rocksdb_uj_ii": 2116.4452077693045,
+   "ratio_i": 0.3201928989061366,
+   "ratio_ii": 0.3681062938780403,
+   "ratio_ii_range": [
+    0.3427742038911055,
+    0.3730542644160995
+   ]
+  },
+  {
+   "cell": {
+    "background_jobs": 2,
+    "cores": 4,
+    "memory": "preferred",
+    "rocksdb_cores": 4,
+    "writes": "single"
+   },
+   "blocks": 3,
+   "ours_uj": 1379.565798951581,
+   "rocksdb_uj_i": 2835.4130993566982,
+   "rocksdb_uj_ii": 2474.2609012986954,
+   "ratio_i": 0.4865484324892829,
+   "ratio_ii": 0.5575668266137461,
+   "ratio_ii_range": [
+    0.5416810245036884,
+    0.5860892858084624
+   ]
+  },
+  {
+   "cell": {
+    "background_jobs": 4,
+    "cores": 4,
+    "memory": "preferred",
+    "rocksdb_cores": 4,
+    "writes": "batched"
+   },
+   "blocks": 3,
+   "ours_uj": 736.5988910119748,
+   "rocksdb_uj_i": 1064.5629585242123,
+   "rocksdb_uj_ii": 928.3597187138321,
+   "ratio_i": 0.6907880794318618,
+   "ratio_ii": 0.792136266502452,
+   "ratio_ii_range": [
+    0.7605064728049592,
+    0.7940328568978496
+   ]
+  },
+  {
+   "cell": {
+    "background_jobs": 4,
+    "cores": 4,
+    "memory": "preferred",
+    "rocksdb_cores": 4,
+    "writes": "single"
+   },
+   "blocks": 3,
+   "ours_uj": 1407.3479326175514,
+   "rocksdb_uj_i": 1715.4672535090494,
+   "rocksdb_uj_ii": 1496.7576979237513,
+   "ratio_i": 0.8203875240047696,
+   "ratio_ii": 0.9357381615169297,
+   "ratio_ii_range": [
+    0.901658121781563,
+    0.9402643691559256
+   ]
+  }
+ ],
+ "prior-none": [
+  {
+   "cell": {
+    "background_jobs": 2,
+    "cores": 4,
+    "memory": "preferred",
+    "rocksdb_cores": 4,
+    "writes": "batched"
+   },
+   "blocks": 3,
+   "ours_uj": 937.9603724412966,
+   "rocksdb_uj_i": 1214.9436229061482,
+   "rocksdb_uj_ii": 1059.380893818089,
+   "ratio_i": 0.772019668038335,
+   "ratio_ii": 0.885385396239134,
+   "ratio_ii_range": [
+    0.8664293478228953,
+    0.8963499837574717
+   ]
+  },
+  {
+   "cell": {
+    "background_jobs": 2,
+    "cores": 4,
+    "memory": "preferred",
+    "rocksdb_cores": 4,
+    "writes": "single"
+   },
+   "blocks": 3,
+   "ours_uj": 1486.4961123497371,
+   "rocksdb_uj_i": 1396.313523111985,
+   "rocksdb_uj_ii": 1225.237403635051,
+   "ratio_i": 1.0645862034170956,
+   "ratio_ii": 1.2132310913293867,
+   "ratio_ii_range": [
+    1.1950001696682993,
+    1.2340753082387113
+   ]
+  },
+  {
+   "cell": {
+    "background_jobs": 4,
+    "cores": 4,
+    "memory": "preferred",
+    "rocksdb_cores": 4,
+    "writes": "batched"
+   },
+   "blocks": 3,
+   "ours_uj": 620.33468227363,
+   "rocksdb_uj_i": 527.6371475688146,
+   "rocksdb_uj_ii": 463.79367441380384,
+   "ratio_i": 1.1621085460862521,
+   "ratio_ii": 1.3220784850015252,
+   "ratio_ii_range": [
+    1.2900922111036375,
+    1.4041297728710056
+   ]
+  },
+  {
+   "cell": {
+    "background_jobs": 4,
+    "cores": 4,
+    "memory": "preferred",
+    "rocksdb_cores": 4,
+    "writes": "single"
+   },
+   "blocks": 3,
+   "ours_uj": 1405.926843514121,
+   "rocksdb_uj_i": 1194.4765842723734,
+   "rocksdb_uj_ii": 1041.2603225563894,
+   "ratio_i": 1.1930893759306618,
+   "ratio_ii": 1.3697715433586992,
+   "ratio_ii_range": [
+    1.3502164761857456,
+    1.379727279687006
+   ]
+  }
+ ],
+ "prior-equal-cost": [
+  {
+   "cell": {
+    "background_jobs": 4,
+    "cores": 8,
+    "memory": "preferred",
+    "rocksdb_cores": 32,
+    "writes": "batched"
+   },
+   "blocks": 5,
+   "ours_uj": 370.1916860773209,
+   "rocksdb_uj_i": 236.3674294652078,
+   "rocksdb_uj_ii": 208.79972407049448,
+   "ratio_i": 1.5610172499140502,
+   "ratio_ii": 1.7676089624255804,
+   "ratio_ii_range": [
+    1.7118112959314067,
+    1.8006048303924949
+   ]
+  },
+  {
+   "cell": {
+    "background_jobs": 4,
+    "cores": 8,
+    "memory": "preferred",
+    "rocksdb_cores": 8,
+    "writes": "batched"
+   },
+   "blocks": 5,
+   "ours_uj": 370.1916860773209,
+   "rocksdb_uj_i": 338.3131848478625,
+   "rocksdb_uj_ii": 299.47828140683725,
+   "ratio_i": 1.0932386222417192,
+   "ratio_ii": 1.2392382014009173,
+   "ratio_ii_range": [
+    1.218905405557216,
+    1.294527377460329
+   ]
+  },
+  {
+   "cell": {
+    "background_jobs": 8,
+    "cores": 8,
+    "memory": "preferred",
+    "rocksdb_cores": 32,
+    "writes": "batched"
+   },
+   "blocks": 5,
+   "ours_uj": 372.79880101174126,
+   "rocksdb_uj_i": 232.88476712846983,
+   "rocksdb_uj_ii": 206.77405182267194,
+   "ratio_i": 1.5986881019607369,
+   "ratio_ii": 1.800564930920212,
+   "ratio_ii_range": [
+    1.7419999682820289,
+    1.819338082221404
+   ]
+  },
+  {
+   "cell": {
+    "background_jobs": 8,
+    "cores": 8,
+    "memory": "preferred",
+    "rocksdb_cores": 8,
+    "writes": "batched"
+   },
+   "blocks": 5,
+   "ours_uj": 372.79880101174126,
+   "rocksdb_uj_i": 349.8988419928477,
+   "rocksdb_uj_ii": 307.0081639157149,
+   "ratio_i": 1.0640506959545528,
+   "ratio_ii": 1.2127042538138972,
+   "ratio_ii_range": [
+    1.2009798922896895,
+    1.2708456215107475
+   ]
+  }
+ ],
+ "hypotheses": {
+  "Y-E6a (ii): ours <= RocksDB at 4, 8, 16 cores": false,
+  "Y-E6b (i): ours < RocksDB at 4, 8, 16 cores": false
+ }
+}

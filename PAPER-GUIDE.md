@@ -168,7 +168,19 @@ E8 came from the first critique round and are proposed, not yet approved. Each r
 - E1: registered (commit 0243b26, pushed), running on Zyra since 2026-11-26 in tmux session
   `e1` (`~/lsm-tree/e1_run.sh`, output `/tmp/sa29ali/campaigns/ycsb-full`, 162 runs). To
   resume after an interruption, rerun the script. Archive to `results/data/campaigns/` when done.
-- E2–E8: not started.
+- E2–E5: registered (commit 6b70430, pushed). Drivers smoke-tested on Malphite and Pyke
+  (not reported). Fresh build of the registered sources on Malphite's local disk
+  (`/tmp/sa29ali/lsm-e`, CUDA 12.8, sm_86). Chain `results/e_chain.sh` runs E4 → E3 → E2 →
+  E5 from Malphite with a Pyke login held open (Pyke wipes `/dev/shm` at logout).
+  Deviations, all in the registration: E3 uses 100M keys with direct I/O (Malphite's NVMe
+  has 49 GB free, not 70 GB); E5's CPU pool is capped at 8 cores; E2 runs over TCP without
+  compaction filters, with LZ4, merged stream only.
+  Blocker: another user's unpinned jobs keep Malphite at full load, including cores 0–3,
+  where the GPU server is pinned.
+- E6: done (analysis of archived runs). Neither hypothesis holds: at the headline, ours uses
+  1.03×, 1.20× and 1.16× RocksDB's energy per write at 4, 8 and 16 cores (RocksDB without a
+  GPU). Energy saved only where RocksDB is short of CPU. In the paper (Q6) and limitations.
+- E7, E8: not started.
 
 Not proposed: a new value-size sweep or a second GPU model (already covered or out of scope).
 

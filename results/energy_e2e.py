@@ -34,9 +34,14 @@ def energy(row, with_gpu):
 
 
 def cell(row, ignore_cores):
+    """The trial's settings apart from the design. Background jobs are compared per core, so that in the
+    equal-cost campaigns ours at 8 cores with 4 jobs meets RocksDB at 16 cores with 8."""
     trial = row["trial"]
-    return json.dumps({k: v for k, v in trial.items() if k not in IGNORED | ({"cores"} if ignore_cores else set())},
-                      sort_keys=True)
+    fields = {k: v for k, v in trial.items() if k not in IGNORED | ({"cores"} if ignore_cores else set())}
+    jobs = trial.get("flags", {}).get("background-jobs")
+    if jobs is not None:
+        fields["background_jobs_per_core"] = jobs / trial["cores"]
+    return json.dumps(fields, sort_keys=True)
 
 
 def pairs(name, rows, unequal_cores):
@@ -54,6 +59,7 @@ def pairs(name, rows, unequal_cores):
                 continue
             label = {k: v for k, v in a["trial"].items() if k not in IGNORED}
             label["rocksdb_cores"] = b["trial"]["cores"]
+            label["background_jobs"] = a["trial"].get("flags", {}).get("background-jobs")
             found.append({"campaign": name, "block": f'{name}:{a["trial"].get("block")}', "cell": label,
                           "ours_uj": values["ours_i"], "rocksdb_uj_i": values["rocksdb_i"],
                           "rocksdb_uj_ii": values["rocksdb_ii"],
