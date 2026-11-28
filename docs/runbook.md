@@ -99,6 +99,9 @@ throughput rewards a backend that postpones compaction. Other options:
 `--write-buffer-bytes`, `--target-file-bytes`, `--max-bytes-for-level-base`,
 `--max-write-buffer-number`, `--subcompactions`, `--block-cache-bytes`,
 `--adaptive-yield` (on by default; keep one client thread per core), `--verify`.
+WAL is enabled unless `--disable-wal true` is set. By default writes do not
+request a WAL sync; use `--sync-writes true` to sync each write batch. This
+option requires WAL to remain enabled.
 
 `results/system_campaign.py` runs a grid in randomized blocks. Each trial
 copies a golden database, pins the benchmark to N physical cores of the GPU's

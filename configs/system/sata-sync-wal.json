@@ -1,0 +1,49 @@
+{
+  "_comment": "Registered SATA/WAL durability comparison: 4 cores, direct-I/O tables, synchronous WAL batches.",
+  "common": {
+    "records": 50000000,
+    "value-bytes": 128,
+    "compression": "lz4",
+    "verify": true,
+    "read-percent": 0,
+    "warmup-seconds": 120,
+    "duration-seconds": 300,
+    "use-direct-io": true
+  },
+  "trials": [
+    {
+      "design": "native",
+      "mode": "native_cpu",
+      "cores": 4,
+      "writes": "batched",
+      "flags": {
+        "threads": 4,
+        "subcompactions": 4,
+        "pipelined-write": false,
+        "adaptive-yield": true,
+        "background-jobs": 4,
+        "batch-size": 100,
+        "disable-wal": false,
+        "sync-writes": true,
+        "allow-fallocate": false
+      }
+    },
+    {
+      "design": "full",
+      "mode": "cuda_merge",
+      "cores": 4,
+      "writes": "batched",
+      "flags": {
+        "threads": 8,
+        "subcompactions": 4,
+        "pipelined-write": false,
+        "adaptive-yield": false,
+        "background-jobs": 4,
+        "batch-size": 100,
+        "disable-wal": false,
+        "sync-writes": true,
+        "allow-fallocate": false
+      }
+    }
+  ]
+}

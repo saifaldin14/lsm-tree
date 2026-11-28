@@ -1317,6 +1317,25 @@ Hypotheses (medians over blocks):
 If Y-E5a fails, the paper says that at this load a pool of 8 cores does what the GPU does and
 compares the two on cost alone.
 
+#### TCP fallback on available hosts (registered before the fallback run)
+
+The planned Malphite/RDMA pair could not be used. Run the same E5 workload as a separate TCP
+campaign: Pyke is the database client, Zyra hosts the A6000 service, and Jax hosts the CPU
+service. All remote service arms use TCP on the same private lab network; these outcomes
+are reported separately from any RDMA campaign and do not support an RDMA claim.
+
+- Keep 8 databases, 50 M keys each, the M5 4-core database settings, 30 s warm-up plus 120 s,
+  3 randomized blocks, and full verification.
+- Keep the GPU service at 4 engines. Run CPU pools of 2, 4, and 8 physical cores on Jax,
+  using both SMT threads per core; record host load and wait for enough free worker threads.
+- Record the client/GPU/CPU host models and loads, transport, service CPU time, per-database
+  throughput and latency, compaction backlog, and all verification outcomes. Do not describe
+  this cross-host comparison as hardware-cost matched.
+- Run `python3 results/rdma/rdma_campaign.py --hosts HOSTS.json --experiment r11 --out
+  results/data/rdma/e5-tcp --instances 8 --engines 4 --transport tcp --cpu-host cpu_pool
+  --pools '0-1,96-97;0-3,96-99;0-7,96-103'`. Save it separately so the original preregistered
+  RDMA results, if later available, remain distinct.
+
 ### Kvrocks with its compactions sent to the service, E2 (registered 2026-11-26, before any E2 run)
 
 Every result so far uses our own benchmark. E2 runs a real key-value store with a network
@@ -1444,6 +1463,20 @@ Headline energy per write, ours / RocksDB, medians over 5 blocks:
 The script's first version paired every trial of a cell with every other within a block,
 mixing the two background-job settings; it was fixed to pair matching settings (jobs per core)
 before these numbers were recorded. The headline has one trial per cell and was not affected.
+
+## Real SATA with synchronous WAL writes (registered before these runs)
+
+The existing SATA campaign disabled WAL, so it did not measure the storage-bound write path
+with durable WAL writes. Run native RocksDB and full GPU offload on Zyra's local Micron 5200
+SATA device using the direct-I/O table path, with the database and trial copies on that device.
+Use 50 M keys, 128-byte values, LZ4, batched writes of 100, 4 client cores, verification on,
+120 s warm-up, 300 s measurement, and 3 randomized paired blocks (seed 1601). WAL stays enabled and
+`WriteOptions::sync` is enabled for every write batch in both arms. Record `wal_syncs` and
+`sync_writes` in every result; a trial cannot support this experiment unless both confirm
+synchronous WAL writes and correctness passes. Report window and backlog-inclusive throughput,
+p99 write latency, CPU/energy, write amplification, and the loss/gain relative to native. This
+is a bounded 4-core storage-path comparison, not a claim that the SATA device is saturated.
+The exact grid is `configs/system/sata-sync-wal.json`; raw campaigns are archived separately.
 
 ## Changes after data collection
 

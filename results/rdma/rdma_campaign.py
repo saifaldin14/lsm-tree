@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Multi-host experiments for remote compaction and replication over RDMA
+"""Multi-host experiments for remote compaction and replication
 (PREREGISTRATION.md, "Remote compaction and replication over RDMA").
 
   python3 results/rdma/rdma_campaign.py --hosts HOSTS.json --experiment r1 --out OUT_DIR
@@ -32,7 +32,7 @@ Experiments:
       trials the server is killed with SIGKILL partway through the measurement and restarted
       on the same endpoint later; per-second timelines are kept
   r11 CPU pool against the GPU (E5): N databases use the server on the GPU host with either
-      its GPU or a pool of its physical cores (cpu_merge), on the same RDMA link
+      its GPU or a CPU pool (cpu_merge); RDMA or TCP transport, and an optional separate CPU host
 Results are JSON lines in OUT_DIR; every run is resumable (finished files are skipped).
 """
 
@@ -478,7 +478,19 @@ R9_FLAGS = {
 
 def database_copy_lines(scratch: str, golden: str, n: int) -> list[str]:
     """Shell lines that make N fresh copies of the golden database on the client."""
-    return [f"set -u; D={scratch}/r9; rm -rf $D; mkdir -p $D"] + [f"cp -a {golden} $D/db{i}" for i in range(n)]
+    golden_current = shlex.quote(f"{golden}/CURRENT")
+    missing_golden = shlex.quote(f"golden database missing CURRENT: {golden}")
+    lines = [
+        f"set -u; D={shlex.quote(f'{scratch}/r9')}; "
+        f"if ! test -f {golden_current}; then echo {missing_golden} >&2; exit 1; fi; "
+        'rm -rf "$D" && mkdir -p "$D" || exit 1'
+    ]
+    for i in range(n):
+        destination = f"$D/db{i}"
+        lines.append(f"cp -a {shlex.quote(golden)} \"{destination}\" || exit 1; "
+                     f"if ! test -f \"{destination}/CURRENT\"; then "
+                     f"echo 'copied database missing CURRENT: db{i}' >&2; exit 1; fi")
+    return lines
 
 
 def database_run_lines(cluster: Cluster, scratch: str, n: int, env: str, mode: str, options: str, records: int,
@@ -486,7 +498,7 @@ def database_run_lines(cluster: Cluster, scratch: str, n: int, env: str, mode: s
     """Shell lines that run N databases at once on the client's db_slots, wait for them, print each one's
     exit code, JSON result and last error output, and delete the copies."""
     slots = cluster.config["client"]["db_slots"]
-    lines = [f"set -u; D={scratch}/r9"]
+    lines = [f"set -u; D={shlex.quote(f'{scratch}/r9')}"]
     for index in range(n):
         cores, node = slots[index]
         lines.append(f"(LSM_TENANT=db{index} {env} numactl --physcpubind={cores} --preferred={node} "
@@ -497,7 +509,7 @@ def database_run_lines(cluster: Cluster, scratch: str, n: int, env: str, mode: s
     lines.append("for f in $D/db*.rc; do echo rc $(basename $f .rc) $(cat $f); done")
     lines.append("for f in $D/db*.json; do printf 'json %s %s\\n' \"$(basename $f .json)\" \"$(tr -d '\\n' < $f)\"; done")
     lines.append("for f in $D/db*.err; do printf 'err %s %s\\n' \"$(basename $f .err)\" \"$(tail -c 300 $f | tr '\\n' ' ')\"; done")
-    lines.append("rm -rf $D")
+    lines.append('rm -rf "$D"')
     return lines
 
 
@@ -591,10 +603,18 @@ def experiment_r9(cluster: Cluster, out: Path, repetitions: int, records: int, s
 
 def ensure_golden(cluster: Cluster, records: int) -> str:
     c, scratch = cluster.config["client"], cluster.config["scratch"]
-    golden = f"{scratch}/rdma-golden-{records}"
-    if "done" not in cluster.run(c["host"], f"test -f {golden}.done && echo done || true"):
-        cluster.run(c["host"], f"mkdir -p {scratch} && rm -rf {golden} && {cluster.build}/lsm_system_bench --phase preload "
-                               f"--dir {golden} --records {records} --threads 8 > {golden}.json 2>&1 && touch {golden}.done")
+    golden_scratch = cluster.config.get("golden_scratch", scratch)
+    golden = f"{golden_scratch}/rdma-golden-{records}"
+    valid_golden = (f"test -f {shlex.quote(f'{golden}.done')} && "
+                    f"test -f {shlex.quote(f'{golden}/CURRENT')} && echo done || true")
+    if "done" not in cluster.run(c["host"], valid_golden):
+        cluster.run(c["host"], f"mkdir -p {shlex.quote(golden_scratch)} && "
+                               f"rm -rf {shlex.quote(golden)} {shlex.quote(f'{golden}.done')} && "
+                               f"{shlex.quote(f'{cluster.build}/lsm_system_bench')} --phase preload "
+                               f"--dir {shlex.quote(golden)} --records {records} --threads 8 "
+                               f"> {shlex.quote(f'{golden}.json')} 2>&1 && "
+                               f"test -f {shlex.quote(f'{golden}/CURRENT')} && "
+                               f"touch {shlex.quote(f'{golden}.done')}")
     return golden
 
 
@@ -677,18 +697,24 @@ def experiment_r10(cluster: Cluster, out: Path, repetitions: int, records: int, 
 
 
 def experiment_r11(cluster: Cluster, out: Path, repetitions: int, records: int, seconds: tuple[int, int], n: int,
-                   engines: int, pools: list[str], seed_base: int = 1400) -> None:
-    """E5: N databases share the compaction server on the GPU host, backed by its GPU (cuda_merge, the M5
-    service: `engines` engines, the host's "cores") or by a pool of its CPU threads (cpu_merge, one merge
-    per thread). pools lists the cpu lists of the CPU pools; RocksDB runs in the same blocks. Before a
-    CPU-pool trial the driver waits until other users leave the pool's threads free."""
+                   engines: int, pools: list[str], seed_base: int = 1400, transport: str = "rdma",
+                   cpu_pool_host: dict | None = None) -> None:
+    """Compare native RocksDB, a shared GPU, and CPU worker pools for N databases.
+
+    CPU workers may run on a separate host. The request transport can be RDMA
+    or TCP; CPU-pool trials wait for their selected worker cores to be free.
+    """
     c, g = cluster.config["client"], cluster.config["gpu"]
-    gpu_build = g.get("build", cluster.build)
+    cpu_pool_host = cpu_pool_host or g
+    if transport not in ("rdma", "tcp"):
+        raise ValueError(f"unsupported r11 transport: {transport}")
     scratch = cluster.config["scratch"]
     golden = ensure_golden(cluster, records)
     results = out / "r11-cpu-pool.jsonl"
     done = {(r["repetition"], r["design"]) for r in map(json.loads, results.open())} if results.exists() else set()
-    log = "/tmp/lsm-r11-server.log"
+    log = f"/tmp/lsm-r11-{out.name}-server.log"
+    for host in {g["host"], cpu_pool_host["host"]}:
+        cluster.run(host, f"mkdir -p {scratch}")
     arms = {"service-gpu": ("cuda_merge", g["cores"], engines), "native": (None, None, None)}
     for cores in pools:
         arms[f"service-cpu-{server_threads(cores)}"] = ("cpu_merge", cores, server_threads(cores))
@@ -699,11 +725,19 @@ def experiment_r11(cluster: Cluster, out: Path, repetitions: int, records: int, 
             if (repetition, design) in done:
                 continue
             backend, cores, slots = arms[design]
+            service_host = cpu_pool_host if backend == "cpu_merge" else g
+            service_build = service_host.get("build", cluster.build)
+            service_node = service_host["node"]
             record = {"experiment": "r11", "repetition": repetition, "design": design, "instances": n,
+                      "client_host": c["host"].rsplit("@", 1)[-1].split(".", 1)[0],
                       "backend": backend, "server_cores": cores, "engines": slots,
-                      "load_before": {"client": cluster.load(c["host"]), "gpu": cluster.load(g["host"])}}
+                      "transport": transport if backend else None,
+                      "service_host": (service_host["host"].rsplit("@", 1)[-1].split(".", 1)[0]
+                                       if backend else None),
+                      "load_before": {"client": cluster.load(c["host"]), "gpu": cluster.load(g["host"]),
+                                      "cpu_pool": cluster.load(cpu_pool_host["host"])}}
             if backend == "cpu_merge":
-                record["free_threads_wait"] = cluster.wait_for_free_threads(g["host"], slots)
+                record["free_threads_wait"] = cluster.wait_for_free_threads(service_host["host"], slots)
             else:
                 record["gpu_host_busy_threads"] = cluster.busy_threads(g["host"])
             server = None
@@ -711,25 +745,30 @@ def experiment_r11(cluster: Cluster, out: Path, repetitions: int, records: int, 
                 env, mode, flags = "", "native_cpu", R9_FLAGS["native"]
                 if backend:
                     server_env = GPU_SERVER_ENV if backend == "cuda_merge" else GPU_ENV
-                    server = cluster.start(g["host"], f"{server_env} LSM_SCHEDULER_LOG=1 numactl --physcpubind={cores} "
-                                                      f"--membind={g['node']} {gpu_build}/lsm_compaction_server "
-                                                      f"--listen rdma://{g['rdma_address']}:0 --backend {backend} "
+                    address = service_host["rdma_address"] if transport == "rdma" else service_host["address"]
+                    server = cluster.start(service_host["host"], f"{server_env} LSM_SCHEDULER_LOG=1 "
+                                                      f"numactl --physcpubind={cores} --membind={service_node} "
+                                                      f"{service_build}/lsm_compaction_server "
+                                                      f"--listen {transport}://{address}:0 --backend {backend} "
                                                       f"--engines {slots} --scheduler fair", log)
-                    env = f"LSM_RDMA_PUSH=1 LSM_REMOTE_ENDPOINT={server[1]} LSM_REMOTE_CONNECTIONS=4"
+                    push = "LSM_RDMA_PUSH=1 " if transport == "rdma" else ""
+                    env = f"{push}LSM_REMOTE_ENDPOINT={server[1]} LSM_REMOTE_CONNECTIONS=4"
                     mode, flags = "remote_merge", R9_FLAGS["service"]
-                    record["server_cpu_before"] = cluster.cpu_seconds(g["host"], server[0])
+                    record["server_cpu_before"] = cluster.cpu_seconds(service_host["host"], server[0])
                 options = " ".join(f"--{k} {str(v).lower() if isinstance(v, bool) else v}" for k, v in flags.items())
                 lines = database_copy_lines(scratch, golden, n) + \
                     database_run_lines(cluster, scratch, n, env, mode, options, records, seconds)[1:]
                 text = cluster.run(c["host"], "bash -c " + shlex.quote("\n".join(lines)))
                 if server:
-                    after, before = cluster.cpu_seconds(g["host"], server[0]), record.pop("server_cpu_before")
+                    after, before = cluster.cpu_seconds(service_host["host"], server[0]), record.pop("server_cpu_before")
                     record["server_cpu_seconds"] = after - before if None not in (after, before) else None
                 parse_database_output(text, record)
             finally:
                 if server:
-                    cluster.stop(g["host"], server[0])
-                    record["server_statistics"] = cluster.statistics(g["host"], log)
+                    cluster.stop(service_host["host"], server[0])
+                    record["server_statistics"] = cluster.statistics(service_host["host"], log)
+            record["load_after"] = {"client": cluster.load(c["host"]), "gpu": cluster.load(g["host"]),
+                                    "cpu_pool": cluster.load(cpu_pool_host["host"])}
             append(results, record)
             ops = [r["throughput"]["ops_per_second"] for r in record["results"].values()]
             print(f"r11 repetition {repetition} {design} N={n}: per-database {[round(o / 1e3) for o in ops]} k ops/s, "
@@ -760,7 +799,9 @@ def main() -> int:
     parser.add_argument("--kill-at", type=int, default=60, help="r10: measurement second at which the server is killed")
     parser.add_argument("--outage", type=int, default=60, help="r10: seconds before the server is restarted")
     parser.add_argument("--pools", default="0-1,10-11;0-3,10-13;0-7,10-17",
-                        help="r11: semicolon-separated cpu lists of the CPU pools on the GPU host")
+                        help="r11: semicolon-separated CPU lists for the selected CPU-pool host")
+    parser.add_argument("--transport", choices=["rdma", "tcp"], default="rdma", help="r11: worker transport")
+    parser.add_argument("--cpu-host", help="r11: hosts-config key for the CPU-pool host (default: GPU host)")
     arguments = parser.parse_args()
     cluster = Cluster(json.loads(arguments.hosts.read_text()))
     arguments.out.mkdir(parents=True, exist_ok=True)
@@ -782,9 +823,13 @@ def main() -> int:
                        (arguments.warmup_seconds, arguments.duration_seconds), arguments.instances,
                        arguments.engines, arguments.kill_at, arguments.outage)
     elif arguments.experiment == "r11":
+        cpu_pool_host = cluster.config.get(arguments.cpu_host) if arguments.cpu_host else None
+        if arguments.cpu_host and cpu_pool_host is None:
+            parser.error(f"--cpu-host {arguments.cpu_host!r} is not a key in the hosts configuration")
         experiment_r11(cluster, arguments.out, arguments.repetitions or 3, arguments.records,
                        (arguments.warmup_seconds, arguments.duration_seconds), arguments.instances,
-                       arguments.engines, arguments.pools.split(";"))
+                       arguments.engines, arguments.pools.split(";"), transport=arguments.transport,
+                       cpu_pool_host=cpu_pool_host)
     elif arguments.experiment == "r8":
         experiment_r8(cluster, arguments.out, arguments.repetitions or 3, arguments.records,
                       (arguments.warmup_seconds, arguments.duration_seconds),

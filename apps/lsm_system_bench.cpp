@@ -81,6 +81,7 @@ namespace
         std::uint32_t warmup_seconds = 30;
         std::uint32_t duration_seconds = 120;
         bool disable_wal = false;
+        bool sync_writes = false;
         bool adaptive_yield = true;
         // Puts per WriteBatch; write latency is then per batch.
         std::uint32_t batch_size = 1;
@@ -817,6 +818,7 @@ namespace
                 std::uniform_int_distribution<std::uint32_t> percent(0, 99);
                 rocksdb::WriteOptions write;
                 write.disableWAL = config.disable_wal;
+                write.sync = config.sync_writes;
                 rocksdb::ReadOptions read;
                 std::string key, value, expected, expected_key;
                 rocksdb::PinnableSlice found;
@@ -1528,6 +1530,8 @@ namespace
                 config.duration_seconds = static_cast<std::uint32_t>(number());
             else if (name == "--disable-wal")
                 config.disable_wal = value() == "true";
+            else if (name == "--sync-writes")
+                config.sync_writes = value() == "true";
             else if (name == "--rmw-percent")
                 config.rmw_percent = static_cast<std::uint32_t>(number());
             else if (name == "--delete-percent")
@@ -1603,6 +1607,8 @@ namespace
             throw std::invalid_argument("--phase must be preload or run");
         if (config.dir.empty())
             throw std::invalid_argument("--dir is required");
+        if (config.sync_writes && config.disable_wal)
+            throw std::invalid_argument("--sync-writes requires WAL to be enabled");
         if (config.key_bytes < 16 || config.key_bytes > 512 || (config.key_bytes_max > 0 && (config.key_bytes_max < config.key_bytes ||
                                                                                            config.key_bytes_max > 512)))
             throw std::invalid_argument("--key-bytes (and --key-bytes-max) must be 16 to 512");
@@ -1656,6 +1662,7 @@ int main(int argc, char **argv)
                             {"max_write_buffer_number", config.max_write_buffer_number}, {"background_jobs", config.background_jobs},
                             {"subcompactions", config.subcompactions}, {"levels", config.levels},
                             {"block_cache_bytes", config.block_cache_bytes}, {"disable_wal", config.disable_wal},
+                            {"sync_writes", config.sync_writes},
                             {"adaptive_yield", config.adaptive_yield}, {"batch_size", config.batch_size}, {"threads", config.threads}, {"read_percent", config.read_percent},
                             {"rmw_percent", config.rmw_percent}, {"delete_percent", config.delete_percent},
                             {"distribution", config.distribution}, {"zipf_theta", config.zipf_theta},
