@@ -2,6 +2,7 @@
 \settopmatter{printfolios=true, printacmref=false}
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta}
+\usepackage{needspace}
 
 \newcommand{\yes}{\checkmark}
 \newcommand{\no}{$\times$}
@@ -11,7 +12,7 @@
 
 \begin{document}
 
-\title{Moving Compression with the Merge: Offloading Per-Byte LSM-Tree Compaction to GPUs}
+\title{Where Should LSM Compaction Run? Full Per-Byte GPU Offload and When It Pays}
 \author{Anonymous Author(s)}
 \maketitle
 
@@ -34,8 +35,9 @@ of 128-byte values, against about 2.3\,\textmu s to accept the write. Accelerati
 merge is one way to reduce that cost~\cite{fpga2020,luda2020,glsm2024,zhou2024msst,gparakv2025},
 but it can leave a substantial CPU bill: LUDA, for example, builds data blocks on the
 GPU but leaves Snappy compression for future work~\cite{luda2020}. The question is not
-just how fast the GPU merges, but which stages must move with the merge to free up
-host CPU time.
+just how fast the GPU merges, but which stages must move with it, and when saved host
+CPU time translates into better whole-database performance rather than exposing a
+different bottleneck.
 
 We compare stage placements in one RocksDB~11.8 build, using our GPU kernels for offloaded
 stages and RocksDB's code for host stages. This comparison does not reproduce prior
@@ -58,52 +60,52 @@ as much host CPU time per GiB with LZ4 and 6.5$\times$ as much with ZSTD.
   \label{fig:teaser}
 \end{figure}
 
-We build and compress output blocks on the GPU so the host need not reconstruct
-them from merged records.
-RocksDB normally chooses each block boundary based on the encoded size so far, making
-it dependent on preceding entries. Our extension adds periodic cuts so groups of
-entries can be processed independently. It also preserves the key versions visible to
-snapshots and returns compressed blocks, not complete table files: RocksDB still decides
-where to cut files, finalizes offset-dependent checksums, writes, and installs its tables.
-The output remains readable in RocksDB's format without requiring identical block
-boundaries or compressed bytes.
+Full offload builds and compresses output blocks on the GPU, with periodic cuts to make
+RocksDB's otherwise history-dependent block packing parallelizable. It preserves
+snapshot-visible versions and returns blocks, not SSTs: RocksDB retains file boundaries,
+offset-dependent checksums, writes and installation. The files remain readable in
+RocksDB but need not be byte-identical to native output.
 
 In a whole-database benchmark on four host cores, the extension with an RTX A6000
 sustains 748{,}000 writes/s versus 480{,}000 for tuned RocksDB, with LZ4, 50 million
 keys in memory, batches of 100 writes of 128-byte values, and the write-ahead log
 disabled. Across 4, 8 and 16 cores, the measured throughput gain is 1.5--1.8$\times$.
 
-These gains do not imply lower cost or identical storage behavior. In one NVMe comparison,
-write amplification was 2.65 for RocksDB at a level-0 trigger of 8 and 3.79 with offload
-at a trigger of 12; this does not isolate the effect of offload. GPU ZSTD can produce a
-different compression ratio, and concurrent GPU compactions require pinned host buffers
-and device memory. Full offload supports a subset of RocksDB configurations.
-At about 1.26 million writes/s, eight cores and a dedicated GPU cost 68\% more per hour
-than 16 CPU cores alone in our AWS on-demand model, which prices the GPU as an L40S.
+The benefit tracks CPU bottlenecks. At eight cores, buffered NVMe throughput was
+1.02$\times$ RocksDB's (95\% interval 1.00--1.03), despite 1.70$\times$ less host CPU per
+write; a two-run, four-core NVMe test measured 1.43$\times$. Drive-bound SATA direct-I/O
+throughput ranged from 0.93$\times$ to 1.04$\times$ with about half the CPU. Storage tests
+disabled WAL, leaving durable-write performance untested.
 
-\paragraph{Sharing one GPU across databases.} Because the block-processing worker does
-not open or install database files, one worker can serve multiple databases. In a
-separate in-memory LZ4 experiment, eight four-core databases share an RTX PRO 6000
-Blackwell over 100-Gb/s RDMA. Over the 120-second write window they achieve
-2.10$\times$ the per-database write throughput of local RocksDB at 4\% higher modeled
-cost per write. Including time to finish pending compaction, the throughput gain is
-2.01$\times$. These results compare with local RocksDB, not with a matched shared CPU
-pool.
+Modeled cost is also conditional. At 1.26 million writes/s, the dedicated-GPU setup costs
+68\% more per hour; at maximum measured rates (2.26 million versus 1.60 million writes/s),
+it has 23\% lower modeled cost per write, using an L40S price for the measured A6000.
+GPU ZSTD can produce a different compression ratio, concurrent compactions require pinned
+host buffers and device memory, and full offload supports a subset of RocksDB
+configurations. We do not evaluate QAT/IAA compression or a matched shared CPU pool.
 
-\paragraph{Where it does not help.} The gain is small on Meta's read-heavy mix
-(1.05$\times$), and in our buffered NVMe runs the benefit is mainly CPU saved.
-Isolation on a shared GPU is unresolved: beside a heavy tenant, light databases on the
-service's NUMA node see 4.2--5.8$\times$ their solo p99.9 write latency under every
-scheduling policy we tried.
+\paragraph{Sharing one GPU across databases.} In a separate in-memory LZ4 experiment,
+eight four-core databases share an RTX PRO 6000 Blackwell over 100-Gb/s RDMA. They reach
+2.10$\times$ local RocksDB's per-database write-window throughput at 4\% higher modeled
+cost per write, or 2.01$\times$ including compaction drain. We do not compare with a
+matched shared CPU pool.
 
+\paragraph{Where it does not help.} Meta's read-heavy mix gains 1.05$\times$. Energy per
+write through catch-up is 1.03--1.20$\times$ the CPU-only baseline at 4--16 cores
+(0.91--1.06$\times$ when both systems include idle-GPU power). Under a heavy tenant,
+light databases see 4.2--5.8$\times$ their solo p99.9 write latency.
+
+\Needspace{6\baselineskip}
 \paragraph{Contributions.}
 \begin{itemize}
   \item A controlled comparison of stage placements in RocksDB that quantifies the
         host CPU time left behind when compression stays on the CPU.
   \item A format-compatible GPU block pipeline that moves output compression with the
         merge while RocksDB retains file management and compaction policy.
+  \item A workload-regime evaluation that measures when reduced compaction CPU improves
+        throughput, and when storage, workload mix, cost or energy limit the benefit.
   \item A shared GPU service that admits requests based on estimated device memory,
-        and an evaluation of its throughput, modeled cost and limits on tenant isolation.
+        with measured throughput, modeled cost and limits on tenant isolation.
 \end{itemize}
 
 \section{Related Work}
@@ -255,8 +257,9 @@ replica group; they do not pool compaction resources across independent database
 Prior work changes the amount of data to compact, how it reaches the accelerator, or
 where compaction runs. We hold the engine, input and codec settings fixed to measure how
 much host CPU time remains when merging and block building move to the GPU but output
-compression does not. We then test whether the same block-processing pipeline can serve
-multiple databases.
+compression does not. We then evaluate when those CPU savings translate into whole-database
+throughput, where storage and workload mix cap the benefit, and whether a shared GPU
+service can serve multiple databases.
 
 \section{System Design}
 \label{sec:design}
